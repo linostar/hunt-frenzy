@@ -1,0 +1,1 @@
+res://scripts/shooter.gd: uses 'InputEventScreenTouch'

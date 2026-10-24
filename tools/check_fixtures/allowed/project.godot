@@ -1,0 +1,12 @@
+config_version=5
+
+[application]
+
+config/name="check_fixture_allowed"
+
+[input]
+
+ui_accept={
+"deadzone": 0.5,
+"events": []
+}

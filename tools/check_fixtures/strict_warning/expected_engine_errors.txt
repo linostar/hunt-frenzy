@@ -1,0 +1,2 @@
+SCRIPT ERROR: Parse Error: The local variable "unused" is declared but never used in the block.
+ERROR: Failed to load script "res://scripts/sloppy.gd" with error "Parse error".

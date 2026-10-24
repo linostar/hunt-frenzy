@@ -1,0 +1,1 @@
+res://scenes/part.tscn: interactive Control 'Unfocusable' cannot take keyboard focus

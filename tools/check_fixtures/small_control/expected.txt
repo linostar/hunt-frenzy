@@ -1,0 +1,1 @@
+res://scenes/part.tscn: interactive Control 'Tiny' is (40.0, 40.0), smaller than 44x44

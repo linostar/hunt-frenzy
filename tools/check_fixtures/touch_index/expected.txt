@@ -1,0 +1,2 @@
+res://scripts/ui/finger.gd:6: filters on touch index 0
+res://scripts/ui/finger.gd:10: filters on touch index 0

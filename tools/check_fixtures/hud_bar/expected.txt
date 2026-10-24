@@ -1,0 +1,2 @@
+res://scenes/hud.tscn: interactive Control 'MusicToggle' starts at y=4, inside the top HUD bar
+res://scenes/hud.tscn: interactive Control 'ReloadButton' starts at y=30, inside the top HUD bar

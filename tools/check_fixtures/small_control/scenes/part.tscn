@@ -1,0 +1,14 @@
+[gd_scene format=3]
+
+[node name="Part" type="Control"]
+layout_mode = 3
+offset_right = 200.0
+offset_bottom = 200.0
+
+[node name="Tiny" type="Button" parent="."]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 50.0
+offset_bottom = 50.0
+text = "x"

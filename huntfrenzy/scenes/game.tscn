@@ -1,0 +1,71 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_error"]
+content_margin_left = 8.0
+content_margin_top = 6.0
+content_margin_right = 8.0
+content_margin_bottom = 6.0
+bg_color = Color(0.431, 0.125, 0.157, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.11, 0.078, 0.125, 1)
+
+[node name="Game" type="Node"]
+process_mode = 3
+script = ExtResource("1_game")
+
+[node name="Fade" type="CanvasLayer" parent="."]
+layer = 100
+
+[node name="Cover" type="ColorRect" parent="Fade"]
+visible = false
+modulate = Color(1, 1, 1, 0)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.067, 0.059, 0.094, 1)
+
+[node name="ErrorLabel" type="Label" parent="Fade"]
+visible = false
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = -8.0
+offset_bottom = 44.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_error")
+autowrap_mode = 3
+
+[node name="RotateLayer" type="CanvasLayer" parent="."]
+layer = 110
+
+[node name="RotateOverlay" type="ColorRect" parent="RotateLayer"]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.067, 0.059, 0.094, 1)
+
+[node name="Message" type="Label" parent="RotateLayer/RotateOverlay"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 72
+text = "Rotate your phone"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3

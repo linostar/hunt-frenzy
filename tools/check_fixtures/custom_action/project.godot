@@ -1,0 +1,12 @@
+config_version=5
+
+[application]
+
+config/name="check_fixture_custom_action"
+
+[input]
+
+shoot={
+"deadzone": 0.2,
+"events": []
+}

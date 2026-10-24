@@ -1,0 +1,2 @@
+res://scripts/ui/cursor.gd: uses 'InputEventMouse'
+res://scripts/ui/cursor.gd: uses 'mouse_position'
