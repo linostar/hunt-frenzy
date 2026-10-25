@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="88" viewBox="0 0 56 88">
+  <!-- First-pass rival hunter, gun raised to aim (the step 7 art pass replaces it). -->
+  <!-- Legs and boots. -->
+  <rect x="20" y="62" width="7" height="22" rx="2" fill="#5b4632"/>
+  <rect x="30" y="62" width="7" height="22" rx="2" fill="#5b4632"/>
+  <rect x="17" y="81" width="12" height="6" rx="2" fill="#2b2622"/>
+  <rect x="29" y="81" width="12" height="6" rx="2" fill="#2b2622"/>
+  <!-- Plaid coat. -->
+  <rect x="15" y="30" width="27" height="36" rx="6" fill="#b8382c" stroke="#2b2622" stroke-width="1.5"/>
+  <line x1="15" y1="42" x2="42" y2="42" stroke="#7a2119" stroke-width="2"/>
+  <line x1="15" y1="54" x2="42" y2="54" stroke="#7a2119" stroke-width="2"/>
+  <line x1="28.5" y1="30" x2="28.5" y2="66" stroke="#7a2119" stroke-width="2"/>
+  <!-- Head, smug grin and stubble. -->
+  <circle cx="28.5" cy="20" r="10" fill="#e8b58c" stroke="#2b2622" stroke-width="1.5"/>
+  <path d="M23 24 Q28.5 28 34 23" fill="none" stroke="#2b2622" stroke-width="1.5"/>
+  <circle cx="25" cy="18" r="1.5" fill="#2b2622"/>
+  <circle cx="32" cy="18" r="1.5" fill="#2b2622"/>
+  <!-- Blaze-orange cap with a peak. -->
+  <path d="M18 15 Q28.5 2 39 15 Z" fill="#f08a24" stroke="#2b2622" stroke-width="1.5"/>
+  <rect x="30" y="13" width="14" height="3" rx="1.5" fill="#f08a24" stroke="#2b2622" stroke-width="1"/>
+  <!-- Shotgun raised to the shoulder, muzzle up toward the sky, with a muzzle glint. -->
+  <line x1="22" y1="44" x2="54" y2="4" stroke="#3a3a3f" stroke-width="4" stroke-linecap="round"/>
+  <line x1="18" y1="49" x2="27" y2="38" stroke="#8a5a2b" stroke-width="6" stroke-linecap="round"/>
+  <circle cx="30" cy="35" r="3.5" fill="#e8b58c" stroke="#2b2622" stroke-width="1"/>
+  <circle cx="40" cy="22" r="3.5" fill="#e8b58c" stroke="#2b2622" stroke-width="1"/>
+  <circle cx="54" cy="4" r="2.5" fill="#fff2a8"/>
+</svg>

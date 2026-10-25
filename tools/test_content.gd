@@ -1,8 +1,8 @@
 extends SceneTree
 ## Headless content tests: loads huntfrenzy/data/*.json through Content and checks every
-## invariant of huntfrenzy/data/SCHEMA.md (I1..I12) against the real data, then proves
-## each one fires on a malformed copy of it (the loader's I1-I4 with the exact error
-## lines; I5-I12 with the exact problems their checks report).
+## invariant of huntfrenzy/data/SCHEMA.md (I1..I13) against the real data, then proves
+## each one fires on a malformed copy of it (the loader's I1-I4 and I13 with the exact
+## error lines; I5-I12 with the exact problems their checks report).
 ##   "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func that reports through _check(), and append it to
@@ -69,6 +69,7 @@ func _tests() -> Array[Callable]:
 		_test_i10_roster_and_chapters,
 		_test_i11_fits_field,
 		_test_i12_hitbox_touch_size,
+		_test_i13_cue_ends_before_fleeing,
 	]
 
 
@@ -87,11 +88,11 @@ func _run() -> void:
 		quit(1)
 
 
-## I1-I4 hold for the real data: the loader checks them, so clean real data means no
-## loader errors.
+## I1-I4 and I13 hold for the real data: the loader checks them, so clean real data means
+## no loader errors.
 func _test_real_data_loads_clean() -> void:
 	Content.reload()
-	_check(Content.errors().is_empty(), "I1-I4 the real data loads without errors", "\n".join(Content.errors()))
+	_check(Content.errors().is_empty(), "I1-I4 and I13 the real data loads without errors", "\n".join(Content.errors()))
 
 
 ## The lookups return the typed data: the six types plus the gosling, in data order, and
@@ -113,6 +114,12 @@ func _test_lookup_api() -> void:
 	_check(mix == ["goose@1", "armored@3", "splitter@5", "decoy@5", "zigzag@7"], "the Endless mix unlocks by wave", str(mix))
 	_check(endless.golden_bird == "golden" and endless.golden_from_wave == 2 and is_equal_approx(endless.golden_chance, 0.08), "Endless's golden bird from wave 2", "%s %d %.2f" % [endless.golden_bird, endless.golden_from_wave, endless.golden_chance])
 	_check(Content.modes().size() == 1, "modes() lists the modes", str(Content.modes().size()))
+	var lingers := Content.birds().map(func(spec: BirdSpec) -> float: return spec.linger_time)
+	_check(lingers == [3.5, 4.0, 3.5, 1.5, 3.5, 2.5, 4.0], "every bird has its linger_time", str(lingers))
+	_check(endless.rival_steals, "Endless has the rival's steals on", str(endless.rival_steals))
+	var rival := Content.rival_lines()
+	var counts := RivalLines.CATEGORIES.map(func(category: String) -> int: return rival.lines[category].size() if rival.lines.has(category) else 0)
+	_check(is_equal_approx(rival.aim_time, 1.0) and is_equal_approx(rival.cooldown, 4.0) and counts == [5, 4, 4, 5, 4], "rival_lines() returns the aim time, the cooldown and every category's lines", "aim %.2f, cooldown %.2f, %s" % [rival.aim_time, rival.cooldown, counts])
 
 
 ## I1: each file parses, is a non-empty array of objects, ids are snake_case and unique,
@@ -146,6 +153,24 @@ func _test_i1_files_ids_and_keys() -> void:
 	var texts := _real_texts()
 	texts.erase("modes.json")
 	_expect_load_errors("I1 missing file", _load_quietly(texts), ["data/modes.json [-] (file): missing"])
+	_expect_load_errors("I1 missing linger_time", _mutated("birds.json", func(data: Array) -> void: (data[0] as Dictionary).erase("linger_time")),
+		["data/birds.json [goose] linger_time: missing key"])
+	_expect_load_errors("I1 missing rival_steals", _mutated("modes.json", func(data: Array) -> void: (data[0] as Dictionary).erase("rival_steals")),
+		["data/modes.json [endless] rival_steals: missing key"])
+	_expect_load_errors("I1 rival lines missing a category", _mutated("rival_lines.json", func(data: Dictionary) -> void: (data["lines"] as Dictionary).erase("steal")),
+		["data/rival_lines.json [steal] lines: missing category"])
+	_expect_load_errors("I1 rival lines with an unknown category", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["boast"] = ["Watch this."]),
+		["data/rival_lines.json [boast] lines: unknown category (expected one of [\"miss\", \"combo\", \"wave_end\", \"steal\", \"results\"])"])
+	_expect_load_errors("I1 rival lines missing a key", _mutated("rival_lines.json", func(data: Dictionary) -> void: data.erase("cooldown")),
+		["data/rival_lines.json [-] cooldown: missing key"])
+	_expect_load_errors("I1 rival lines with an unknown key", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["volume"] = 1),
+		["data/rival_lines.json [-] volume: unknown key"])
+	_expect_load_errors("I1 rival lines not an object", _with_text("rival_lines.json", "[]"), ["data/rival_lines.json [-] (file): top level must be an object, got Array"])
+	_expect_load_errors("I1 rival lines with no fields", _with_text("rival_lines.json", "{}"), ["data/rival_lines.json [-] (file): has no fields"])
+	_expect_load_errors("I1 rival lines bad JSON", _with_text("rival_lines.json", "{"), ["data/rival_lines.json [-] (file): JSON parse error at line 1: Expected '}'"])
+	texts = _real_texts()
+	texts.erase("rival_lines.json")
+	_expect_load_errors("I1 rival lines file missing", _load_quietly(texts), ["data/rival_lines.json [-] (file): missing"])
 
 
 ## I2: every field has its type and lies in its range or enum.
@@ -178,6 +203,30 @@ func _test_i2_types_and_ranges() -> void:
 		["data/modes.json [endless] birds[1].from_wave: 1001 is outside 1..1000"])
 	_expect_load_errors("I2 golden_from_wave out of range", _mutated("modes.json", func(data: Array) -> void: data[0]["golden_from_wave"] = 0),
 		["data/modes.json [endless] golden_from_wave: 0 is outside 1..1000"])
+	_expect_load_errors("I2 linger_time zero", _mutated("birds.json", func(data: Array) -> void: data[0]["linger_time"] = 0),
+		["data/birds.json [goose] linger_time: 0.0 is outside 0.1..60.0"])
+	_expect_load_errors("I2 linger_time negative", _mutated("birds.json", func(data: Array) -> void: data[0]["linger_time"] = -2),
+		["data/birds.json [goose] linger_time: -2.0 is outside 0.1..60.0"])
+	_expect_load_errors("I2 linger_time not a number", _mutated("birds.json", func(data: Array) -> void: data[0]["linger_time"] = "soon"),
+		["data/birds.json [goose] linger_time: expected float, got String"])
+	_expect_load_errors("I2 rival_steals not a bool", _mutated("modes.json", func(data: Array) -> void: data[0]["rival_steals"] = 1),
+		["data/modes.json [endless] rival_steals: expected bool, got float"])
+	_expect_load_errors("I2 aim_time under 0.5 s", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["aim_time"] = 0.4),
+		["data/rival_lines.json [-] aim_time: 0.4 is outside 0.5..10.0"])
+	_expect_load_errors("I2 cooldown negative", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["cooldown"] = -1),
+		["data/rival_lines.json [-] cooldown: -1.0 is outside 0.0..60.0"])
+	_expect_load_errors("I2 rival line too long for the bubble", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["miss"][2] = "That is the worst shot I have ever seen, kid."),
+		["data/rival_lines.json [miss] lines[2]: length 45 is outside 1..40 (the speech bubble's two lines)"])
+	_expect_load_errors("I2 empty rival line", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["combo"][0] = ""),
+		["data/rival_lines.json [combo] lines[0]: length 0 is outside 1..40 (the speech bubble's two lines)"])
+	_expect_load_errors("I2 rival line not a string", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["steal"][1] = 7),
+		["data/rival_lines.json [steal] lines[1]: expected String, got float"])
+	_expect_load_errors("I2 rival category not a list", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["results"] = "Bye."),
+		["data/rival_lines.json [results] lines: expected Array, got String"])
+	_expect_load_errors("I2 rival category empty", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["wave_end"] = []),
+		["data/rival_lines.json [wave_end] lines: is empty"])
+	_expect_load_errors("I2 rival lines not an object", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"] = ["Hi."]),
+		["data/rival_lines.json [-] lines: expected Dictionary, got Array"])
 
 
 ## I3: every reference resolves (mix birds, golden_bird, splits_into) and every sprite has
@@ -327,6 +376,19 @@ func _test_i12_hitbox_touch_size() -> void:
 		data[3]["size"] = [56, 42]
 		data[3]["hitbox"] = [[-18, 6], [-14, -2], [-4, -4], [6, -3], [8, -10], [13, -12], [19, -9], [20, -3], [14, 2], [12, 9], [-4, 15], [-14, 12]]), _i12_problems,
 		["gosling: hitbox bounding box (38.0, 27.0) is under 44 base units on a side (the smallest touch target)"])
+
+
+## I13 (the loader's): every bird but the decoy has linger_time + the rival's aim_time
+## under its flee_time, so every aim cue can finish before the bird flees on its own.
+func _test_i13_cue_ends_before_fleeing() -> void:
+	_expect_load_errors("I13 a goose lingering into its flight off", _mutated("birds.json", func(data: Array) -> void: data[0]["linger_time"] = 5.5),
+		["data/birds.json [goose] linger_time: 5.5 + aim_time 1.0 is not under flee_time 6.0 (I13: the rival's cue must end before the bird flees)"])
+	_expect_load_errors("I13 a cue ending exactly at flee_time", _mutated("birds.json", func(data: Array) -> void: data[3]["linger_time"] = 2.0),
+		["data/birds.json [gosling] linger_time: 2.0 + aim_time 1.0 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)"])
+	_expect_load_errors("I13 an aim too long for the fast birds", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["aim_time"] = 1.6),
+		["data/birds.json [gosling] linger_time: 1.5 + aim_time 1.6 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)",
+		"data/birds.json [golden] linger_time: 2.5 + aim_time 1.6 is not under flee_time 4.0 (I13: the rival's cue must end before the bird flees)"])
+	_expect_load_errors("I13 the decoy is exempt (never stolen)", _mutated("birds.json", func(data: Array) -> void: data[6]["linger_time"] = 9.0), [])
 
 
 func _i5_problems() -> Array[String]:
@@ -521,11 +583,11 @@ func _real_texts() -> Dictionary[String, String]:
 	return texts
 
 
-## Loads the real data with `file` changed by `mutate` (a Callable on the parsed array);
-## returns the loader's errors. Content then holds the mutated data.
+## Loads the real data with `file` changed by `mutate` (a Callable on the parsed array, or
+## object for rival_lines.json); returns the loader's errors. Content then holds the mutated data.
 func _mutated(file: String, mutate: Callable) -> Array[String]:
 	var texts := _real_texts()
-	var data: Array = JSON.parse_string(texts[file])
+	var data: Variant = JSON.parse_string(texts[file])
 	mutate.call(data)
 	texts[file] = JSON.stringify(data)
 	return _load_quietly(texts)

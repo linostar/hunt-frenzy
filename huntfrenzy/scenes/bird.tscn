@@ -1,8 +1,13 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/bird.gd" id="1_bird"]
+[ext_resource type="Texture2D" path="res://art/reticle.svg" id="2_reticle"]
 
 [node name="Bird" type="Node2D"]
 script = ExtResource("1_bird")
 
 [node name="Sprite" type="Sprite2D" parent="."]
+
+[node name="Reticle" type="Sprite2D" parent="."]
+visible = false
+texture = ExtResource("2_reticle")

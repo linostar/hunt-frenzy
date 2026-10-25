@@ -1,17 +1,20 @@
 class_name Results
 extends Control
 ## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
-## shots, hits, kills, pigeons, escaped, best, new_best): score, accuracy (hits / shots, a
+## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, best, new_best):
+## score, accuracy (hits / shots, a
 ## dash with no shots; a hit on the decoy pigeon is a shot but not a hit; an armored bird's
 ## two hits are two), birds hit (kills: an armored bird counts once), birds
-## escaped, pigeons hit (the decoy) and the Endless best, with "New best!" when the run
+## escaped (stolen ones included), birds stolen by the rival, the rival's score, pigeons hit
+## (the decoy) and the Endless best, the rival's parting line at the bottom, with "New best!" when the run
 ## beat it, and SaveError ("Your best could not be saved: <reason>") when saving that
 ## best failed (the run's save_error, or a later Game.save_failed: a web save that browser
 ## storage did not keep). Play again (focused on arrival, ring hidden until keyboard navigation)
 ## starts a new Endless run; Title goes to the title. Laid out in the safe area.
 
 const NO_VALUE := "—"
-const STAT_KEYS: Array[String] = ["score", "shots", "hits", "kills", "pigeons", "escaped", "best", "new_best", "save_error"]
+const STAT_KEYS: Array[String] = ["score", "shots", "hits", "kills", "pigeons", "escaped", "stolen", "rival_score", "rival_line", "best", "new_best", "save_error"]
+const RIVAL_LINE_TEXT := "Rival: \"%s\""
 const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for details."
 
 var _game: GameState
@@ -21,10 +24,13 @@ var _game: GameState
 @onready var _accuracy: Label = $Safe/Stats/Accuracy
 @onready var _hits: Label = $Safe/Stats/Hits
 @onready var _escaped: Label = $Safe/Stats/Escaped
+@onready var _stolen: Label = $Safe/Stats/Stolen
+@onready var _rival_score: Label = $Safe/Stats/RivalScore
 @onready var _pigeons: Label = $Safe/Stats/Pigeons
 @onready var _best: Label = $Safe/Stats/Best
 @onready var _new_best: Label = $Safe/NewBest
 @onready var _save_error: Label = $Safe/SaveError
+@onready var _rival_line: Label = $Safe/RivalLine
 @onready var _play_again_button: Button = $Safe/PlayAgainButton
 @onready var _title_button: Button = $Safe/TitleButton
 
@@ -52,7 +58,7 @@ func _show_stats(stats: Dictionary) -> void:
 		if not stats.has(key):
 			# Opened without a finished run (the project check, the editor's Run Current Scene).
 			print("[Results] Opened without run stats (missing '%s')" % key)
-			for label: Label in [_score, _accuracy, _hits, _escaped, _pigeons]:
+			for label: Label in [_score, _accuracy, _hits, _escaped, _stolen, _rival_score, _pigeons]:
 				label.text += " " + NO_VALUE
 			_best.text += " %d" % _game.best_endless
 			_new_best.hide()
@@ -61,6 +67,10 @@ func _show_stats(stats: Dictionary) -> void:
 	_accuracy.text += " " + accuracy_text(stats["hits"], stats["shots"])
 	_hits.text += " %d" % stats["kills"]
 	_escaped.text += " %d" % stats["escaped"]
+	_stolen.text += " %d" % stats["stolen"]
+	_rival_score.text += " %d" % stats["rival_score"]
+	_rival_line.text = RIVAL_LINE_TEXT % stats["rival_line"]
+	_rival_line.show()
 	_pigeons.text += " %d" % stats["pigeons"]
 	_best.text += " %d" % stats["best"]
 	_new_best.visible = stats["new_best"]
@@ -68,8 +78,8 @@ func _show_stats(stats: Dictionary) -> void:
 	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] else "")
 	if save_error != "":
 		_show_save_error(save_error)
-	print("[Results] Score %d, accuracy %s (%d of %d shots), %d birds hit, %d escaped, %d pigeons hit, best %d%s" % [
-		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["kills"], stats["escaped"], stats["pigeons"], stats["best"], ", new best" if stats["new_best"] else ""])
+	print("[Results] Score %d, accuracy %s (%d of %d shots), %d birds hit, %d escaped, %d stolen, rival score %d, %d pigeons hit, best %d%s; rival: \"%s\"" % [
+		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["kills"], stats["escaped"], stats["stolen"], stats["rival_score"], stats["pigeons"], stats["best"], ", new best" if stats["new_best"] else "", stats["rival_line"]])
 
 
 func _show_save_error(reason: String) -> void:

@@ -1,21 +1,25 @@
 class_name Content
 extends RefCounted
 ## All game content: the JSON in res://data/ parsed into typed resources (BirdSpec,
-## ModeSpec). Static only. The data is loaded once, lazily, on the first call of any
+## ModeSpec, RivalLines). Static only. The data is loaded once, lazily, on the first call of any
 ## public function (the title screen's errors() call does it at boot); reload() and
 ## load_texts() replace it (tests).
 ## Every problem (unreadable file, bad JSON, a file with no entries, missing or unknown key,
 ## wrong type, non-integer int, out-of-range value, unknown enum value, duplicate id,
 ## unknown reference, a sprite missing a frame, a hitbox outside its sprite or crossing
-## itself, a split field without its pair, a wave mix with nothing from wave 1) is
-## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" and reported with
+## itself, a split field without its pair, a wave mix with nothing from wave 1, a missing,
+## unknown or empty rival line category, a rival line too long for the bubble, and I13: a
+## bird whose linger_time + the rival's aim_time does not end before it flees) is
+## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" (rival_lines.json,
+## a single object, names the line category as the entry, "-" for its top-level fields) and reported with
 ## push_error, all of them, not just the first. Entries with problems are still loaded as
 ## far as they parse (bad fields keep their resource defaults), and the title screen
 ## disables Play while errors() is non-empty, so no default ever reaches a run.
 
 const DATA_DIR := "res://data/"
-## Load order: modes reference birds, so birds load first.
-const FILES: Array[String] = ["birds.json", "modes.json"]
+## Load order: modes reference birds, so birds load first; I13 needs the birds and the
+## rival's aim_time, so it is checked once rival_lines.json is loaded.
+const FILES: Array[String] = ["birds.json", "modes.json", "rival_lines.json"]
 const NAME_MAX := 26
 ## Flight patterns (Flight).
 const PATTERNS: Array[String] = ["rise", "zigzag"]
@@ -28,6 +32,15 @@ const SPEED_MAX := 1000.0
 const WOBBLE_MAX := 100.0
 const WOBBLE_HZ_MAX := 5.0
 const FLEE_TIME_MAX := 60.0
+## A bird's linger_time lies in LINGER_TIME_MIN..FLEE_TIME_MAX seconds (always > 0).
+const LINGER_TIME_MIN := 0.1
+## The rival aims for AIM_TIME_MIN..AIM_TIME_MAX seconds (main plan AC 17: a visible cue of
+## at least 0.5 s), and waits 0..COOLDOWN_MAX seconds between heckles.
+const AIM_TIME_MIN := 0.5
+const AIM_TIME_MAX := 10.0
+const COOLDOWN_MAX := 60.0
+## The longest rival line: two lines of Play's speech bubble.
+const RIVAL_LINE_MAX := 40
 const POINTS_MAX := 100000
 ## A bird's drawn size lies in SIZE_MIN..SIZE_MAX base units on each axis.
 const SIZE_MIN := 8.0
@@ -54,6 +67,7 @@ static var _loaded := false
 static var _errors: Array[String] = []
 static var _birds: Dictionary[String, BirdSpec] = {}
 static var _modes: Dictionary[String, ModeSpec] = {}
+static var _rival_lines := RivalLines.new()
 ## The file and entry the loader is reading, for error messages.
 static var _file := ""
 static var _entry := ""
@@ -112,6 +126,12 @@ static func birds() -> Array[BirdSpec]:
 	return result
 
 
+## The rival's timing and heckle lines.
+static func rival_lines() -> RivalLines:
+	_ensure_loaded()
+	return _rival_lines
+
+
 ## Every mode, in data order.
 static func modes() -> Array[ModeSpec]:
 	_ensure_loaded()
@@ -130,6 +150,7 @@ static func _reset() -> void:
 	_errors.clear()
 	_birds.clear()
 	_modes.clear()
+	_rival_lines = RivalLines.new()
 
 
 static func _load(texts: Dictionary[String, String]) -> void:
@@ -138,20 +159,24 @@ static func _load(texts: Dictionary[String, String]) -> void:
 		if not texts.has(file):
 			continue
 		_begin_file(file)
-		var entries := _parse_entries(texts[file])
 		match file:
 			"birds.json":
-				_load_birds(entries)
+				_load_birds(_parse_entries(texts[file]))
 			"modes.json":
-				_load_modes(entries)
-	print("[Content] Loaded %d birds, %d modes: %d problem(s)" % [_birds.size(), _modes.size(), _errors.size()])
+				_load_modes(_parse_entries(texts[file]))
+			"rival_lines.json":
+				_load_rival_lines(_parse_object(texts[file]))
+	var line_count := 0
+	for category in _rival_lines.lines:
+		line_count += _rival_lines.lines[category].size()
+	print("[Content] Loaded %d birds, %d modes, %d rival lines: %d problem(s)" % [_birds.size(), _modes.size(), line_count, _errors.size()])
 
 
 static func _load_birds(entries: Array[Dictionary]) -> void:
 	var splits: Dictionary[String, String] = {}
 	for entry in entries:
 		var item := BirdSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "chapter", "pattern", "speed", "wobble", "wobble_hz", "flee_time", "points", "hp", "sprite", "size", "hitbox"], _birds,
+		item.id = _begin_entry(entry, ["id", "name", "chapter", "pattern", "speed", "wobble", "wobble_hz", "flee_time", "linger_time", "points", "hp", "sprite", "size", "hitbox"], _birds,
 			["splits_into", "split_count", "penalty", "escape_counts"])
 		item.name = _string(entry, "name", NAME_MAX)
 		item.chapter = _enum(entry, "chapter", CHAPTERS)
@@ -160,6 +185,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 		item.wobble = _float(entry, "wobble", 0.0, WOBBLE_MAX)
 		item.wobble_hz = _float(entry, "wobble_hz", 0.0, WOBBLE_HZ_MAX)
 		item.flee_time = _float(entry, "flee_time", 0.1, FLEE_TIME_MAX)
+		item.linger_time = _float(entry, "linger_time", LINGER_TIME_MIN, FLEE_TIME_MAX)
 		item.points = _int(entry, "points", 0, POINTS_MAX)
 		item.hp = _int(entry, "hp", 1, HP_MAX)
 		item.sprite = _string(entry, "sprite", NAME_MAX)
@@ -194,7 +220,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 static func _load_modes(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := ModeSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "escape_limit"], _modes)
+		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "escape_limit", "rival_steals"], _modes)
 		item.name = _string(entry, "name", NAME_MAX)
 		item.birds = _mix(entry, "birds")
 		item.golden_bird = _reference(entry, "golden_bird", _birds, "bird")
@@ -209,8 +235,81 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 		item.shells_per_hit = _int(entry, "shells_per_hit", 1, SHELLS_PER_HIT_MAX)
 		item.combo_cap = _int(entry, "combo_cap", 1, COMBO_CAP_MAX)
 		item.escape_limit = _int(entry, "escape_limit", 1, ESCAPE_LIMIT_MAX)
+		if entry.has("rival_steals"):
+			item.rival_steals = _bool(entry, "rival_steals")
 		if item.id != "":
 			_modes[item.id] = item
+
+
+## rival_lines.json: {"aim_time", "cooldown", "lines": {<category>: [line, ...]}}, every
+## category of RivalLines.CATEGORIES with a non-empty list of 1..RIVAL_LINE_MAX character
+## strings. Errors name the category as the entry ("-" for the top-level fields). Then I13:
+## every bird but the decoy (never stolen) ends the rival's cue before it flees.
+static func _load_rival_lines(object: Dictionary) -> void:
+	if object.is_empty():
+		return
+	var keys: Array[String] = ["aim_time", "cooldown", "lines"]
+	for key in keys:
+		if not object.has(key):
+			_error(key, "missing key")
+	for key: Variant in object:
+		if not str(key) in keys:
+			_error(str(key), "unknown key")
+	var before := _errors.size()
+	_rival_lines.aim_time = _float(object, "aim_time", AIM_TIME_MIN, AIM_TIME_MAX)
+	var aim_ok := object.has("aim_time") and _errors.size() == before
+	_rival_lines.cooldown = _float(object, "cooldown", 0.0, COOLDOWN_MAX)
+	if object.has("lines"):
+		if typeof(object["lines"]) != TYPE_DICTIONARY:
+			_error("lines", "expected Dictionary, got %s" % type_string(typeof(object["lines"])))
+		else:
+			var categories: Dictionary = object["lines"]
+			for category in RivalLines.CATEGORIES:
+				_entry = category
+				if not categories.has(category):
+					_error("lines", "missing category")
+					continue
+				_rival_lines.lines[category] = _lines(categories[category])
+			for category: Variant in categories:
+				if not str(category) in RivalLines.CATEGORIES:
+					_entry = str(category)
+					_error("lines", "unknown category (expected one of %s)" % [RivalLines.CATEGORIES])
+	if aim_ok:
+		_check_linger(_rival_lines.aim_time)
+
+
+## A category's lines: a non-empty array of strings of 1..RIVAL_LINE_MAX characters.
+static func _lines(value: Variant) -> PackedStringArray:
+	var result := PackedStringArray()
+	if typeof(value) != TYPE_ARRAY:
+		_error("lines", "expected Array, got %s" % type_string(typeof(value)))
+		return result
+	var list: Array = value
+	if list.is_empty():
+		_error("lines", "is empty")
+	for i in list.size():
+		var field := "lines[%d]" % i
+		if typeof(list[i]) != TYPE_STRING:
+			_error(field, "expected String, got %s" % type_string(typeof(list[i])))
+			continue
+		var line: String = list[i]
+		if line.is_empty() or line.length() > RIVAL_LINE_MAX:
+			_error(field, "length %d is outside 1..%d (the speech bubble's two lines)" % [line.length(), RIVAL_LINE_MAX])
+		result.append(line)
+	return result
+
+
+## I13: every bird the rival can steal (all but the decoy) has linger_time + aim_time under
+## its flee_time, so every cue can finish before the bird flees on its own.
+static func _check_linger(aim_time: float) -> void:
+	_file = "data/birds.json"
+	for spec: BirdSpec in _birds.values():
+		if spec.penalty > 0:
+			continue
+		_entry = spec.id
+		if spec.linger_time + aim_time >= spec.flee_time:
+			_error("linger_time", "%s + aim_time %s is not under flee_time %s (I13: the rival's cue must end before the bird flees)" % [spec.linger_time, aim_time, spec.flee_time])
+	_file = "data/rival_lines.json"
 
 
 ## A mode's wave mix: a non-empty array of {"bird", "from_wave", "weight"} objects, each
@@ -303,6 +402,22 @@ static func _begin_entry(entry: Dictionary, required: Array[String], seen: Dicti
 		_error("id", "duplicate id '%s'" % id)
 		return ""
 	return id
+
+
+## The top-level object of a single-object file (rival_lines.json); {} after reporting
+## a parse error or another top-level type.
+static func _parse_object(text: String) -> Dictionary:
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		_error("(file)", "JSON parse error at line %d: %s" % [json.get_error_line() + 1, json.get_error_message()])
+		return {}
+	if typeof(json.data) != TYPE_DICTIONARY:
+		_error("(file)", "top level must be an object, got %s" % type_string(typeof(json.data)))
+		return {}
+	var object: Dictionary = json.data
+	if object.is_empty():
+		_error("(file)", "has no fields")
+	return object
 
 
 static func _string(object: Dictionary, key: String, max_length: int) -> String:

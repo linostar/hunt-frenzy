@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://scripts/play.gd" id="1_play"]
 [ext_resource type="Texture2D" path="res://art/marsh.svg" id="2_marsh"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/ui/shot_input.gd" id="4_shot"]
 [ext_resource type="Script" path="res://scripts/ui/cancel_key.gd" id="5_cancel"]
 [ext_resource type="Texture2D" path="res://art/pause.svg" id="6_pause"]
+[ext_resource type="Texture2D" path="res://art/rival_idle.svg" id="7_rival"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.169, 0.149, 0.231, 1)
@@ -27,6 +28,22 @@ corner_radius_top_left = 6
 corner_radius_top_right = 6
 corner_radius_bottom_right = 6
 corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bubble"]
+content_margin_left = 10.0
+content_margin_top = 4.0
+content_margin_right = 10.0
+content_margin_bottom = 4.0
+bg_color = Color(0.984, 0.929, 0.804, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.17, 0.15, 0.13, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [node name="Play" type="Node2D"]
 script = ExtResource("1_play")
@@ -59,6 +76,31 @@ offset_right = 960.0
 offset_bottom = 540.0
 mouse_filter = 2
 color = Color(0.31, 0.478, 0.235, 1)
+
+[node name="Rival" type="TextureRect" parent="World"]
+offset_left = 16.0
+offset_top = 448.0
+offset_right = 72.0
+offset_bottom = 536.0
+mouse_filter = 2
+texture = ExtResource("7_rival")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Bubble" type="Label" parent="World"]
+visible = false
+offset_left = 80.0
+offset_top = 450.0
+offset_right = 400.0
+offset_bottom = 510.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.17, 0.15, 0.13, 1)
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBoxFlat_bubble")
+text = "Rival line"
+vertical_alignment = 1
+autowrap_mode = 3
+max_lines_visible = 2
 
 [node name="Popups" type="Node2D" parent="World"]
 
@@ -103,19 +145,19 @@ offset_right = -64.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/separation = 18
+theme_override_constants/separation = 12
 
 [node name="Score" type="Label" parent="Hud/Bar/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Score 0"
 vertical_alignment = 1
 
 [node name="Wave" type="Label" parent="Hud/Bar/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Wave 1"
 vertical_alignment = 1
 
@@ -129,7 +171,7 @@ alignment = 1
 visible = false
 layout_mode = 2
 theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "x0"
 vertical_alignment = 1
 
@@ -137,7 +179,7 @@ vertical_alignment = 1
 visible = false
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.45, 0.4, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("StyleBoxFlat_empty")
 text = "Out of shells!"
 vertical_alignment = 1
@@ -145,15 +187,22 @@ vertical_alignment = 1
 [node name="Combo" type="Label" parent="Hud/Bar/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "x1"
+vertical_alignment = 1
+
+[node name="Rival" type="Label" parent="Hud/Bar/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 20
+text = "Rival 0"
 vertical_alignment = 1
 
 [node name="Escaped" type="Label" parent="Hud/Bar/Stats"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Escaped 0/10"
 horizontal_alignment = 2
 vertical_alignment = 1

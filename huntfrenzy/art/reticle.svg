@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <!-- First-pass rival aim reticle, drawn over a bird he is aiming at (dark outline under red). -->
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#2b2622" stroke-width="6"/>
+  <circle cx="32" cy="32" r="24" fill="none" stroke="#ff4a3a" stroke-width="3"/>
+  <g stroke-linecap="round">
+    <path d="M32 2 V18 M32 46 V62 M2 32 H18 M46 32 H62" stroke="#2b2622" stroke-width="6"/>
+    <path d="M32 2 V18 M32 46 V62 M2 32 H18 M46 32 H62" stroke="#ff4a3a" stroke-width="3"/>
+  </g>
+  <circle cx="32" cy="32" r="3" fill="#ff4a3a" stroke="#2b2622" stroke-width="1.5"/>
+</svg>

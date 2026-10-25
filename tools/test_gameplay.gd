@@ -68,6 +68,8 @@ const UNWRITABLE_SAVE_PATH := "user://no_such_dir/save.json"
 const SKY_POINTS: Array[Vector2] = [Vector2(120, 120), Vector2(840, 120), Vector2(480, 100)]
 ## How much faster game time runs while the escape test waits for 10 escapes.
 const FAST_TIME_SCALE := 8.0
+## One frame at --fixed-fps 60.
+const FRAME := 1.0 / 60.0
 
 var _failures: Array[String] = []
 var _passed := 0
@@ -170,6 +172,16 @@ func _tests() -> Array[Callable]:
 		_test_play_split_with_last_shell,
 		_test_play_golden_scores_and_escapes,
 		_test_play_decoy_penalty,
+		_test_rival_rules,
+		_test_rival_cue_and_steal,
+		_test_rival_kill_during_cue,
+		_test_rival_damage_keeps_cue,
+		_test_rival_steal_ends_run,
+		_test_rival_decoy_and_fleeing,
+		_test_rival_pause_freezes_cue,
+		_test_rival_steals_off,
+		_test_rival_heckle_cooldown,
+		_test_rival_layout_and_pass_through,
 		_test_pause_causes_and_resume,
 		_test_pause_menu_keyboard,
 		_test_pause_touches_are_not_shots,
@@ -663,13 +675,13 @@ func _test_save_corrupt_and_unknown_version() -> void:
 func _test_play_hud_layout() -> void:
 	var from := _log.size()
 	var play := await _start_run(11)
-	_check_logged(from, "^\\[Play\\] Run start: mode endless, seed 11 \\(escape limit 10, combo cap 5, 3 shells per hit\\)$", "the run start is logged with its mode and seed")
+	_check_logged(from, "^\\[Play\\] Run start: mode endless, seed 11 \\(escape limit 10, combo cap 5, 3 shells per hit, rival steals on, aim 1\\.00 s, heckle cooldown 4\\.00 s\\)$", "the run start is logged with its mode, seed and rival settings")
 	_check_logged(from, "^\\[Play\\] Wave 1 start: 2 birds \\(goose, goose\\), 6 shells, speed x1\\.00$", "the wave start is logged with its birds and shells")
 	var bar := play.get_node("Hud/Bar") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Button
 	var shot_input := play.get_node("ShotInput") as Control
-	var texts := [_text(play, "Score"), _text(play, "Wave"), _text(play, "Combo"), _text(play, "Escaped")]
-	_check(texts == ["Score 0", "Wave 1", "x1", "Escaped 0/10"], "the HUD shows score, wave, combo and escapes", str(texts))
+	var texts := [_text(play, "Score"), _text(play, "Wave"), _text(play, "Combo"), _text(play, "Rival"), _text(play, "Escaped")]
+	_check(texts == ["Score 0", "Wave 1", "x1", "Rival 0", "Escaped 0/10"], "the HUD shows score, wave, combo, the rival's score and escapes", str(texts))
 	_check(_shell_icons(play) == play.wave.shells and play.wave.shells == 6, "the HUD shows the shells as icons", "%d icons" % _shell_icons(play))
 	_check(pause_button.accessibility_name == "Pause" and pause_button.text.is_empty() and pause_button.icon != null, "the pause button is an icon named Pause", pause_button.accessibility_name)
 	_check(pause_button.focus_mode == Control.FOCUS_ALL, "the pause button takes keyboard focus", str(pause_button.focus_mode))
@@ -705,9 +717,11 @@ func _test_play_hud_layout() -> void:
 ## The HUD bar never overflows. A pool of up to Play.SHELL_ICONS_MAX shells shows one icon
 ## per shell; a bigger one shows one icon and the shells left ("x11"). The largest pool
 ## modes.json can produce is max_birds x the most hits a bird the mode can spawn needs x
-## shells_per_hit (Endless: 6 x 3 (a splitter and its 2 goslings) x 3 = 54). At that pool
+## shells_per_hit (Endless: 6 x 3 (a splitter and its 2 goslings) x 3 = 54). The rival's
+## score is at most escape_limit x the most points a bird he can steal is worth (every
+## steal counts as an escape; Endless: 10 x 500 = 5000). At that pool
 ## and at the largest icon row, with the widest texts (a 9-digit score, wave 999, the empty
-## cue, the combo cap, 10/10 escaped), every stat lies inside the safe area and left of the
+## cue, the combo cap, the rival's top score, 10/10 escaped), every stat lies inside the safe area and left of the
 ## pause button, at 16:9, 19.5:9, 4:3 and under a notch.
 func _test_play_hud_fits_any_pool() -> void:
 	var play := await _start_run(12)
@@ -718,6 +732,17 @@ func _test_play_hud_fits_any_pool() -> void:
 			most = maxi(most, Wave.hits_needed(Content.bird(entry.bird)))
 		max_pool = maxi(max_pool, Ammo.pool_size(each.max_birds * most, each.shells_per_hit))
 	_check(max_pool == 54, "the largest pool modes.json can produce is 54 shells", str(max_pool))
+	var max_rival := 0
+	for each in Content.modes():
+		var ids: Array[String] = [each.golden_bird]
+		for entry in each.birds:
+			ids.append(entry.bird)
+			if Content.bird(entry.bird).split_count > 0:
+				ids.append(Content.bird(entry.bird).splits_into)
+		for id in ids:
+			if Content.bird(id).penalty == 0:
+				max_rival = maxi(max_rival, each.escape_limit * Content.bird(id).points)
+	_check(max_rival == 5000, "the rival's top score modes.json allows is 5000", str(max_rival))
 	var count := play.get_node("Hud/Bar/Stats/Shells/Count") as Label
 	play.set_shell_pool(Play.SHELL_ICONS_MAX)
 	_check(_shell_icons(play) == Play.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % Play.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
@@ -735,6 +760,7 @@ func _test_play_hud_fits_any_pool() -> void:
 		play.scoring.multiplier = play.mode.combo_cap
 		play.wave.index = 999
 		play.escaped = play.mode.escape_limit
+		play.rival_score = max_rival
 		play.set_shell_pool(pool)
 		for i in cases.size():
 			_game.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
@@ -1017,11 +1043,26 @@ func _test_run_ends_on_results() -> void:
 	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 1, Endless best 100$", "the save is logged")
-	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, 10 escaped, best 100 \\(new best\\)$", "the run end is logged with the run's stats")
-	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10", "Pigeons hit 0", "Endless best 100"], "the results show score, accuracy, hits, escapes, pigeons hit and best", str(shown))
+	var stolen: int = stats.get("stolen", -1)
+	var rival_score: int = stats.get("rival_score", -1)
+	var steal_line := RegEx.create_from_string("^\\[Play\\] Stolen \\w+ #\\d+ by the rival after a [\\d.]+ s cue: (\\d+) points to the rival")
+	var steals: Array[int] = []
+	for line in _log.since(from):
+		var found := steal_line.search(line)
+		if found != null:
+			steals.append(int(found.get_string(1)))
+	var taken := 0
+	for points in steals:
+		taken += points
+	_check(stolen > 0 and stolen == steals.size() and rival_score == taken and Content.rival_lines().lines["results"].has(stats.get("rival_line")), "the results get the birds stolen, the rival's score (the points of every logged steal) and a results line", "%s; logged steals %s" % [stats, steals])
+	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, 10 escaped \\(%d stolen\\), rival score %d, best 100 \\(new best\\)$" % [stolen, rival_score], "the run end is logged with the run's stats, the birds stolen and the rival's score")
+	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Stolen", "RivalScore", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
+	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10", "Birds stolen %d" % stolen, "Rival score %d" % rival_score, "Pigeons hit 0", "Endless best 100"], "the results show score, accuracy, hits, escapes, birds stolen, the rival's score, pigeons hit and best", str(shown))
 	var last_stat := (results.get_node("Safe/Stats/Best") as Control).get_global_rect()
-	_check(last_stat.end.y <= (results.get_node("Safe/NewBest") as Control).get_global_rect().position.y + 0.5, "the stats (now six lines) fit above New best!", str(last_stat))
+	_check(last_stat.end.y <= (results.get_node("Safe/NewBest") as Control).get_global_rect().position.y + 0.5, "the stats (now eight lines) fit above New best!", str(last_stat))
+	var rival_line := results.get_node("Safe/RivalLine") as Label
+	var line_rect := rival_line.get_global_rect()
+	_check(rival_line.visible and rival_line.text == Results.RIVAL_LINE_TEXT % stats.get("rival_line") and _game.safe_rect().encloses(line_rect) and line_rect.position.y >= (results.get_node("Safe/PlayAgainButton") as Control).get_global_rect().end.y and rival_line.get_line_count() == 1, "the results show the rival's line on one line below the buttons, inside the safe area", "%s '%s'" % [line_rect, rival_line.text])
 	_check((results.get_node("Safe/NewBest") as Label).visible and not (results.get_node("Safe/SaveError") as Label).visible, "the results say New best! (and no save problem)", "hidden")
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
@@ -1039,7 +1080,7 @@ func _test_run_ends_on_results() -> void:
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
-	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "best": 100, "new_best": false, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "best": 100, "new_best": false, "save_error": ""})
 	await _game.transition_finished
 	_check(not (current_scene.get_node("Safe/NewBest") as Label).visible and (current_scene.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy " + Results.NO_VALUE, "a run below the best shows no New best!, and a dash for no shots", "shown")
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
@@ -1064,7 +1105,7 @@ func _test_save_web_persist_reporting() -> void:
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(not _game.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
 	_game.check_storage(true)
-	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "best": 500, "new_best": true, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "best": 500, "new_best": true, "save_error": ""})
 	await _game.transition_finished
 	var results := current_scene as Results
 	var notice := results.get_node("Safe/SaveError") as Label
@@ -1616,6 +1657,316 @@ func _test_play_decoy_penalty() -> void:
 	_clear_tool_save()
 
 
+## Rival (pure): no steal with steals off, for the decoy, for a fleeing bird or before
+## linger_time; from linger_time the rival aims (never firing before a cue has started), and
+## fires once the cue has run aim_time from its start. A miss, combo or wave-end heckle waits
+## for the cooldown, a steal line never does. A line pick depends only on the run seed and
+## the heckle count.
+func _test_rival_rules() -> void:
+	var none := Rival.NOT_AIMING
+	var cases: Array[Array] = [
+		[Rival.steal_state(3.4, 3.5, 1.0, none, false, false, true), Rival.Steal.NONE, "nothing before linger_time"],
+		[Rival.steal_state(3.5, 3.5, 1.0, none, false, false, true), Rival.Steal.AIMING, "the cue starts at linger_time"],
+		[Rival.steal_state(9.0, 3.5, 1.0, none, false, false, true), Rival.Steal.AIMING, "a bird with no cue yet is aimed at first, never shot at once"],
+		[Rival.steal_state(4.49, 3.5, 1.0, 3.5, false, false, true), Rival.Steal.AIMING, "the cue runs aim_time"],
+		[Rival.steal_state(4.5, 3.5, 1.0, 3.5, false, false, true), Rival.Steal.FIRE, "he fires once the cue has run aim_time"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 4.2, false, false, true), Rival.Steal.AIMING, "aim_time counts from the cue's start"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, true, false, true), Rival.Steal.NONE, "never the decoy"],
+		[Rival.steal_state(4.0, 3.5, 1.0, 3.5, false, true, true), Rival.Steal.NONE, "a fleeing bird drops the cue"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, false, false, false), Rival.Steal.NONE, "never with steals off"],
+	]
+	for case in cases:
+		_check(case[0] == case[1], "Rival.steal_state: " + str(case[2]), "got %s, expected %s" % [case[0], case[1]])
+	_check(not Rival.may_heckle("miss", 3.9, 0.0, 4.0) and Rival.may_heckle("miss", 4.0, 0.0, 4.0) and Rival.may_heckle("wave_end", 0.0, -INF, 4.0), "Rival.may_heckle: a miss or wave-end line waits for the cooldown (none before the first)", "")
+	_check(Rival.may_heckle(Rival.STEAL, 0.1, 0.0, 4.0), "Rival.may_heckle: a steal line skips the cooldown", "")
+	var lines := Content.rival_lines().lines["miss"]
+	var first: Array[String] = []
+	var again: Array[String] = []
+	var other: Array[String] = []
+	for count in 20:
+		first.append(Rival.pick_line(lines, 7, count))
+		again.append(Rival.pick_line(lines, 7, count))
+		other.append(Rival.pick_line(lines, 8, count))
+	var distinct: Dictionary[String, bool] = {}
+	for line in first:
+		distinct[line] = true
+	_check(first == again and first != other and distinct.size() > 1 and first.all(func(line: String) -> bool: return lines.has(line)), "Rival.pick_line: seeded by the run seed and the heckle count, varied, from the category's lines", "%d distinct" % distinct.size())
+
+
+## The aim cue (AC 6): a goose reaching its linger_time shows the reticle and the rival
+## raises his gun; after aim_time he fires (AC 8): the goose falls as stolen on its hit
+## frame, its points (no combo) go to the rival (HUD "Rival 100"), it counts as an escape,
+## the player's x3 combo is left alone, and a steal line shows even inside the cooldown of
+## the combo heckle just before. Cue start, steal and heckles are logged (AC 14).
+func _test_rival_cue_and_steal() -> void:
+	var play := await _start_run(61)
+	var aim := Content.rival_lines().aim_time
+	for i in 2:
+		var goose := await _spawn_flying(play, 110 + i)
+		await _touch(_global(play, goose.transform * LOCAL_BODY))
+	_check(play.scoring.multiplier == 3 and play.heckles == 1, "two kills build x3, which heckles", "x%d, %d heckles" % [play.scoring.multiplier, play.heckles])
+	var from := _log.size()
+	var bird := await _cued_bird(play, 112, "goose")
+	var linger := bird.spec.linger_time
+	var reticle := bird.get_node("Reticle") as Sprite2D
+	_check(bird.is_cued() and bird.cue_age >= linger and bird.cue_age <= linger + FRAME + 0.001, "the cue starts when the goose reaches its linger_time", "cue_age %.3f, linger %.2f" % [bird.cue_age, linger])
+	_check(reticle.visible and play.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.is_rival_aiming()])
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, wave, time and tallies")
+	var escaped := play.escaped
+	var cued_until := 0.0
+	for i in roundi(aim * 60.0) + 10:
+		if not bird.is_flying():
+			break
+		cued_until = bird.age - bird.cue_age if bird.is_cued() else cued_until
+		await process_frame
+	_check(bird.stolen and not bird.is_flying() and not bird.is_cued() and not reticle.visible, "once the cue has run the rival shoots the goose", "stolen %s, state %d" % [bird.stolen, bird.state])
+	_check(cued_until >= aim - FRAME - 0.001 and cued_until <= aim + FRAME + 0.001, "the cue lasts aim_time (to the frame)", "cued %.3f s of %.2f" % [cued_until, aim])
+	_check((bird.get_node("Sprite") as Sprite2D).texture.resource_path == bird.spec.texture_path("hit"), "the stolen goose falls on its hit frame", (bird.get_node("Sprite") as Sprite2D).texture.resource_path)
+	_check(play.stolen == 1 and play.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.stolen, play.rival_score, escaped, play.escaped])
+	_check(play.scoring.multiplier == 3, "a steal leaves the player's combo alone", "x%d" % play.scoring.multiplier)
+	_check(_text(play, "Rival") == "Rival 100" and _text(play, "Escaped") == "Escaped %d/10" % play.escaped and not play.is_rival_aiming(), "the HUD shows the rival's score and the escape; he lowers his gun", "%s, %s" % [_text(play, "Rival"), _text(play, "Escaped")])
+	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\)$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
+	_check(Content.rival_lines().lines["steal"].has(play.heckle_shown()) and play.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.heckle_shown(), play.heckles])
+	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\)$", "the steal heckle is logged with its category and line")
+	var number := bird.number
+	for i in 120:
+		if not is_instance_valid(bird):
+			break
+		await process_frame
+	_check(not is_instance_valid(bird) and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Escaped goose #%d " % number)), "the stolen goose falls away and never escapes as well", "valid %s" % is_instance_valid(bird))
+
+
+## A kill during the cue saves the bird (AC 7): the player scores as usual, the cue goes
+## away (logged with its cause) and nothing is stolen.
+func _test_rival_kill_during_cue() -> void:
+	var play := await _start_run(62)
+	var from := _log.size()
+	var bird := await _cued_bird(play, 120, "goose")
+	_check(bird.is_cued(), "the goose is cued", "no cue")
+	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	_check(not bird.is_flying() and not bird.stolen and play.scoring.score == 100 and play.scoring.kills == 1, "a kill during the cue scores as usual", "score %d, stolen %s" % [play.scoring.score, bird.stolen])
+	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.is_rival_aiming()])
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cancelled cue is logged with its cause")
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
+		await process_frame
+	_check(play.stolen == 0 and play.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.stolen)
+
+
+## A damaging hit (the armored goose's first) keeps the cue running from its start; once
+## it has run the rival fires and never misses (AC 7).
+func _test_rival_damage_keeps_cue() -> void:
+	var play := await _start_run(63)
+	var from := _log.size()
+	var armored := await _cued_bird(play, 125, "armored")
+	var cue_age := armored.cue_age
+	await _touch(_global(play, armored.transform * LOCAL_BODY))
+	_check(armored.is_flying() and armored.hits_taken == 1 and armored.is_cued() and armored.cue_age == cue_age, "a damaging hit keeps the cue (from its start)", "hits %d, cued %s, cue_age %.3f -> %.3f" % [armored.hits_taken, armored.is_cued(), cue_age, armored.cue_age])
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.contains("cancelled")), "a damaging hit cancels nothing", "a cancel line")
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
+		if not armored.is_flying():
+			break
+		await process_frame
+	_check(armored.stolen and play.stolen == 1 and play.rival_score == 150, "the rival steals the damaged armored goose once the cue has run", "stolen %s, rival %d" % [armored.stolen, play.rival_score])
+	_check_logged(from, "^\\[Play\\] Stolen armored #%d by the rival after a 1\\.0[0-2] s cue: 150 points to the rival" % armored.number, "the armored steal is logged")
+
+
+## A stolen splitter launches no goslings; a steal with escape_limit - 1 birds lost ends
+## the run (AC 8), and the results show the birds stolen and the rival's score (AC 13).
+func _test_rival_steal_ends_run() -> void:
+	_clear_tool_save()
+	var play := await _start_run(64)
+	var splitter := await _cued_bird(play, 130, "splitter")
+	play.escaped = play.mode.escape_limit - 1
+	var from := _log.size()
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
+		if not splitter.is_flying():
+			break
+		await process_frame
+	_check(splitter.stolen and play.flying_birds().all(func(bird: Bird) -> bool: return bird.spec.id != "gosling") and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Split")), "a stolen splitter launches no goslings", "stolen %s" % splitter.stolen)
+	for i in 120:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	await process_frame
+	var results := current_scene as Results
+	var stats := _game.flow_args
+	_check(results != null and stats.get("escaped") == 10 and stats.get("stolen") == 1 and stats.get("rival_score") == 120, "a steal at escape_limit - 1 ends the run, and the results get it", str(stats))
+	_check_logged(from, "^\\[Play\\] Run end: .*, 10 escaped \\(1 stolen\\), rival score 120, best ", "the run end logs the birds stolen and the rival's score")
+	_check_logged(from, "^\\[Play\\] Heckle \\(results\\) #\\d+: \".+\" ", "the results line is logged")
+	if results != null:
+		var shown := ["Escaped", "Stolen", "RivalScore"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
+		_check(shown == ["Birds escaped 10", "Birds stolen 1", "Rival score 120"], "the results show the birds stolen and the rival's score", str(shown))
+		_check_logged(from, "^\\[Results\\] Score 0, .*, 10 escaped, 1 stolen, rival score 120, 0 pigeons hit, best 0; rival: \".+\"$", "the results log the birds stolen, the rival's score and line")
+	_clear_tool_save()
+
+
+## The decoy is never aimed at or stolen; a cued goose that starts fleeing (the shells ran
+## out) drops its cue (logged "fled") and escapes as before, counted once (AC 9).
+func _test_rival_decoy_and_fleeing() -> void:
+	var play := await _start_run(65)
+	var from := _log.size()
+	var pigeon := await _spawn_flying(play, 140, Content.bird("decoy").linger_time + 0.2, "decoy")
+	var ever_cued := false
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
+		ever_cued = ever_cued or pigeon.is_cued()
+		await process_frame
+	_check(not ever_cued and pigeon.is_flying() and play.stolen == 0, "the decoy is never aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	var goose := await _cued_bird(play, 141, "goose")
+	_check(goose.is_cued(), "the goose is cued", "no cue")
+	play.ammo.shells = 1
+	await _touch(_global(play, SKY_POINTS[0]))
+	await process_frame
+	_check(goose.is_fleeing() and not goose.is_cued() and not (goose.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "a cued goose that starts fleeing drops the cue", "fleeing %s, cued %s" % [goose.is_fleeing(), goose.is_cued()])
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(fled\\) after [\\d.]+ s " % goose.number, "the dropped cue is logged with its cause")
+	var escaped := play.escaped
+	var number := goose.number
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 900:
+		if not is_instance_valid(goose):
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	_check(not is_instance_valid(goose) and play.stolen == 0 and play.escaped >= escaped + 1, "the fleeing goose escapes as before, never stolen", "stolen %d, escaped %d -> %d" % [play.stolen, escaped, play.escaped])
+	_check_logged(from, "^\\[Play\\] Escaped goose #%d \\(" % number, "its escape is logged")
+
+
+## Pausing freezes the cue, the heckle cooldown and the bubble; resuming continues them
+## unchanged: the cue still runs its full aim_time (AC 9).
+func _test_rival_pause_freezes_cue() -> void:
+	var play := await _start_run(66)
+	await _touch(_global(play, SKY_POINTS[0]))
+	var heckle := play.heckle_shown()
+	var goose := await _cued_bird(play, 150, "goose")
+	for i in 20:
+		await process_frame
+	var age := goose.age
+	var clock := play.run_clock
+	play.open_pause("test")
+	for i in roundi(Play.HECKLE_TIME * 60.0) + 30:
+		await process_frame
+	_check(goose.is_cued() and goose.is_flying() and goose.age == age and play.run_clock == clock and play.stolen == 0, "a pause freezes the cue and the heckle cooldown clock", "age %.3f -> %.3f, clock %.3f -> %.3f, stolen %d" % [age, goose.age, clock, play.run_clock, play.stolen])
+	_check(heckle != "" and play.heckle_shown() == heckle, "a pause keeps the heckle on screen", "'%s'" % play.heckle_shown())
+	var from := _log.size()
+	play.resume()
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
+		if not goose.is_flying():
+			break
+		await process_frame
+	_check(goose.stolen and play.stolen == 1, "after resuming the cue runs on and the rival fires", "stolen %s" % goose.stolen)
+	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: " % goose.number, "the paused cue still lasted aim_time of game time")
+
+
+## With rival_steals off (a test mode standing in for Time Attack) no bird is aimed at or
+## stolen, and the rival still heckles (AC 10).
+func _test_rival_steals_off() -> void:
+	var play := await _start_run(67)
+	play.mode.rival_steals = false
+	var from := _log.size()
+	var goose := await _spawn_flying(play, 160, Content.bird("goose").linger_time - 0.02)
+	var ever_cued := false
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 30:
+		ever_cued = ever_cued or goose.is_cued() or play.is_rival_aiming()
+		await process_frame
+	_check(not ever_cued and goose.is_flying() and play.stolen == 0 and play.rival_score == 0, "with steals off no bird is aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	await _touch(_global(play, SKY_POINTS[0]))
+	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()), "with steals off the rival still heckles", "'%s'" % play.heckle_shown())
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
+	play.mode.rival_steals = true
+
+
+## Heckles (AC 12): a wave's end shows a wave_end line; a miss inside the cooldown is
+## skipped (logged), the line hides after HECKLE_TIME; once the cooldown has passed a miss
+## shows a miss line; a kill to x2 says nothing, one raising the combo to x3 a combo line.
+## The rival's steals are off here so no steal line moves the cooldown.
+func _test_rival_heckle_cooldown() -> void:
+	var play := await _start_run(68)
+	var lines := Content.rival_lines()
+	play.mode.rival_steals = false
+	var from := _log.size()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 3000:
+		if play.wave.index == 2:
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	_check(play.wave.index == 2 and lines.lines["wave_end"].has(play.heckle_shown()) and play.heckles == 1, "a wave's end shows a wave_end line", "wave %d, '%s'" % [play.wave.index, play.heckle_shown()])
+	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) #1: \".+\" \\(wave 1 at t [\\d.]+, rival score 0, 0 stolen\\)$", "the wave-end heckle is logged")
+	var skipped_at := play.run_clock
+	await _touch(_global(play, SKY_POINTS[0]))
+	_check(play.heckles == 1, "a miss inside the cooldown shows nothing", "%d heckles" % play.heckles)
+	_check_logged(from, "^\\[Play\\] Heckle \\(miss\\) skipped: cooldown, [\\d.]+ of 4\\.00 s since the last \\(wave 2 at t -?[\\d.]+, rival score 0, 0 stolen\\)$", "the skipped heckle is logged")
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if play.run_clock - skipped_at >= lines.cooldown:
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await _touch(_global(play, SKY_POINTS[1]))
+	_check(lines.lines["miss"].has(play.heckle_shown()) and play.heckles == 2, "after the cooldown a miss shows a miss line", "'%s'" % play.heckle_shown())
+	var shown_at := play.run_clock
+	for i in 600:
+		if play.heckle_shown() == "":
+			break
+		await process_frame
+	var lasted := play.run_clock - shown_at
+	_check(play.heckle_shown() == "" and absf(lasted - Play.HECKLE_TIME) <= 2.0 * FRAME, "a heckle shows for HECKLE_TIME", "%.3f s" % lasted)
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if play.run_clock - shown_at >= lines.cooldown:
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	var goose := await _spawn_flying(play, 170)
+	await _touch(_global(play, goose.transform * LOCAL_BODY))
+	_check(play.scoring.multiplier == 2 and play.heckles == 2, "a kill raising the combo to x2 says nothing", "x%d, %d heckles" % [play.scoring.multiplier, play.heckles])
+	goose = await _spawn_flying(play, 171)
+	await _touch(_global(play, goose.transform * LOCAL_BODY))
+	_check(play.scoring.multiplier == 3 and lines.lines["combo"].has(play.heckle_shown()) and play.heckles == 3, "a kill raising the combo to x3 shows a combo line", "x%d, '%s'" % [play.scoring.multiplier, play.heckle_shown()])
+	_check_logged(from, "^\\[Play\\] Heckle \\(combo\\) #3: \".+\" ", "the combo heckle is logged")
+	play.mode.rival_steals = true
+
+
+## The rival and his bubble sit in the grass band (at or below GRASS_Y) inside the visible
+## area at 16:9, 19.5:9 and 4:3, ignore touches, and every rival line fits the bubble's two
+## lines; a shot on the rival or on the shown bubble is a shot like any other (AC 11).
+func _test_rival_layout_and_pass_through() -> void:
+	var play := await _start_run(69)
+	var world := play.get_node("World") as Node2D
+	var rival := play.get_node("World/Rival") as Control
+	var bubble := play.get_node("World/Bubble") as Label
+	_check(_interactive_controls(rival).is_empty() and _interactive_controls(bubble).is_empty(), "the rival and his bubble take no touches or focus", "%s %s" % [_interactive_controls(rival), _interactive_controls(bubble)])
+	var height := bubble.size.y
+	var too_long: Array[String] = []
+	bubble.show()
+	for category in RivalLines.CATEGORIES:
+		for line in Content.rival_lines().lines[category]:
+			bubble.text = line
+			await process_frame
+			if bubble.get_line_count() > 2 or bubble.size.y > height + 0.5:
+				too_long.append("%s (%d lines)" % [line, bubble.get_line_count()])
+	_check(too_long.is_empty(), "every rival line fits the bubble's two lines", str(too_long))
+	for window in LANDSCAPE_WINDOWS:
+		root.size = window
+		await process_frame
+		await process_frame
+		var shown := _game.visible_rect()
+		var stray: Array[String] = []
+		for part: Control in [rival, bubble]:
+			var rect := part.get_global_rect()
+			if world.to_local(rect.position).y < Play.GRASS_Y or not shown.encloses(rect):
+				stray.append("%s %s" % [part.name, rect])
+		_check(stray.is_empty(), "%dx%d: the rival and his bubble sit in the grass band, on screen" % [window.x, window.y], str(stray))
+	root.size = BASE_WINDOW
+	await process_frame
+	var from := _log.size()
+	for part: Control in [rival, bubble]:
+		var shots := play.scoring.shots()
+		var shells := play.ammo.shells
+		await _touch(part.get_global_rect().get_center())
+		_check(play.scoring.shots() == shots + 1 and play.scoring.misses == shots + 1 and play.ammo.shells == shells - 1, "a shot on the %s is a shot like any other (a miss on the grass)" % part.name, "%d shots, %d shells" % [play.scoring.shots(), play.ammo.shells])
+	_check_logged(from, "^\\[Play\\] Miss at ", "the shots on the rival and his bubble are logged as misses")
+
+
 ## Problems with `spec`'s rising flight at `speed_scale` for 10 seeds: not entering the
 ## field by half its flee_time, or leaving it (by a frame) once inside before it flees.
 func _field_problems(spec: BirdSpec, speed_scale: float) -> Array[String]:
@@ -1640,9 +1991,11 @@ func _field_problems(spec: BirdSpec, speed_scale: float) -> Array[String]:
 ## Lets `bird` fly (at FAST_TIME_SCALE) until it escapes; returns [play.escaped at the start
 ## of the frame it escaped in, play.escaped once Play has handled its escape] ([x, -1] if
 ## it never escaped). Play's handler was connected at spawn, so it runs before this one.
+## The rival's steals are off meanwhile (he would shoot the bird at its linger_time).
 func _escape_counts(play: Play, bird: Bird) -> Array[int]:
 	var counted: Array[int] = [-1, -1]
 	bird.escaped.connect(func(_b: Bird) -> void: counted[1] = play.escaped)
+	play.mode.rival_steals = false
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 900:
 		if not is_instance_valid(bird):
@@ -1650,7 +2003,19 @@ func _escape_counts(play: Play, bird: Bird) -> Array[int]:
 		counted[0] = play.escaped
 		await process_frame
 	Engine.time_scale = 1.0
+	play.mode.rival_steals = true
 	return counted
+
+
+## Spawns a `bird_id` with `bird_seed` just short of its linger_time (inside the field) and
+## waits until the rival's aim cue on it has started.
+func _cued_bird(play: Play, bird_seed: int, bird_id: String) -> Bird:
+	var bird := await _spawn_flying(play, bird_seed, Content.bird(bird_id).linger_time - 0.02, bird_id)
+	for i in 10:
+		if bird.is_cued():
+			break
+		await process_frame
+	return bird
 
 
 ## Starts an Endless run with `run_seed` and waits until it is on screen.
