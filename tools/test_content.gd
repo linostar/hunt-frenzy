@@ -253,6 +253,13 @@ func _test_i4_hitbox_geometry() -> void:
 		["data/birds.json [goose] hitbox: has 2 points, needs at least 3"])
 	_expect_load_errors("I4 point outside the sprite", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"][0] = [-50, 0]),
 		["data/birds.json [goose] hitbox[0]: (-50.0, 0.0) is outside the sprite (±(48.0, 36.0))"])
+	# A bad size falls back to (0, 0) or its minimum; the hitbox is not checked against it.
+	_expect_load_errors("I4 a missing size does not fail the hitbox", _mutated("birds.json", func(data: Array) -> void: (data[0] as Dictionary).erase("size")),
+		["data/birds.json [goose] size: missing key"])
+	_expect_load_errors("I4 an out-of-range size does not fail the hitbox", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = [4, 72]),
+		["data/birds.json [goose] size[0]: 4.0 is outside 8.0..400.0"])
+	_expect_load_errors("I4 a mistyped size does not fail the hitbox", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = "big"),
+		["data/birds.json [goose] size: expected an array of 2 numbers [x, y], got big"])
 	_expect_load_errors("I4 self-crossing hitbox", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-10, -10], [10, 10], [10, -10], [-10, 10]]),
 		["data/birds.json [goose] hitbox: edges 0 and 2 cross (not a simple polygon)"])
 
@@ -389,6 +396,13 @@ func _test_i13_cue_ends_before_fleeing() -> void:
 		["data/birds.json [gosling] linger_time: 1.5 + aim_time 1.6 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)",
 		"data/birds.json [golden] linger_time: 2.5 + aim_time 1.6 is not under flee_time 4.0 (I13: the rival's cue must end before the bird flees)"])
 	_expect_load_errors("I13 the decoy is exempt (never stolen)", _mutated("birds.json", func(data: Array) -> void: data[6]["linger_time"] = 9.0), [])
+	# A bad flee_time falls back to its minimum (0.1); I13 must not blame linger_time for it.
+	_expect_load_errors("I13 skips a missing flee_time", _mutated("birds.json", func(data: Array) -> void: (data[0] as Dictionary).erase("flee_time")),
+		["data/birds.json [goose] flee_time: missing key"])
+	_expect_load_errors("I13 skips a zero flee_time", _mutated("birds.json", func(data: Array) -> void: data[0]["flee_time"] = 0),
+		["data/birds.json [goose] flee_time: 0.0 is outside 0.1..60.0"])
+	_expect_load_errors("I13 skips a flee_time that is not a number", _mutated("birds.json", func(data: Array) -> void: data[0]["flee_time"] = "soon"),
+		["data/birds.json [goose] flee_time: expected float, got String"])
 
 
 func _i5_problems() -> Array[String]:

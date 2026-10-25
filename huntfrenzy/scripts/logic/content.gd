@@ -13,8 +13,10 @@ extends RefCounted
 ## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" (rival_lines.json,
 ## a single object, names the line category as the entry, "-" for its top-level fields) and reported with
 ## push_error, all of them, not just the first. Entries with problems are still loaded as
-## far as they parse (bad fields keep their resource defaults), and the title screen
-## disables Play while errors() is non-empty, so no default ever reaches a run.
+## far as they parse (bad fields keep their resource defaults or a fallback). A check that
+## depends on a field that already failed is skipped (the hitbox against a bad size, I13
+## against a bad flee_time, linger_time or aim_time), so a fallback value is never blamed.
+## The title screen disables Play while errors() is non-empty, so no default ever reaches a run.
 
 const DATA_DIR := "res://data/"
 ## Load order: modes reference birds, so birds load first; I13 needs the birds and the
@@ -68,6 +70,12 @@ static var _errors: Array[String] = []
 static var _birds: Dictionary[String, BirdSpec] = {}
 static var _modes: Dictionary[String, ModeSpec] = {}
 static var _rival_lines := RivalLines.new()
+## The top-level fields of the current entry that already have an error ("size" for
+## "size[0]" too); checks that depend on one of them are skipped, so a field's fallback
+## value is never blamed. Cleared at each bird and mode entry and at each file.
+static var _failed: Dictionary[String, bool] = {}
+## Ids of the birds whose flee_time or linger_time failed, which I13 skips.
+static var _bad_timing: Dictionary[String, bool] = {}
 ## The file and entry the loader is reading, for error messages.
 static var _file := ""
 static var _entry := ""
@@ -151,6 +159,7 @@ static func _reset() -> void:
 	_birds.clear()
 	_modes.clear()
 	_rival_lines = RivalLines.new()
+	_bad_timing.clear()
 
 
 static func _load(texts: Dictionary[String, String]) -> void:
@@ -211,6 +220,8 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 			splits[_entry] = item.splits_into
 		if item.id != "":
 			_birds[item.id] = item
+			if _failed.has("flee_time") or _failed.has("linger_time"):
+				_bad_timing[item.id] = true
 	for from: String in splits:
 		_entry = from
 		if not _birds.has(splits[from]):
@@ -255,9 +266,8 @@ static func _load_rival_lines(object: Dictionary) -> void:
 	for key: Variant in object:
 		if not str(key) in keys:
 			_error(str(key), "unknown key")
-	var before := _errors.size()
 	_rival_lines.aim_time = _float(object, "aim_time", AIM_TIME_MIN, AIM_TIME_MAX)
-	var aim_ok := object.has("aim_time") and _errors.size() == before
+	var aim_ok := not _failed.has("aim_time")
 	_rival_lines.cooldown = _float(object, "cooldown", 0.0, COOLDOWN_MAX)
 	if object.has("lines"):
 		if typeof(object["lines"]) != TYPE_DICTIONARY:
@@ -300,11 +310,13 @@ static func _lines(value: Variant) -> PackedStringArray:
 
 
 ## I13: every bird the rival can steal (all but the decoy) has linger_time + aim_time under
-## its flee_time, so every cue can finish before the bird flees on its own.
+## its flee_time, so every cue can finish before the bird flees on its own. A bird whose
+## flee_time or linger_time already has an error is skipped (its fallback value would be
+## blamed instead).
 static func _check_linger(aim_time: float) -> void:
 	_file = "data/birds.json"
 	for spec: BirdSpec in _birds.values():
-		if spec.penalty > 0:
+		if spec.penalty > 0 or _bad_timing.has(spec.id):
 			continue
 		_entry = spec.id
 		if spec.linger_time + aim_time >= spec.flee_time:
@@ -384,6 +396,7 @@ static func _begin_entry(entry: Dictionary, required: Array[String], seen: Dicti
 	if typeof(entry.get("id")) == TYPE_STRING:
 		id = entry["id"]
 	_entry = id if id != "" else "(no id)"
+	_failed.clear()
 	for key in required:
 		if not entry.has(key):
 			_error(key, "missing key")
@@ -519,7 +532,7 @@ static func _pair(value: Variant, field: String, low: float, high: float) -> Vec
 
 
 ## The hitbox polygon: at least HITBOX_MIN_POINTS [x, y] points, each inside the sprite
-## (within half of `size` of the centre on each axis).
+## (within half of `size` of the centre on each axis; not checked when `size` failed).
 static func _hitbox(object: Dictionary, size: Vector2) -> PackedVector2Array:
 	var polygon := PackedVector2Array()
 	if not object.has("hitbox"):
@@ -534,7 +547,8 @@ static func _hitbox(object: Dictionary, size: Vector2) -> PackedVector2Array:
 	for i in list.size():
 		var field := "hitbox[%d]" % i
 		var point := _pair(list[i], field, -SIZE_MAX, SIZE_MAX)
-		if absf(point.x) > half.x or absf(point.y) > half.y:
+		# A failed size has no real bounds to check against.
+		if not _failed.has("size") and (absf(point.x) > half.x or absf(point.y) > half.y):
 			_error(field, "%s is outside the sprite (±%s)" % [point, half])
 		polygon.append(point)
 	# A simple polygon: no two edges that do not share a corner touch or cross.
@@ -559,10 +573,12 @@ static func _lookup(table: Dictionary, id: String, kind: String) -> Resource:
 static func _begin_file(file: String) -> void:
 	_file = "data/" + file
 	_entry = "-"
+	_failed.clear()
 
 
 static func _error(field: String, problem: String) -> void:
 	var message := "%s [%s] %s: %s" % [_file, _entry, field, problem]
 	_errors.append(message)
+	_failed[field.get_slice("[", 0)] = true
 	if not quiet_errors:
 		push_error("[Content] " + message)

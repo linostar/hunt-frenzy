@@ -41,6 +41,10 @@ const STRICT_WARNINGS: Array[String] = [
 ]
 ## A 2340x1080 phone at 2x (visible 1170x540) with a 66-unit notch on the left, in base units.
 const NOTCHED_SAFE_RECT := Rect2(66, 0, 1104, 540)
+## A 19.5:9 phone in landscape whose safe area also leaves out the iOS home indicator at
+## the bottom, and the smallest safe height the results screen must fit.
+const RESULTS_INSET_SAFE_RECT := Rect2(66, 0, 1104, 511)
+const RESULTS_MIN_SAFE_HEIGHT := 480
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
 const WATCHDOG_MSEC := 120000
 ## A goose's hitbox (data/birds.json) holds LOCAL_INSIDE (1 unit inside its bottom edge)
@@ -1064,6 +1068,7 @@ func _test_run_ends_on_results() -> void:
 	var line_rect := rival_line.get_global_rect()
 	_check(rival_line.visible and rival_line.text == Results.RIVAL_LINE_TEXT % stats.get("rival_line") and _game.safe_rect().encloses(line_rect) and line_rect.position.y >= (results.get_node("Safe/PlayAgainButton") as Control).get_global_rect().end.y and rival_line.get_line_count() == 1, "the results show the rival's line on one line below the buttons, inside the safe area", "%s '%s'" % [line_rect, rival_line.text])
 	_check((results.get_node("Safe/NewBest") as Label).visible and not (results.get_node("Safe/SaveError") as Label).visible, "the results say New best! (and no save problem)", "hidden")
+	await _check_results_fit(results)
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
 	_check(again.has_focus() and again.get_global_rect().size.y >= MIN_TARGET and _game.safe_rect().encloses(again.get_global_rect()), "Play again is focused, >= 44 high, in the safe area", str(root.gui_get_focus_owner()))
@@ -1087,6 +1092,53 @@ func _test_run_ends_on_results() -> void:
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.TITLE, "Title goes to the title", str(_game.state))
 	_clear_tool_save()
+
+
+## With every element shown (New best!, a two-line SaveError, the rival line), the results
+## screen fits the safe area at 16:9, 4:3, under a notch with the iOS home-indicator inset
+## (RESULTS_INSET_SAFE_RECT) and at RESULTS_MIN_SAFE_HEIGHT: each element inside it, its
+## text inside its rect, no two overlapping, the buttons >= 44x44.
+func _check_results_fit(results: Results) -> void:
+	var save_error := results.get_node("Safe/SaveError") as Label
+	save_error.text = Results.SAVE_ERROR_TEXT % "the file could not be written because the disk is full, so the new best will be lost when the game is closed"
+	save_error.show()
+	var names: Array[String] = ["Heading", "Stats/Score", "Stats/Accuracy", "Stats/Hits", "Stats/Escaped", "Stats/Stolen", "Stats/RivalScore", "Stats/Pigeons", "Stats/Best", "NewBest", "SaveError", "PlayAgainButton", "TitleButton", "RivalLine"]
+	var cases: Array[String] = ["16:9", "4:3", "19.5:9 notched, home indicator", "16:9, safe height %d" % RESULTS_MIN_SAFE_HEIGHT]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
+	var safes: Array[Rect2] = [Rect2(), Rect2(), RESULTS_INSET_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
+	for i in cases.size():
+		_game.safe_area_override = safes[i]
+		root.size = windows[i]
+		await process_frame
+		await process_frame
+		var safe := _game.safe_rect()
+		var problems: Array[String] = []
+		var rects: Array[Rect2] = []
+		for n in names:
+			var item := results.get_node("Safe/" + n) as Control
+			var rect := item.get_global_rect()
+			rects.append(rect)
+			if not item.visible or not safe.grow(0.5).encloses(rect):
+				problems.append("%s %s not shown inside the safe area" % [n, rect])
+			if item is Label:
+				var label := item as Label
+				var lines := label.get_visible_line_count()
+				var text_height := lines * label.get_line_height() + (lines - 1) * label.get_theme_constant("line_spacing")
+				if text_height > rect.size.y + 0.5:
+					problems.append("%s text %.1f high in %s" % [n, text_height, rect])
+				if label == save_error and lines != 2:
+					problems.append("SaveError shows %d lines, not its two" % lines)
+			elif rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET:
+				problems.append("%s %s under 44x44" % [n, rect])
+		for a in names.size():
+			for b in range(a + 1, names.size()):
+				if rects[a].intersection(rects[b]).get_area() > 0.25:
+					problems.append("%s %s overlaps %s %s" % [names[a], rects[a], names[b], rects[b]])
+		_check(problems.is_empty(), "%s: the results screen (every element shown) fits the safe area %s without overlap" % [cases[i], safe], "; ".join(problems))
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+	save_error.hide()
 
 
 ## Web save reporting. Headless has no IndexedDB, so the page's answers are fed in:
@@ -1814,11 +1866,12 @@ func _test_rival_decoy_and_fleeing() -> void:
 	var goose := await _cued_bird(play, 141, "goose")
 	_check(goose.is_cued(), "the goose is cued", "no cue")
 	play.ammo.shells = 1
+	var escaped := play.escaped
+	var shot_from := _log.size()
 	await _touch(_global(play, SKY_POINTS[0]))
 	await process_frame
 	_check(goose.is_fleeing() and not goose.is_cued() and not (goose.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "a cued goose that starts fleeing drops the cue", "fleeing %s, cued %s" % [goose.is_fleeing(), goose.is_cued()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(fled\\) after [\\d.]+ s " % goose.number, "the dropped cue is logged with its cause")
-	var escaped := play.escaped
 	var number := goose.number
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 900:
@@ -1826,8 +1879,27 @@ func _test_rival_decoy_and_fleeing() -> void:
 			break
 		await process_frame
 	Engine.time_scale = 1.0
-	_check(not is_instance_valid(goose) and play.stolen == 0 and play.escaped >= escaped + 1, "the fleeing goose escapes as before, never stolen", "stolen %d, escaped %d -> %d" % [play.stolen, escaped, play.escaped])
-	_check_logged(from, "^\\[Play\\] Escaped goose #%d \\(" % number, "its escape is logged")
+	_check(not is_instance_valid(goose) and play.stolen == 0, "the fleeing goose escapes as before, never stolen", "stolen %d" % play.stolen)
+	# Counted once: from the count at the shot, every escape or steal line since (wave birds
+	# and the fleeing decoy log theirs too) logs a total one up for a counted bird and the
+	# same for an uncounted one, the goose's included, so nothing else (the cancelled cue)
+	# added to it.
+	var total := RegEx.create_from_string("^\\[Play\\] (?:Escaped \\w+ #(\\d+) \\((not counted, )?|Stolen .*, )(\\d+)/\\d+\\b")
+	var counted_once := false
+	var totals: Array[String] = []
+	for line in _log.since(shot_from):
+		var found := total.search(line)
+		if found == null:
+			continue
+		if found.get_string(2) == "":
+			escaped += 1
+		totals.append("%s (expected %d)" % [line, escaped])
+		if found.get_string(3).to_int() != escaped:
+			break
+		if found.get_string(1) == str(number):
+			counted_once = true
+			break
+	_check(counted_once, "the fleeing goose's escape is logged and counted once", "; ".join(totals))
 
 
 ## Pausing freezes the cue, the heckle cooldown and the bubble; resuming continues them

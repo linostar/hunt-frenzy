@@ -1,4 +1,5 @@
-# Runs the project's own gates on every push and pull request:
+# Runs the project's own gates on every pull request and every push to main (a push to a
+# PR branch runs once, through its pull_request event):
 # - validate: tools/validate.sh (import, check_project + its fixtures, gameplay tests,
 #   headless main-scene run),
 # - web: tools/build_web.sh (validate, web export, Playwright smoke in desktop, mobile
@@ -9,6 +10,7 @@ name: validate
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:

@@ -118,7 +118,9 @@ A single object (not an array):
 I1-I4 and I13 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
 (no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 are checked only by
 `test_content.gd`, against the real data and on a malformed copy each (with the loader quiet, so the invariant's own
-check is what catches it).
+check is what catches it). A loader check that depends on a field that already has an error is skipped (I4's inside
+the sprite check when `size` failed, I13 when `flee_time`, `linger_time` or `aim_time` did), so each problem is reported
+once, against the field it is in, never against a fallback value.
 - **I1** Every file parses, is a non-empty array of objects, ids are snake_case and unique per file, no entry (and no
   `birds[]` object) has a missing or unknown key, `splits_into` and `split_count` come together, a mix names each bird
   at most once and has a bird from wave 1. `rival_lines.json` is a non-empty object with exactly `aim_time`,
