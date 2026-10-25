@@ -13,7 +13,8 @@
 //     positions its flight reaches every 0.1 s ahead), at the point of that path it reaches
 //     when the shot lands: the time since the line arrived plus the input latency (first
 //     guessed, then measured from each logged shot's game time), and require "[Play] Hit
-//     goose #1" (up to HIT_ATTEMPTS shots; a miss is logged and the next shot aims again); then a
+//     goose #1" (up to HIT_ATTEMPTS attempts; after a miss a phone fires a salvo of SALVO
+//     fingers along the path around the measured latency); then a
 //     visibilitychange with document.hidden true must log "[Play] Paused (page hidden)";
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Play is and Enter press nothing, turn the phone to landscape (844x390),
@@ -63,7 +64,12 @@ const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused).* at t ([\d.-]+)
 // Seconds between two "ahead" points of a [Bird] line (Bird.TRACK_AHEAD_STEP).
 const AHEAD_STEP_S = 0.1;
 // Points ahead per [Bird] line (Bird.TRACK_AHEAD_STEPS).
-const AHEAD_STEPS = 6;
+const AHEAD_STEPS = 20;
+// After a miss, a phone shoots a salvo of SALVO fingers at once along the goose's path,
+// SALVO_SPREAD_S apart around the measured latency: a slow runner (SwiftShader at 3x)
+// handles input a whole slow frame late, which a single aimed touch cannot predict.
+const SALVO = 5;
+const SALVO_SPREAD_S = 0.15;
 // The grass line (Play.GRASS_Y): the goose is aimed at once its centre is well above it.
 const AIM_ABOVE_Y = 400;
 // First guess of the seconds from a click or touch to the frame that handles it; each
@@ -96,13 +102,22 @@ async function pointerFor(page, context, run) {
       await touch('touchStart', [{ x: p.x, y: p.y, id: 7 }]);
       await touch('touchEnd', []);
     },
+    // Several fingers pressing at once (ids 7, 8, ...): one shot each, in one frame.
+    salvo: async (points) => {
+      await touch('touchStart', points.map((p, i) => ({ x: p.x, y: p.y, id: 7 + i })));
+      await touch('touchEnd', []);
+    },
   };
 }
 
 // A base-unit point in page coordinates. Godot fits the 960x540 base by the smaller ratio
 // and expands the other axis from the top-left; the web reports no safe-area insets.
 async function pagePoint(page, x, y) {
-  const box = await page.locator('canvas').boundingBox();
+  return toPage(await page.locator('canvas').boundingBox(), x, y);
+}
+
+// pagePoint for a known canvas bounding box (no round trip to the page).
+function toPage(box, x, y) {
   const scale = Math.min(box.width / BASE.width, box.height / BASE.height);
   return { x: box.x + x * scale, y: box.y + y * scale };
 }
@@ -127,6 +142,8 @@ function pathAt(points, lead) {
 async function shootFirstGoose(page, logs, logTimes, pointer, from) {
   const spawned = Number((await waitForLog(page, logs, FIRST_SPAWN, 'the first goose to spawn', from))[1]);
   const horizon = AHEAD_STEPS * AHEAD_STEP_S;
+  // Measured once: a round trip to the page per shot would add to the input latency.
+  const box = await page.locator('canvas').boundingBox();
   const outcomes = [];
   let latency = AIM_LATENCY_S;
   for (let attempt = 1; attempt <= HIT_ATTEMPTS; attempt++) {
@@ -138,18 +155,26 @@ async function shootFirstGoose(page, logs, logTimes, pointer, from) {
       track = await waitForLog(page, logs, FIRST_GOOSE, `the first goose to fly above the grass (skipped: ${skipped.slice(-6).join(', ')})`, from);
       from = track.index + 1;
       lead = (Date.now() - logTimes[track.index]) / 1000 + latency;
-      if (Number(track[2]) <= AIM_ABOVE_Y && lead < horizon) break;
+      if (Number(track[2]) <= AIM_ABOVE_Y && lead + SALVO_SPREAD_S * SALVO / 2 < horizon) break;
       skipped.push(`age ${track[3]} y ${track[2]} lead ${lead.toFixed(2)}`);
     }
     const points = [{ x: Number(track[1]), y: Number(track[2]) }].concat(
       [...track[4].matchAll(/\(([\d.-]+), ([\d.-]+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) })));
-    const aim = pathAt(points, lead);
     const shotFrom = logs.length;
+    const salvo = attempt > 1 && pointer.salvo !== undefined;
+    const leads = salvo ? Array.from({ length: SALVO }, (_, i) => Math.max(0, lead + (i - (SALVO - 1) / 2) * SALVO_SPREAD_S)) : [lead];
+    const aims = leads.map((each) => {
+      const at = pathAt(points, each);
+      return toPage(box, at.x, at.y);
+    });
     const sent = (Date.now() - logTimes[track.index]) / 1000;
-    await pointer.tap(await pagePoint(page, aim.x, aim.y));
+    await (salvo ? pointer.salvo(aims) : pointer.tap(aims[0]));
     const outcome = await waitForLog(page, logs, SHOT_RESULT, 'the shot to be logged', shotFrom);
-    outcomes.push(`${outcome[1]} (lead ${lead.toFixed(2)} s)`);
-    if (outcome[1] === 'Hit goose #1') return outcomes;
+    // Every shot of a salvo is handled in one frame; any of them may be the hit.
+    await page.waitForTimeout(salvo ? 500 : 0);
+    const hit = logs.slice(shotFrom).some((l) => /^\[Play\] Hit goose #1 /.test(l));
+    outcomes.push(`${hit ? 'Hit goose #1' : outcome[1]} (${salvo ? `salvo of ${SALVO}, ` : ''}lead ${lead.toFixed(2)} s)`);
+    if (hit) return outcomes;
     // The goose's age when the shot was handled, against its age when the tap was sent.
     latency = Math.max(0, Number(outcome[2]) - spawned - (Number(track[3]) + sent));
   }

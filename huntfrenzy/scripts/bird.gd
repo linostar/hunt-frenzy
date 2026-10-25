@@ -4,10 +4,11 @@ extends Node2D
 ## Flight.transform_at(spec, seed, age, ...) and it flaps between its two fly frames;
 ## once it has escaped (Flight.has_escaped) it emits `escaped` and frees itself. A hit
 ## stops it on its hit frame for HIT_HOLD seconds, then it falls off the bottom of the
-## screen, emits `gone` and frees itself. While flying it logs its position and velocity
-## (canvas base units) every TRACK_INTERVAL seconds, with where its flight will take it
-## TRACK_AHEAD_STEP, 2 x TRACK_AHEAD_STEP, ... seconds later (TRACK_AHEAD_STEPS points);
-## the smoke test aims at the goose from these lines.
+## screen, emits `gone` and frees itself. While flying, the run's first bird (TRACKED_NUMBER)
+## logs its position and velocity (canvas base units) every TRACK_INTERVAL seconds, with
+## where its flight will take it TRACK_AHEAD_STEP, 2 x TRACK_AHEAD_STEP, ... seconds later
+## (TRACK_AHEAD_STEPS points); the smoke test aims at it from these lines. Other birds are
+## replayable from their logged spawn seeds.
 ## Configure with setup() before adding it to the tree.
 
 signal escaped(bird: Bird)
@@ -21,7 +22,8 @@ const HIT_HOLD := 0.25
 const GRAVITY := 1400.0
 const TRACK_INTERVAL := 0.25
 const TRACK_AHEAD_STEP := 0.1
-const TRACK_AHEAD_STEPS := 6
+const TRACK_AHEAD_STEPS := 20
+const TRACKED_NUMBER := 1
 
 var spec: BirdSpec
 ## The bird's number in its run (1 is the first bird spawned).
@@ -123,6 +125,8 @@ func _flight_transform() -> Transform2D:
 
 
 func _track() -> void:
+	if number != TRACKED_NUMBER:
+		return
 	var moving := Flight.velocity(spec, bird_seed, age, field, speed_scale, flee_at)
 	var ahead := PackedStringArray()
 	for step in range(1, TRACK_AHEAD_STEPS + 1):
