@@ -1,0 +1,16 @@
+[
+  {
+    "id": "endless",
+    "name": "Endless",
+    "birds": ["goose"],
+    "start_birds": 2,
+    "bird_growth": 1,
+    "max_birds": 6,
+    "speed_growth": 0.08,
+    "speed_cap": 1.6,
+    "spawn_interval": 1.4,
+    "shells_per_bird": 3,
+    "combo_cap": 5,
+    "escape_limit": 10
+  }
+]

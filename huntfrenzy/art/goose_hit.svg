@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="72" viewBox="0 0 96 72">
+  <!-- First-pass goose, hit frame: wings splayed, crossed-out eye. -->
+  <path d="M12 36 L24 28 Q40 24 52 26 L60 24 Q64 30 70 30 L74 34 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#7a6a58" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M20 46 Q34 54 54 52 Q66 50 70 42 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#d8cfc0"/>
+  <path d="M12 36 L4 30 L6 40 L2 44 L14 44 Z" fill="#2b2622"/>
+  <path d="M58 30 Q62 18 72 14 Q80 10 86 14 Q90 18 86 22 Q78 22 74 26 Q70 32 70 36 Z" fill="#2b2622"/>
+  <path d="M86 16 L95 19 L86 22 Z" fill="#3b3430"/>
+  <path d="M74 18 Q78 24 74 26 Q71 22 74 18 Z" fill="#f4efe6"/>
+  <path d="M78 13 L84 19 M84 13 L78 19" stroke="#f4efe6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M28 34 Q18 16 22 4 Q36 14 46 30 Z" fill="#9a8a76" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M40 40 Q46 60 60 66 Q60 52 56 40 Z" fill="#9a8a76" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M8 18 L14 22 M90 40 L84 42 M50 2 L50 8" stroke="#f4efe6" stroke-width="2" stroke-linecap="round"/>
+</svg>

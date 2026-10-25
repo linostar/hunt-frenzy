@@ -1,0 +1,162 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/results.gd" id="1_results"]
+
+[node name="Results" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_results")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.169, 0.149, 0.231, 1)
+
+[node name="Safe" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 0
+offset_right = 960.0
+offset_bottom = 540.0
+mouse_filter = 2
+
+[node name="Heading" type="Label" parent="Safe"]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.04
+anchor_right = 1.0
+anchor_bottom = 0.18
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 56
+text = "Run over"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Stats" type="VBoxContainer" parent="Safe"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.2
+anchor_right = 0.5
+anchor_bottom = 0.62
+offset_left = -200.0
+offset_right = 200.0
+grow_horizontal = 2
+mouse_filter = 2
+alignment = 1
+
+[node name="Score" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 30
+text = "Score"
+horizontal_alignment = 1
+
+[node name="Accuracy" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 26
+text = "Accuracy"
+horizontal_alignment = 1
+
+[node name="Hits" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 26
+text = "Birds hit"
+horizontal_alignment = 1
+
+[node name="Escaped" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 26
+text = "Birds escaped"
+horizontal_alignment = 1
+
+[node name="Best" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 26
+text = "Endless best"
+horizontal_alignment = 1
+
+[node name="NewBest" type="Label" parent="Safe"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.6
+anchor_right = 1.0
+anchor_bottom = 0.68
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
+theme_override_font_sizes/font_size = 30
+text = "New best!"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SaveError" type="Label" parent="Safe"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.05
+anchor_top = 0.68
+anchor_right = 0.95
+anchor_bottom = 0.765
+grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 0.62, 0.58, 1)
+theme_override_font_sizes/font_size = 16
+text = "Your best could not be saved"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 3
+text_overrun_behavior = 3
+max_lines_visible = 2
+
+[node name="PlayAgainButton" type="Button" parent="Safe"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.83
+anchor_right = 0.5
+anchor_bottom = 0.83
+offset_left = -250.0
+offset_top = -32.0
+offset_right = -10.0
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_neighbor_left = NodePath("../TitleButton")
+focus_neighbor_right = NodePath("../TitleButton")
+focus_next = NodePath("../TitleButton")
+focus_previous = NodePath("../TitleButton")
+theme_override_font_sizes/font_size = 30
+text = "Play again"
+
+[node name="TitleButton" type="Button" parent="Safe"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 0.83
+anchor_right = 0.5
+anchor_bottom = 0.83
+offset_left = 10.0
+offset_top = -32.0
+offset_right = 250.0
+offset_bottom = 32.0
+grow_horizontal = 2
+grow_vertical = 2
+focus_neighbor_left = NodePath("../PlayAgainButton")
+focus_neighbor_right = NodePath("../PlayAgainButton")
+focus_next = NodePath("../PlayAgainButton")
+focus_previous = NodePath("../PlayAgainButton")
+theme_override_font_sizes/font_size = 30
+text = "Title"

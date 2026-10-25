@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <!-- First-pass pause icon. -->
+  <rect x="7" y="5" width="6" height="22" rx="2" fill="#fbedcd"/>
+  <rect x="19" y="5" width="6" height="22" rx="2" fill="#fbedcd"/>
+</svg>
