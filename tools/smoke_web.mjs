@@ -133,11 +133,13 @@ async function shootFirstGoose(page, logs, logTimes, pointer, from) {
     let track;
     let lead;
     // The latest line of the goose above the grass whose path still reaches the shot.
+    const skipped = [];
     for (;;) {
-      track = await waitForLog(page, logs, FIRST_GOOSE, 'the first goose to fly above the grass', from);
+      track = await waitForLog(page, logs, FIRST_GOOSE, `the first goose to fly above the grass (skipped: ${skipped.slice(-6).join(', ')})`, from);
       from = track.index + 1;
       lead = (Date.now() - logTimes[track.index]) / 1000 + latency;
       if (Number(track[2]) <= AIM_ABOVE_Y && lead < horizon) break;
+      skipped.push(`age ${track[3]} y ${track[2]} lead ${lead.toFixed(2)}`);
     }
     const points = [{ x: Number(track[1]), y: Number(track[2]) }].concat(
       [...track[4].matchAll(/\(([\d.-]+), ([\d.-]+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) })));
