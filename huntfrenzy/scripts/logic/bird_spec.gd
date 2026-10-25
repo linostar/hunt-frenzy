@@ -7,8 +7,8 @@ const DAMAGED_FRAMES: Array[String] = ["damaged_fly_1", "damaged_fly_2"]
 
 var id := ""
 var name := ""
-## The campaign chapter (1-4) that introduces the type.
-var chapter := 0
+## The id of the campaign chapter that introduces the type (one of Content.CHAPTERS).
+var chapter := ""
 ## Flight pattern: "rise" (Flight's climb-and-bounce path) or "zigzag" (the same, with
 ## sharp heading reversals at seeded intervals).
 var pattern := ""

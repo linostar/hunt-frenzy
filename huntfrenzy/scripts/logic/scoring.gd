@@ -9,8 +9,10 @@ extends RefCounted
 var score := 0
 var multiplier := 1
 var combo_cap := 1
-## Shots that hit a bird other than a decoy (kills and damaging hits).
+## Shots that hit a bird other than a decoy (kills and damaging hits): accuracy counts these.
 var hits := 0
+## Birds killed (an armored bird counts once, on its killing hit): the results' "Birds hit".
+var kills := 0
 var misses := 0
 ## Shots that hit a decoy.
 var penalties := 0
@@ -25,6 +27,7 @@ func hit(points: int) -> int:
 	var awarded := points * multiplier
 	score += awarded
 	hits += 1
+	kills += 1
 	multiplier = mini(multiplier + 1, combo_cap)
 	return awarded
 

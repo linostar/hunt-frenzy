@@ -147,6 +147,7 @@ func _tests() -> Array[Callable]:
 		_test_flight_launch_and_split_headings,
 		_test_wave_schedule,
 		_test_wave_unlocks_by_wave,
+		_test_wave_mix_follows_weights,
 		_test_wave_golden_chance,
 		_test_wave_shells_cover_every_hit,
 		_test_ammo_pool,
@@ -156,6 +157,7 @@ func _tests() -> Array[Callable]:
 		_test_save_corrupt_and_unknown_version,
 		_test_save_web_persist_reporting,
 		_test_play_hud_layout,
+		_test_play_hud_fits_any_pool,
 		_test_play_touch_hits_goose,
 		_test_play_hit_frame_keeps_facing,
 		_test_play_grass_hides_geese,
@@ -165,6 +167,7 @@ func _tests() -> Array[Callable]:
 		_test_play_empty_pool_refuses,
 		_test_play_armored_takes_two_hits,
 		_test_play_splitter_splits_into_goslings,
+		_test_play_split_with_last_shell,
 		_test_play_golden_scores_and_escapes,
 		_test_play_decoy_penalty,
 		_test_pause_causes_and_resume,
@@ -660,7 +663,7 @@ func _test_save_corrupt_and_unknown_version() -> void:
 func _test_play_hud_layout() -> void:
 	var from := _log.size()
 	var play := await _start_run(11)
-	_check_logged(from, "^\\[Play\\] Run start: mode endless, seed 11 \\(escape limit 10, combo cap 5, 3 shells per bird\\)$", "the run start is logged with its mode and seed")
+	_check_logged(from, "^\\[Play\\] Run start: mode endless, seed 11 \\(escape limit 10, combo cap 5, 3 shells per hit\\)$", "the run start is logged with its mode and seed")
 	_check_logged(from, "^\\[Play\\] Wave 1 start: 2 birds \\(goose, goose\\), 6 shells, speed x1\\.00$", "the wave start is logged with its birds and shells")
 	var bar := play.get_node("Hud/Bar") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Button
@@ -694,6 +697,59 @@ func _test_play_hud_layout() -> void:
 	await process_frame
 	await process_frame
 	_check(NOTCHED_SAFE_RECT.encloses(bar.get_global_rect()), "the HUD bar is clear of the notch", str(bar.get_global_rect()))
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+
+
+## The HUD bar never overflows. A pool of up to Play.SHELL_ICONS_MAX shells shows one icon
+## per shell; a bigger one shows one icon and the shells left ("x11"). The largest pool
+## modes.json can produce is max_birds x the most hits a bird the mode can spawn needs x
+## shells_per_hit (Endless: 6 x 3 (a splitter and its 2 goslings) x 3 = 54). At that pool
+## and at the largest icon row, with the widest texts (a 9-digit score, wave 999, the empty
+## cue, the combo cap, 10/10 escaped), every stat lies inside the safe area and left of the
+## pause button, at 16:9, 19.5:9, 4:3 and under a notch.
+func _test_play_hud_fits_any_pool() -> void:
+	var play := await _start_run(12)
+	var max_pool := 0
+	for each in Content.modes():
+		var most := Wave.hits_needed(Content.bird(each.golden_bird))
+		for entry in each.birds:
+			most = maxi(most, Wave.hits_needed(Content.bird(entry.bird)))
+		max_pool = maxi(max_pool, Ammo.pool_size(each.max_birds * most, each.shells_per_hit))
+	_check(max_pool == 54, "the largest pool modes.json can produce is 54 shells", str(max_pool))
+	var count := play.get_node("Hud/Bar/Stats/Shells/Count") as Label
+	play.set_shell_pool(Play.SHELL_ICONS_MAX)
+	_check(_shell_icons(play) == Play.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % Play.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
+	play.set_shell_pool(Play.SHELL_ICONS_MAX + 1)
+	_check(_shell_icons(play) == 1 and count.visible and count.text == "x%d" % (Play.SHELL_ICONS_MAX + 1), "a bigger pool shows one icon and its count", "%d icons, %s" % [_shell_icons(play), count.text])
+	await _touch(_global(play, SKY_POINTS[0]))
+	_check(count.text == "x%d" % Play.SHELL_ICONS_MAX and _shell_icons(play) == 1, "the count goes down as shells are used", count.text)
+	var stats := play.get_node("Hud/Bar/Stats") as Control
+	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
+	(play.get_node("Hud/Bar/Stats/Empty") as Control).show()
+	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
+	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
+		play.scoring.score = GameState.SAVE_SCORE_MAX
+		play.scoring.multiplier = play.mode.combo_cap
+		play.wave.index = 999
+		play.escaped = play.mode.escape_limit
+		play.set_shell_pool(pool)
+		for i in cases.size():
+			_game.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
+			root.size = windows[i]
+			await process_frame
+			await process_frame
+			var safe := _game.safe_rect()
+			var limit := pause_button.get_global_rect().position.x
+			var stray: Array[String] = []
+			for child in stats.get_children():
+				var shown := child as Control
+				var rect := shown.get_global_rect()
+				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Play.HUD_BAR_HEIGHT + 0.5):
+					stray.append("%s %s" % [shown.name, rect])
+			_check(stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest HUD stays inside the safe bar, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -958,10 +1014,10 @@ func _test_run_ends_on_results() -> void:
 	if results == null:
 		return
 	var stats := _game.flow_args
-	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
+	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 1, Endless best 100$", "the save is logged")
-	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 0 refused, 10 escaped, best 100 \\(new best\\)$", "the run end is logged with the run's stats")
+	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, 10 escaped, best 100 \\(new best\\)$", "the run end is logged with the run's stats")
 	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
 	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10", "Pigeons hit 0", "Endless best 100"], "the results show score, accuracy, hits, escapes, pigeons hit and best", str(shown))
 	var last_stat := (results.get_node("Safe/Stats/Best") as Control).get_global_rect()
@@ -983,7 +1039,7 @@ func _test_run_ends_on_results() -> void:
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
-	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "pigeons": 0, "escaped": 10, "best": 100, "new_best": false, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "best": 100, "new_best": false, "save_error": ""})
 	await _game.transition_finished
 	_check(not (current_scene.get_node("Safe/NewBest") as Label).visible and (current_scene.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy " + Results.NO_VALUE, "a run below the best shows no New best!, and a dash for no shots", "shown")
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
@@ -1008,7 +1064,7 @@ func _test_save_web_persist_reporting() -> void:
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(not _game.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
 	_game.check_storage(true)
-	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "pigeons": 0, "escaped": 10, "best": 500, "new_best": true, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "best": 500, "new_best": true, "save_error": ""})
 	await _game.transition_finished
 	var results := current_scene as Results
 	var notice := results.get_node("Safe/SaveError") as Label
@@ -1212,6 +1268,31 @@ func _test_flight_zigzag_reverses() -> void:
 				break
 			age += step
 	_check(problems.is_empty(), "a zigzag reverses at least once per %.2f s window until it flees" % Flight.ZIGZAG_INTERVAL_MAX, str(problems))
+	# The seeded reversals alone: where Flight's signed horizontal travel turns (unlike the
+	# velocity, it leaves out the bounces off the field's edges). Every interval between two
+	# (from age 0 on) lies in ZIGZAG_INTERVAL_MIN..MAX (within the sampling step), and the
+	# first interval differs between seeds.
+	var fine := 1.0 / 480.0
+	var intervals: Array[float] = []
+	var first_intervals: Dictionary[int, bool] = {}
+	for bird_seed in 20:
+		var turned := 0.0
+		var direction := 1.0
+		var last := Flight._travel(zigzag, bird_seed, 0.0)
+		var age := fine
+		while age <= zigzag.flee_time:
+			var now := Flight._travel(zigzag, bird_seed, age)
+			if signf(now - last) == -direction:
+				direction = -direction
+				if turned == 0.0:
+					first_intervals[roundi(age * 100.0)] = true
+				intervals.append(age - turned)
+				turned = age
+			last = now
+			age += fine
+	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.ZIGZAG_INTERVAL_MIN - 2.0 * fine or interval > Flight.ZIGZAG_INTERVAL_MAX + 2.0 * fine)
+	_check(intervals.size() >= 20 * 6 and outside.is_empty(), "every zigzag interval lies in %.2f..%.2f s" % [Flight.ZIGZAG_INTERVAL_MIN, Flight.ZIGZAG_INTERVAL_MAX], "%d intervals, outside: %s" % [intervals.size(), outside])
+	_check(first_intervals.size() >= 10, "the zigzag intervals vary between seeds", "%d distinct first intervals over 20 seeds: %s" % [first_intervals.size(), first_intervals.keys()])
 	var start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
 	var later := Flight.position(zigzag, 3, 2.0, Play.FIELD)
 	# The same spec flying the rise pattern (restored below).
@@ -1273,6 +1354,38 @@ func _test_wave_unlocks_by_wave() -> void:
 	_check(unlocked == ["goose", "armored"], "wave 4 draws from the goose and the armored goose", str(unlocked))
 
 
+## Every spawn slot that is not golden is a pick weighted by modes.json's `weight`s: over
+## 2000 run seeds x waves 7-10 (every mix bird unlocked; about 44,000 picks) each type's
+## share of those slots is its weight / the total weight within 5 standard deviations of a
+## binomial share, 5 x sqrt(p (1 - p) / n) (0.012 for the goose's 10/22 at n = 44,000). A
+## uniform pick (0.2 each) misses the goose by 0.25.
+func _test_wave_mix_follows_weights() -> void:
+	var endless := Content.mode(GameState.ENDLESS_MODE)
+	_check(Wave.unlocked(endless, 7).size() == endless.birds.size(), "every mix bird is unlocked from wave 7", str(Wave.unlocked(endless, 7).size()))
+	var counts: Dictionary[String, int] = {}
+	var picks := 0
+	for run_seed in 2000:
+		for index in range(7, 11):
+			for spawn in Wave.endless(endless, index, run_seed).spawns:
+				if spawn.bird_id == endless.golden_bird:
+					continue
+				counts[spawn.bird_id] = counts.get(spawn.bird_id, 0) + 1
+				picks += 1
+	var total := 0
+	for entry in endless.birds:
+		total += entry.weight
+	var shares: Array[String] = []
+	var off: Array[String] = []
+	for entry in endless.birds:
+		var expected := float(entry.weight) / total
+		var share := float(counts.get(entry.bird, 0)) / picks
+		var tolerance := 5.0 * sqrt(expected * (1.0 - expected) / picks)
+		shares.append("%s %.4f (weight %d/%d = %.4f, ±%.4f)" % [entry.bird, share, entry.weight, total, expected, tolerance])
+		if absf(share - expected) > tolerance:
+			off.append(entry.bird)
+	_check(off.is_empty() and counts.size() == endless.birds.size(), "each type's share of the slots tracks its weight (%d picks)" % picks, "off: %s; %s" % [off, ", ".join(shares)])
+
+
 ## The golden chance is seeded: the same run seed and wave give the same golden slots;
 ## no golden bird in wave 1 over 500 run seeds; from wave 2 about golden_chance of the slots
 ## are golden.
@@ -1299,8 +1412,8 @@ func _test_wave_golden_chance() -> void:
 
 
 ## A wave's shells cover every hit it needs: hp plus split_count per bird, nothing for the
-## decoy, times shells_per_bird (200 run seeds x waves 1-10); waves with armored geese,
-## splitters or decoys get other pools than birds x shells_per_bird.
+## decoy, times shells_per_hit (200 run seeds x waves 1-10); waves with armored geese,
+## splitters or decoys get other pools than birds x shells_per_hit.
 func _test_wave_shells_cover_every_hit() -> void:
 	var needed := {}
 	for spec in Content.birds():
@@ -1316,11 +1429,11 @@ func _test_wave_shells_cover_every_hit() -> void:
 			for spawn in plan.spawns:
 				var spec := Content.bird(spawn.bird_id)
 				hits += 0 if spec.penalty > 0 else spec.hp + spec.split_count
-			if plan.shells != hits * endless.shells_per_bird:
+			if plan.shells != hits * endless.shells_per_hit:
 				problems.append("seed %d wave %d: %d shells for %d hits" % [run_seed, index, plan.shells, hits])
-			other_pool += int(plan.shells != plan.spawns.size() * endless.shells_per_bird)
-	_check(problems.is_empty(), "every wave's shells are (sum of hp + split_count over non-decoys) x shells_per_bird", str(problems.slice(0, 5)))
-	_check(other_pool > 0, "special birds change the pool from birds x shells_per_bird", "%d waves differ" % other_pool)
+			other_pool += int(plan.shells != plan.spawns.size() * endless.shells_per_hit)
+	_check(problems.is_empty(), "every wave's shells are (sum of hp + split_count over non-decoys) x shells_per_hit", str(problems.slice(0, 5)))
+	_check(other_pool > 0, "special birds change the pool from birds x shells_per_hit", "%d waves differ" % other_pool)
 
 
 ## A damaging hit scores nothing and keeps the combo; a decoy hit deducts its penalty,
@@ -1331,6 +1444,7 @@ func _test_scoring_damage_and_penalty() -> void:
 	scoring.hit(100)
 	scoring.damage()
 	_check(scoring.score == 300 and scoring.multiplier == 3 and scoring.hits == 3, "a damaging hit scores nothing and keeps the multiplier", "%d x%d" % [scoring.score, scoring.multiplier])
+	_check(scoring.kills == 2, "a damaging hit is a hit but not a kill", "%d kills, %d hits" % [scoring.kills, scoring.hits])
 	var deducted := scoring.penalty(200)
 	_check(deducted == 200 and scoring.score == 100 and scoring.multiplier == 1 and scoring.penalties == 1, "a decoy hit deducts its penalty and resets the combo", "%d, %d x%d" % [deducted, scoring.score, scoring.multiplier])
 	deducted = scoring.penalty(200)
@@ -1342,6 +1456,7 @@ func _test_scoring_damage_and_penalty() -> void:
 ## combo (x3 stays x3), shows its damaged frame and a "Clank!" pop-up; the second hit kills
 ## it for its points x the multiplier and raises it. Both are logged as hit k/hp.
 func _test_play_armored_takes_two_hits() -> void:
+	_clear_tool_save()
 	var play := await _start_run(51)
 	for i in 2:
 		var goose := await _spawn_flying(play, 60 + i)
@@ -1365,6 +1480,24 @@ func _test_play_armored_takes_two_hits() -> void:
 	_check(not armored.is_flying() and play.scoring.score == 750 and play.scoring.multiplier == 4, "the second hit kills it for 150 x3 and raises the combo", "%d x%d" % [play.scoring.score, play.scoring.multiplier])
 	_check_logged(from, "^\\[Play\\] Hit armored #%d \\(hit 2/2, killed\\) at \\([\\d.]+, [\\d.]+\\): 150 points x3 = 450, score 750 " % armored.number, "the second hit is logged as hit 2/2, killed")
 	_check(sprite.texture.resource_path == armored.spec.texture_path("hit"), "the killed armored goose shows its hit frame", sprite.texture.resource_path)
+	_check(play.scoring.hits == 4 and play.scoring.kills == 3, "two geese and the armored goose: 4 hits, 3 birds killed", "%d hits, %d kills" % [play.scoring.hits, play.scoring.kills])
+	# The run's end: the armored goose is one bird hit, its two hits two accurate shots.
+	play.escaped = play.mode.escape_limit - 1
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 6000:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	var results := current_scene as Results
+	_check(results != null and _game.flow_args.get("kills") == 3 and _game.flow_args.get("hits") == 4 and _game.flow_args.get("shots") == 4, "the run passes 3 birds killed of 4 hits to the results", str(_game.flow_args))
+	if results != null:
+		var shown := ["Hits", "Accuracy"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
+		_check(shown == ["Birds hit 3", "Accuracy 100%"], "the results count the armored goose once in Birds hit, and both its hits in the accuracy", str(shown))
+	_check_logged(from, "^\\[Play\\] Run end: .* 4 shots \\(4 hits, 0 misses, 0 pigeons hit\\), 3 birds killed, ", "the run end logs the birds killed")
+	_check_logged(from, "^\\[Results\\] Score 750, accuracy 100% \\(4 of 4 shots\\), 3 birds hit, ", "the results log the birds hit (killed)")
+	_clear_tool_save()
 
 
 ## The splitter: a hit scores its points x the multiplier, then 2 goslings fly from the hit
@@ -1398,14 +1531,28 @@ func _test_play_splitter_splits_into_goslings() -> void:
 	_check(not first.is_flying() and play.scoring.score == 240, "a gosling scores its own points (60 x2)", str(play.scoring.score))
 	_check_logged(from, "^\\[Play\\] Hit gosling #%d \\(hit 1/1, killed\\) at \\([\\d.]+, [\\d.]+\\): 60 points x2 = 120, score 240 " % first.number, "the gosling's hit is logged")
 	var number := second.number
-	Engine.time_scale = FAST_TIME_SCALE
-	for i in 600:
-		if not is_instance_valid(second):
-			break
-		await process_frame
-	Engine.time_scale = 1.0
-	_check_logged(from, "^\\[Play\\] Escaped gosling #%d \\(\\d+/10, wave \\d+ at t [\\d.]+\\)$" % number, "a gosling that gets away counts as an escape")
+	var counted := await _escape_counts(play, second)
+	_check(counted[1] == counted[0] + 1, "a gosling that gets away counts as an escape", "escaped %d before, %d after" % [counted[0], counted[1]])
+	_check_logged(from, "^\\[Play\\] Escaped gosling #%d \\(%d/10, wave \\d+ at t [\\d.]+\\)$" % [number, counted[1]], "the gosling's escape is logged with the escaped total")
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Escaped splitter")), "the split splitter never escapes", "an escape line")
+
+
+## A splitter killed with the wave's last shell: its goslings launch already fleeing (no
+## shells are left to shoot them with), and the split log says so. The out-of-shells sweep
+## after that shot also makes every flying bird flee, so a gosling launched while the pool
+## is already empty is checked on its own: spawn_bird itself must make it flee.
+func _test_play_split_with_last_shell() -> void:
+	var play := await _start_run(55)
+	var splitter := await _spawn_flying(play, 82, IN_FIELD_AGE, "splitter")
+	play.ammo.shells = 1
+	var from := _log.size()
+	await _touch(_global(play, splitter.transform * LOCAL_BODY))
+	var goslings := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling")
+	_check(play.ammo.is_empty() and not splitter.is_flying() and goslings.size() == 2, "the last shell kills the splitter and launches 2 goslings", "%d shells, %d goslings" % [play.ammo.shells, goslings.size()])
+	_check(goslings.size() == 2 and goslings.all(func(bird: Bird) -> bool: return bird.flee_at == 0.0), "goslings launched by the last shell flee at once", str(goslings.map(func(bird: Bird) -> float: return bird.flee_at)))
+	_check_logged(from, "^\\[Play\\] Split splitter #%d at \\([\\d.]+, [\\d.]+\\) into 2 gosling: .* \\(wave 1 at t -?[\\d.]+\\), fleeing \\(no shells\\)$" % splitter.number, "the split log says the goslings flee (no shells)")
+	var late := play.spawn_bird("gosling", 83, Vector2(480, 250), Flight.split_headings(2)[0])
+	_check(late.flee_at == 0.0, "a gosling launched with no shells left flees from the start", "flee_at %.2f" % late.flee_at)
 
 
 ## The golden goose: a hit scores its 500 points x the multiplier; one that gets away
@@ -1419,13 +1566,9 @@ func _test_play_golden_scores_and_escapes() -> void:
 	_check_logged(from, "^\\[Play\\] Hit golden #%d \\(hit 1/1, killed\\) at \\([\\d.]+, [\\d.]+\\): 500 points x1 = 500, score 500 " % golden.number, "the golden hit is logged")
 	var runaway := play.spawn_bird("golden", 91)
 	var number := runaway.number
-	Engine.time_scale = FAST_TIME_SCALE
-	for i in 600:
-		if not is_instance_valid(runaway):
-			break
-		await process_frame
-	Engine.time_scale = 1.0
-	_check_logged(from, "^\\[Play\\] Escaped golden #%d \\(\\d+/10, wave \\d+ at t [\\d.]+\\)$" % number, "a golden goose that gets away counts as an escape")
+	var counted := await _escape_counts(play, runaway)
+	_check(counted[1] == counted[0] + 1, "a golden goose that gets away counts as an escape", "escaped %d before, %d after" % [counted[0], counted[1]])
+	_check_logged(from, "^\\[Play\\] Escaped golden #%d \\(%d/10, wave \\d+ at t [\\d.]+\\)$" % [number, counted[1]], "the golden goose's escape is logged with the escaped total")
 
 
 ## The decoy (the rival's pigeon): a hit deducts its penalty, never below 0, resets the
@@ -1453,15 +1596,7 @@ func _test_play_decoy_penalty() -> void:
 	_check_logged(from, "^\\[Play\\] Hit decoy #%d \\(hit 1/1, killed\\) at \\([\\d.]+, [\\d.]+\\): penalty 200, -200, combo reset, score 100 \\(2 pigeons hit, " % second.number, "the penalty is logged")
 	var runaway := play.spawn_bird("decoy", 97)
 	var number := runaway.number
-	var counted := [-1, -1]
-	runaway.escaped.connect(func(_b: Bird) -> void: counted[1] = play.escaped)
-	Engine.time_scale = FAST_TIME_SCALE
-	for i in 900:
-		if not is_instance_valid(runaway):
-			break
-		counted[0] = play.escaped
-		await process_frame
-	Engine.time_scale = 1.0
+	var counted := await _escape_counts(play, runaway)
 	_check(counted[1] >= 0 and counted[1] == counted[0], "a pigeon that gets away is not counted as an escape", "escaped %d before, %d after" % [counted[0], counted[1]])
 	_check_logged(from, "^\\[Play\\] Escaped decoy #%d \\(not counted, \\d+/10, wave \\d+ at t [\\d.]+\\)$" % number, "the pigeon's escape is logged as not counted")
 	play.escaped = play.mode.escape_limit - 1
@@ -1500,6 +1635,22 @@ func _field_problems(spec: BirdSpec, speed_scale: float) -> Array[String]:
 		if entered < 0.0 or entered > spec.flee_time / 2.0:
 			problems.append("seed %d x%.1f enters the field at %.2f" % [bird_seed, speed_scale, entered])
 	return problems
+
+
+## Lets `bird` fly (at FAST_TIME_SCALE) until it escapes; returns [play.escaped at the start
+## of the frame it escaped in, play.escaped once Play has handled its escape] ([x, -1] if
+## it never escaped). Play's handler was connected at spawn, so it runs before this one.
+func _escape_counts(play: Play, bird: Bird) -> Array[int]:
+	var counted: Array[int] = [-1, -1]
+	bird.escaped.connect(func(_b: Bird) -> void: counted[1] = play.escaped)
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 900:
+		if not is_instance_valid(bird):
+			break
+		counted[0] = play.escaped
+		await process_frame
+	Engine.time_scale = 1.0
+	return counted
 
 
 ## Starts an Endless run with `run_seed` and waits until it is on screen.
@@ -1554,8 +1705,9 @@ func _text(play: Play, stat: String) -> String:
 	return (play.get_node("Hud/Bar/Stats/" + stat) as Label).text
 
 
+## The shell icons shown (the Count label beside them is not one).
 func _shell_icons(play: Play) -> int:
-	return play.get_node("Hud/Bar/Stats/Shells").get_children().filter(func(icon: Node) -> bool: return (icon as CanvasItem).visible).size()
+	return play.get_node("Hud/Bar/Stats/Shells").get_children().filter(func(icon: Node) -> bool: return icon is TextureRect and (icon as CanvasItem).visible).size()
 
 
 ## A real touch (press and release, index TOUCH_INDEX) at canvas position `at`.

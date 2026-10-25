@@ -1,10 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="88" height="56" viewBox="0 0 88 56">
-  <!-- First-pass zigzag swift, hit frame: wings splayed, crossed-out eye; faces right, centre (44, 28) is the bird's origin. -->
-  <path d="M14 29 L0 20 L7 29 L0 38 Z" fill="#1f5f5c"/>
-  <path d="M10 29 Q30 19 56 21 Q66 14 76 17 Q82 21 80 26 Q72 34 56 36 Q30 39 10 29 Z" fill="#2f8f8a" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M78 21 L88 24 L78 27 Z" fill="#d9a441"/>
-  <path d="M22 29 L34 25 L33 30 L48 25 L46 30 L58 27" stroke="#f2cf4a" stroke-width="2" fill="none" stroke-linejoin="round"/>
-  <path d="M68 18 L72 22 M72 18 L68 22" stroke="#f4efe6" stroke-width="2" stroke-linecap="round"/>
-  <path d="M28 25 Q14 12 16 2 Q32 10 44 24 Z" fill="#5fb8b0" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M40 33 Q48 48 62 54 Q60 42 54 33 Z" fill="#5fb8b0" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="104" height="72" viewBox="0 0 104 72">
+  <!-- First-pass zigzag swift, hit frame: wings splayed, crossed-out eye; faces right, centre (52, 36) is the bird's origin. -->
+  <path d="M18 38 L0 26 L9 38 L0 50 Z" fill="#1f5f5c"/>
+  <path d="M14 38 Q34 16 62 16 Q70 8 82 9 Q93 12 93 22 Q92 30 84 34 Q80 56 54 60 Q30 62 14 38 Z" fill="#2f8f8a" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M92 18 L104 22 L92 26 Z" fill="#d9a441"/>
+  <path d="M26 40 L40 34 L39 40 L56 33 L54 40 L68 35" stroke="#f2cf4a" stroke-width="2.5" fill="none" stroke-linejoin="round"/>
+  <path d="M81 15 L87 21 M87 15 L81 21" stroke="#f4efe6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M32 30 Q16 16 18 2 Q36 12 48 28 Z" fill="#5fb8b0" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M46 44 Q54 62 72 70 Q70 56 62 42 Z" fill="#5fb8b0" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
 </svg>

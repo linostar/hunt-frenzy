@@ -51,6 +51,10 @@ const POPUP_RISE := 48.0
 const POPUP_TIME := 0.8
 const EMPTY_CUE_TIME := 0.6
 const SHELL_ICON_SIZE := Vector2(12, 28)
+## The HUD shows a pool of up to this many shells as one icon per shell (hidden as used);
+## a bigger pool (Endless reaches 54) shows one icon and the shells left ("x36"), so the
+## bar never overflows whatever the pool.
+const SHELL_ICONS_MAX := 10
 const EMPTY_TINT := Color(1.0, 0.35, 0.3)
 
 var mode: ModeSpec
@@ -89,6 +93,7 @@ var _empty_tween: Tween
 @onready var _score_label: Label = $Hud/Bar/Stats/Score
 @onready var _wave_label: Label = $Hud/Bar/Stats/Wave
 @onready var _shells: HBoxContainer = $Hud/Bar/Stats/Shells
+@onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Count
 @onready var _empty_label: Label = $Hud/Bar/Stats/Empty
 @onready var _combo_label: Label = $Hud/Bar/Stats/Combo
 @onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped
@@ -232,22 +237,29 @@ func _start_run() -> void:
 		return
 	run_seed = args["seed"]
 	scoring = Scoring.new(mode.combo_cap)
-	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per bird)" % [mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_bird])
+	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit)" % [mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit])
 	_start_wave(1)
 
 
 func _start_wave(index: int) -> void:
 	wave = Wave.endless(mode, index, run_seed)
-	ammo = Ammo.new(wave.shells)
 	wave_clock = -WAVE_LEAD
 	_next_spawn = 0
 	var ids := PackedStringArray()
 	for spawn in wave.spawns:
 		ids.append(spawn.bird_id)
 	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale])
+	set_shell_pool(wave.shells)
+
+
+## Gives the wave a fresh pool of `count` shells and shows it on the HUD: one icon per
+## shell up to SHELL_ICONS_MAX, else one icon and the count (public for tests).
+func set_shell_pool(count: int) -> void:
+	ammo = Ammo.new(count)
 	for icon in _shells.get_children():
-		icon.free()
-	for i in wave.shells:
+		if icon != _shell_count:
+			icon.free()
+	for i in count if count <= SHELL_ICONS_MAX else 1:
 		var icon := TextureRect.new()
 		icon.texture = SHELL_TEXTURE
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -255,6 +267,8 @@ func _start_wave(index: int) -> void:
 		icon.custom_minimum_size = SHELL_ICON_SIZE
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_shells.add_child(icon)
+		_shells.move_child(icon, _shell_count.get_index())
+	_shell_count.visible = count > SHELL_ICONS_MAX
 	_update_hud()
 
 
@@ -337,14 +351,14 @@ func _end_run() -> void:
 	var new_best := _game.record_endless(scoring.score)
 	var save_error := _game.save_error if new_best else ""
 	var stats := {
-		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits,
+		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits, "kills": scoring.kills,
 		"pigeons": scoring.penalties, "escaped": escaped, "best": _game.best_endless, "new_best": new_best, "save_error": save_error,
 	}
 	var best_note := ""
 	if new_best:
 		best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
-	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d refused, %d escaped, best %d%s" % [
-		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, refused, escaped, _game.best_endless, best_note])
+	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped, best %d%s" % [
+		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, _game.best_endless, best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -428,9 +442,12 @@ func _popup(point: Vector2, text: String, color := POPUP_COLOR) -> void:
 func _update_hud() -> void:
 	_score_label.text = "Score %d" % scoring.score
 	_wave_label.text = "Wave %d" % wave.index
-	var icons := _shells.get_children()
-	for i in icons.size():
-		(icons[i] as CanvasItem).visible = i < ammo.shells
+	if _shell_count.visible:
+		_shell_count.text = "x%d" % ammo.shells
+	else:
+		for icon in _shells.get_children():
+			if icon != _shell_count:
+				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
 	_combo_label.text = "x%d" % scoring.multiplier
 	_escaped_label.text = "Escaped %d/%d" % [escaped, mode.escape_limit]
 

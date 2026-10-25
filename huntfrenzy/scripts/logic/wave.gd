@@ -7,7 +7,7 @@ extends RefCounted
 ## mode's golden_bird with chance golden_chance from golden_from_wave on; otherwise it is a
 ## weighted pick among the mix's birds whose from_wave <= n. The speed scale is
 ## min(1 + (n - 1) x speed_growth, speed_cap); the shells are
-## Ammo.pool_size(sum of hits_needed over the spawns, shells_per_bird).
+## Ammo.pool_size(sum of hits_needed over the spawns, shells_per_hit).
 
 
 ## One bird of a wave: its type, when it spawns (seconds from the wave's start) and its
@@ -50,7 +50,7 @@ static func endless(mode: ModeSpec, wave_index: int, run_seed: int) -> Plan:
 		spawn.bird_seed = rng.randi()
 		plan.spawns.append(spawn)
 		hits += hits_needed(Content.bird(spawn.bird_id))
-	plan.shells = Ammo.pool_size(hits, mode.shells_per_bird)
+	plan.shells = Ammo.pool_size(hits, mode.shells_per_hit)
 	return plan
 
 

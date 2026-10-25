@@ -19,8 +19,9 @@ const FILES: Array[String] = ["birds.json", "modes.json"]
 const NAME_MAX := 26
 ## Flight patterns (Flight).
 const PATTERNS: Array[String] = ["rise", "zigzag"]
-## Campaign chapters a bird can be introduced in.
-const CHAPTER_MAX := 4
+## The campaign's chapter ids, in campaign order (main plan: dawn, noon, sunset, night). A
+## bird's `chapter` is one of them. Step 5's chapters.json takes this list over.
+const CHAPTERS: Array[String] = ["dawn", "noon", "sunset", "night"]
 const HP_MAX := 5
 const SPLIT_COUNT_MAX := 4
 const SPEED_MAX := 1000.0
@@ -38,7 +39,7 @@ const SPEED_GROWTH_MAX := 1.0
 const SPEED_CAP_MAX := 5.0
 const SPAWN_INTERVAL_MIN := 0.1
 const SPAWN_INTERVAL_MAX := 10.0
-const SHELLS_PER_BIRD_MAX := 10
+const SHELLS_PER_HIT_MAX := 10
 const COMBO_CAP_MAX := 20
 const ESCAPE_LIMIT_MAX := 100
 ## The latest wave a mode's bird or golden bird can unlock in, and the largest mix weight.
@@ -153,7 +154,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 		item.id = _begin_entry(entry, ["id", "name", "chapter", "pattern", "speed", "wobble", "wobble_hz", "flee_time", "points", "hp", "sprite", "size", "hitbox"], _birds,
 			["splits_into", "split_count", "penalty", "escape_counts"])
 		item.name = _string(entry, "name", NAME_MAX)
-		item.chapter = _int(entry, "chapter", 1, CHAPTER_MAX)
+		item.chapter = _enum(entry, "chapter", CHAPTERS)
 		item.pattern = _enum(entry, "pattern", PATTERNS)
 		item.speed = _float(entry, "speed", 1.0, SPEED_MAX)
 		item.wobble = _float(entry, "wobble", 0.0, WOBBLE_MAX)
@@ -166,7 +167,6 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 			for frame in item.frames():
 				if not ResourceLoader.exists(item.texture_path(frame)):
 					_error("sprite", "unknown sprite '%s' (no %s)" % [item.sprite, item.texture_path(frame)])
-					break
 		item.size = _vector(entry, "size", SIZE_MIN, SIZE_MAX)
 		item.hitbox = _hitbox(entry, item.size)
 		# splits_into and split_count come together (the splitter); the reference is
@@ -194,7 +194,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 static func _load_modes(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := ModeSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_bird", "combo_cap", "escape_limit"], _modes)
+		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "escape_limit"], _modes)
 		item.name = _string(entry, "name", NAME_MAX)
 		item.birds = _mix(entry, "birds")
 		item.golden_bird = _reference(entry, "golden_bird", _birds, "bird")
@@ -206,7 +206,7 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 		item.speed_growth = _float(entry, "speed_growth", 0.0, SPEED_GROWTH_MAX)
 		item.speed_cap = _float(entry, "speed_cap", 1.0, SPEED_CAP_MAX)
 		item.spawn_interval = _float(entry, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
-		item.shells_per_bird = _int(entry, "shells_per_bird", 1, SHELLS_PER_BIRD_MAX)
+		item.shells_per_hit = _int(entry, "shells_per_hit", 1, SHELLS_PER_HIT_MAX)
 		item.combo_cap = _int(entry, "combo_cap", 1, COMBO_CAP_MAX)
 		item.escape_limit = _int(entry, "escape_limit", 1, ESCAPE_LIMIT_MAX)
 		if item.id != "":

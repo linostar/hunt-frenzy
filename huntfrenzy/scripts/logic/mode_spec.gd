@@ -29,7 +29,7 @@ var speed_cap := 0.0
 ## Seconds between two spawns of a wave.
 var spawn_interval := 0.0
 ## Shells per hit a wave needs (Wave.hits_needed).
-var shells_per_bird := 0
+var shells_per_hit := 0
 ## The highest combo multiplier.
 var combo_cap := 0
 ## Escaped birds that end a run.

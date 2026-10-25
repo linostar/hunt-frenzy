@@ -1,8 +1,8 @@
 extends SceneTree
 ## Headless content tests: loads huntfrenzy/data/*.json through Content and checks every
-## invariant of huntfrenzy/data/SCHEMA.md (I1..I11) against the real data, then proves
+## invariant of huntfrenzy/data/SCHEMA.md (I1..I12) against the real data, then proves
 ## each one fires on a malformed copy of it (the loader's I1-I4 with the exact error
-## lines; I5-I11 with the exact problems their checks report).
+## lines; I5-I12 with the exact problems their checks report).
 ##   "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func that reports through _check(), and append it to
@@ -13,6 +13,11 @@ const WATCHDOG_MSEC := 60000
 ## I5: the share of a hitbox's sample points (one per base unit) that must lie on opaque
 ## pixels of each flap frame (the rest is anti-aliasing along the outline).
 const HITBOX_ART_MIN := 0.98
+## I5: the share of each flap frame's opaque pixels (one sample per base unit) that its
+## hitbox must cover. The real art measures 0.60 (splitter fly_1) to 0.80 (goose fly_2):
+## the flapping wings, beaks and tails lie outside every hitbox. A box on the body alone
+## covers well under a third.
+const HITBOX_COVER_MIN := 0.5
 ## A pixel at least this opaque is part of the bird.
 const OPAQUE_ALPHA := 0.5
 ## I6: the most a decoy's silhouette may overlap any other type's (intersection over
@@ -21,8 +26,9 @@ const OPAQUE_ALPHA := 0.5
 ## overlap the goose by 0.93-0.99); different shapes stay well under 0.85.
 const DECOY_OVERLAP_MAX := 0.85
 const SILHOUETTE_GRID := Vector2i(48, 36)
-## I10: the campaign chapters, each introducing at least one bird type.
-const CHAPTERS := 4
+## I12: the shortest side a hitbox's bounding box may have, in base units: the game's
+## smallest touch target (CLAUDE.md, every interactive Control is at least 44x44).
+const HITBOX_SIDE_MIN := 44.0
 
 var _failures: Array[String] = []
 var _passed := 0
@@ -62,6 +68,7 @@ func _tests() -> Array[Callable]:
 		_test_i9_first_wave_plain,
 		_test_i10_roster_and_chapters,
 		_test_i11_fits_field,
+		_test_i12_hitbox_touch_size,
 	]
 
 
@@ -93,7 +100,8 @@ func _test_lookup_api() -> void:
 	var ids := Content.birds().map(func(spec: BirdSpec) -> String: return spec.id)
 	_check(ids == ["goose", "armored", "splitter", "gosling", "zigzag", "golden", "decoy"], "birds() lists every type in data order", str(ids))
 	var goose := Content.bird("goose")
-	_check(goose.points == 100 and goose.hp == 1 and goose.pattern == "rise" and goose.chapter == 1 and goose.size == Vector2(96, 72) and goose.escape_counts and goose.penalty == 0 and goose.splits_into == "", "bird() returns the goose's fields", str(goose))
+	_check(goose.points == 100 and goose.hp == 1 and goose.pattern == "rise" and goose.chapter == "dawn" and goose.size == Vector2(96, 72) and goose.escape_counts and goose.penalty == 0 and goose.splits_into == "", "bird() returns the goose's fields",
+		"points %d, hp %d, pattern %s, chapter %s, size %s, escape_counts %s, penalty %d, splits_into '%s'" % [goose.points, goose.hp, goose.pattern, goose.chapter, goose.size, goose.escape_counts, goose.penalty, goose.splits_into])
 	var splitter := Content.bird("splitter")
 	_check(splitter.splits_into == "gosling" and splitter.split_count == 2, "the splitter splits into 2 goslings", "%s x%d" % [splitter.splits_into, splitter.split_count])
 	var decoy := Content.bird("decoy")
@@ -129,12 +137,12 @@ func _test_i1_files_ids_and_keys() -> void:
 	_expect_load_errors("I1 bird twice in a mix", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][1]["bird"] = "goose"),
 		["data/modes.json [endless] birds[1].bird: 'goose' is already in the mix (birds[0])"])
 	_expect_load_errors("I1 mix with nothing from wave 1", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][0]["from_wave"] = 2),
-		["data/modes.json [endless] birds: no bird from wave 1"])
+		["data/modes.json [endless] birds: no bird from wave 1 (wave 1 would have nothing to spawn)"])
 	_expect_load_errors("I1 entry not an object", _with_text("modes.json", "[5]"),
 		["data/modes.json [#0] (entry): expected Dictionary, got float"])
 	_expect_load_errors("I1 empty file", _with_text("modes.json", "[]"), ["data/modes.json [-] (file): has no entries"])
 	_expect_load_errors("I1 top level not an array", _with_text("modes.json", "{}"), ["data/modes.json [-] (file): top level must be an array, got Dictionary"])
-	_expect_load_errors("I1 bad JSON", _with_text("modes.json", "[{"), ["data/modes.json [-] (file): JSON parse error at line 1"])
+	_expect_load_errors("I1 bad JSON", _with_text("modes.json", "[{"), ["data/modes.json [-] (file): JSON parse error at line 1: Expected '}'"])
 	var texts := _real_texts()
 	texts.erase("modes.json")
 	_expect_load_errors("I1 missing file", _load_quietly(texts), ["data/modes.json [-] (file): missing"])
@@ -146,10 +154,12 @@ func _test_i2_types_and_ranges() -> void:
 		["data/birds.json [goose] speed: expected float, got String"])
 	_expect_load_errors("I2 non-integer int", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 1.5),
 		["data/birds.json [goose] hp: expected int, got 1.5"])
-	_expect_load_errors("I2 chapter out of range", _mutated("birds.json", func(data: Array) -> void: data[0]["chapter"] = 5),
-		["data/birds.json [goose] chapter: 5 is outside 1..4"])
+	_expect_load_errors("I2 unknown chapter id", _mutated("birds.json", func(data: Array) -> void: data[0]["chapter"] = "dusk"),
+		["data/birds.json [goose] chapter: 'dusk' is not one of [\"dawn\", \"noon\", \"sunset\", \"night\"]"])
+	_expect_load_errors("I2 chapter as a number", _mutated("birds.json", func(data: Array) -> void: data[0]["chapter"] = 1),
+		["data/birds.json [goose] chapter: expected String, got float"])
 	_expect_load_errors("I2 unknown pattern", _mutated("birds.json", func(data: Array) -> void: data[0]["pattern"] = "loop"),
-		["data/birds.json [goose] pattern: 'loop' is not one of"])
+		["data/birds.json [goose] pattern: 'loop' is not one of [\"rise\", \"zigzag\"]"])
 	_expect_load_errors("I2 hp out of range", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 0),
 		["data/birds.json [goose] hp: 0 is outside 1..5"])
 	_expect_load_errors("I2 escape_counts not a bool", _mutated("birds.json", func(data: Array) -> void: data[6]["escape_counts"] = "no"),
@@ -164,6 +174,10 @@ func _test_i2_types_and_ranges() -> void:
 		["data/modes.json [endless] birds[1].weight: 0 is outside 1..100"])
 	_expect_load_errors("I2 mix from_wave not an int", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][1]["from_wave"] = "3"),
 		["data/modes.json [endless] birds[1].from_wave: expected int, got String"])
+	_expect_load_errors("I2 mix from_wave out of range", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][1]["from_wave"] = 1001),
+		["data/modes.json [endless] birds[1].from_wave: 1001 is outside 1..1000"])
+	_expect_load_errors("I2 golden_from_wave out of range", _mutated("modes.json", func(data: Array) -> void: data[0]["golden_from_wave"] = 0),
+		["data/modes.json [endless] golden_from_wave: 0 is outside 1..1000"])
 
 
 ## I3: every reference resolves (mix birds, golden_bird, splits_into) and every sprite has
@@ -176,9 +190,12 @@ func _test_i3_references() -> void:
 	_expect_load_errors("I3 unknown split child", _mutated("birds.json", func(data: Array) -> void: data[2]["splits_into"] = "chick"),
 		["data/birds.json [splitter] splits_into: unknown bird id 'chick'"])
 	_expect_load_errors("I3 unknown sprite", _mutated("birds.json", func(data: Array) -> void: data[0]["sprite"] = "swan"),
-		["data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_1.svg)"])
+		["data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_1.svg)",
+		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_2.svg)",
+		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_hit.svg)"])
 	_expect_load_errors("I3 hp 2 without damaged frames", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 2),
-		["data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_1.svg)"])
+		["data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_1.svg)",
+		"data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_2.svg)"])
 
 
 ## I4: every hitbox has at least 3 points, all inside the sprite, and is a simple polygon.
@@ -186,23 +203,28 @@ func _test_i4_hitbox_geometry() -> void:
 	_expect_load_errors("I4 too few points", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[0, 0], [10, 0]]),
 		["data/birds.json [goose] hitbox: has 2 points, needs at least 3"])
 	_expect_load_errors("I4 point outside the sprite", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"][0] = [-50, 0]),
-		["data/birds.json [goose] hitbox[0]: (-50.0, 0.0) is outside the sprite"])
+		["data/birds.json [goose] hitbox[0]: (-50.0, 0.0) is outside the sprite (±(48.0, 36.0))"])
 	_expect_load_errors("I4 self-crossing hitbox", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-10, -10], [10, 10], [10, -10], [-10, 10]]),
 		["data/birds.json [goose] hitbox: edges 0 and 2 cross (not a simple polygon)"])
 
 
 ## I5: every hitbox matches its art: at least HITBOX_ART_MIN of the points sampled inside
-## it lie on opaque pixels of each flap frame (damaged ones included).
+## it lie on opaque pixels of each flap frame (damaged ones included), and it covers at least
+## HITBOX_COVER_MIN of each flap frame's opaque pixels.
 func _test_i5_hitbox_matches_art() -> void:
 	_check(_i5_problems().is_empty(), "I5 every hitbox lies on its art", "\n".join(_i5_problems()))
 	# A hitbox in the sprite's empty top-left corner: inside the sprite, simple, off the art.
 	_expect_problems("I5 a hitbox off the art", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-46, -34], [-30, -34], [-46, -20]]), _i5_problems,
-		["goose fly_1: 0.0% of the hitbox's sample points", "goose fly_2: 0.0% of the hitbox's sample points"])
+		["goose fly_1: 0.0% of the hitbox's sample points lie on opaque art (needs 98%)", "goose fly_1: the hitbox covers 0.0% of the opaque art (needs 50%)",
+		"goose fly_2: 0.0% of the hitbox's sample points lie on opaque art (needs 98%)", "goose fly_2: the hitbox covers 0.0% of the opaque art (needs 50%)"])
 	# The goose's hitbox moved 8 units up: its top now covers sky above the head.
 	_expect_problems("I5 a shifted hitbox", _mutated("birds.json", func(data: Array) -> void:
 		for point: Array in data[0]["hitbox"]:
 			point[1] = point[1] - 8), _i5_problems,
-		["goose fly_1:", "goose fly_2:"])
+		["goose fly_1: 79.6% of the hitbox's sample points lie on opaque art (needs 98%)", "goose fly_2: 72.5% of the hitbox's sample points lie on opaque art (needs 98%)"])
+	# A 20x16 box on the goose's body: all of it on the art, but most of the art outside it.
+	_expect_problems("I5 a hitbox covering little of the art", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-10, -2], [10, -2], [10, 14], [-10, 14]]), _i5_problems,
+		["goose fly_1: the hitbox covers 12.8% of the opaque art (needs 50%)", "goose fly_2: the hitbox covers 14.0% of the opaque art (needs 50%)"])
 
 
 ## I6: a bird has a penalty exactly when its escape does not count (the decoy); a decoy
@@ -211,15 +233,16 @@ func _test_i5_hitbox_matches_art() -> void:
 func _test_i6_decoy() -> void:
 	_check(_i6_problems().is_empty(), "I6 the decoy rules hold", "\n".join(_i6_problems()))
 	_expect_problems("I6 penalty with a counted escape", _mutated("birds.json", func(data: Array) -> void: (data[6] as Dictionary).erase("escape_counts")), _i6_problems,
-		["decoy: penalty 200 with escape_counts true"])
+		["decoy: penalty 200 with escape_counts true (a decoy has a penalty and an uncounted escape; no other bird has either)"])
 	_expect_problems("I6 uncounted escape without a penalty", _mutated("birds.json", func(data: Array) -> void: data[0]["escape_counts"] = false), _i6_problems,
-		["goose: penalty 0 with escape_counts false"])
+		["goose: penalty 0 with escape_counts false (a decoy has a penalty and an uncounted escape; no other bird has either)"])
 	_expect_problems("I6 a decoy that scores", _mutated("birds.json", func(data: Array) -> void: data[6]["points"] = 50), _i6_problems,
 		["decoy: a decoy scores no points (points 50)"])
 	_expect_problems("I6 a bird that scores nothing", _mutated("birds.json", func(data: Array) -> void: data[0]["points"] = 0), _i6_problems,
-		["goose: points 0"])
+		["goose: points 0 (every bird but the decoy scores)"])
 	_expect_problems("I6 a decoy shaped like a goose", _mutated("birds.json", func(data: Array) -> void: data[6]["sprite"] = "golden"), _i6_problems,
-		["decoy: its silhouette overlaps goose's", "decoy: its silhouette overlaps armored's", "decoy: its silhouette overlaps golden's"])
+		["decoy: its silhouette overlaps goose's by 0.99 (at most 0.85: a decoy differs by shape)", "decoy: its silhouette overlaps armored's by 0.93 (at most 0.85: a decoy differs by shape)",
+		"decoy: its silhouette overlaps golden's by 1.00 (at most 0.85: a decoy differs by shape)"])
 
 
 ## I7: a splitter has hp 1 (its first hit splits it); its child has hp 1, does not split,
@@ -228,14 +251,16 @@ func _test_i7_split() -> void:
 	_check(_i7_problems().is_empty(), "I7 the split rules hold", "\n".join(_i7_problems()))
 	_expect_problems("I7 a splitter with hp 2", _mutated("birds.json", func(data: Array) -> void: data[2]["hp"] = 2), _i7_problems,
 		["splitter: a splitter has hp 1 (its first hit splits it), got 2"],
-		["data/birds.json [splitter] sprite: unknown sprite 'splitter' (no res://art/splitter_damaged_fly_1.svg)"])
+		["data/birds.json [splitter] sprite: unknown sprite 'splitter' (no res://art/splitter_damaged_fly_1.svg)",
+		"data/birds.json [splitter] sprite: unknown sprite 'splitter' (no res://art/splitter_damaged_fly_2.svg)"])
 	_expect_problems("I7 a child with hp 2", _mutated("birds.json", func(data: Array) -> void: data[3]["hp"] = 2), _i7_problems,
 		["gosling: a split child has hp 1, got 2"],
-		["data/birds.json [gosling] sprite: unknown sprite 'gosling' (no res://art/gosling_damaged_fly_1.svg)"])
+		["data/birds.json [gosling] sprite: unknown sprite 'gosling' (no res://art/gosling_damaged_fly_1.svg)",
+		"data/birds.json [gosling] sprite: unknown sprite 'gosling' (no res://art/gosling_damaged_fly_2.svg)"])
 	_expect_problems("I7 a child slower than its parent", _mutated("birds.json", func(data: Array) -> void: data[3]["speed"] = 100), _i7_problems,
 		["gosling: a split child is faster than splitter (speed 100.0 vs 120.0)"])
 	_expect_problems("I7 a child no smaller than its parent", _mutated("birds.json", func(data: Array) -> void: data[3]["size"] = [104, 80]), _i7_problems,
-		["gosling: a split child is smaller than splitter"])
+		["gosling: a split child is smaller than splitter (size (104.0, 80.0) vs (104.0, 80.0))"])
 	_expect_problems("I7 a child in a wave mix", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"].append({"bird": "gosling", "from_wave": 9, "weight": 1})), _i7_problems,
 		["gosling: a split child never spawns from waves (endless)"])
 
@@ -264,13 +289,13 @@ func _test_i9_first_wave_plain() -> void:
 	_expect_problems("I9 golden in wave 1", _mutated("modes.json", func(data: Array) -> void: data[0]["golden_from_wave"] = 1), _i9_problems,
 		["endless: golden_from_wave 1 (golden birds start at wave 2 or later)"])
 	_expect_problems("I9 an armored bird in wave 1", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][1]["from_wave"] = 1), _i9_problems,
-		["endless: armored is in wave 1 but is not a plain rising bird"])
+		["endless: armored is in wave 1 but is not a plain rising bird (rise, hp 1, no split, no penalty)"])
 	_expect_problems("I9 a zigzag in wave 1", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][4]["from_wave"] = 1), _i9_problems,
-		["endless: zigzag is in wave 1 but is not a plain rising bird"])
+		["endless: zigzag is in wave 1 but is not a plain rising bird (rise, hp 1, no split, no penalty)"])
 
 
 ## I10: the roster holds every kind (plain, armored, splitter, zigzag, golden, decoy),
-## each chapter 1..CHAPTERS introduces at least one bird, and every bird can appear (in a
+## each chapter of Content.CHAPTERS introduces at least one bird, and every bird can appear (in a
 ## mix, as a golden bird or as a split child).
 func _test_i10_roster_and_chapters() -> void:
 	_check(_i10_problems().is_empty(), "I10 every kind, chapter and bird is covered", "\n".join(_i10_problems()))
@@ -279,10 +304,10 @@ func _test_i10_roster_and_chapters() -> void:
 	_expect_problems("I10 no armored bird", _mutated("birds.json", func(data: Array) -> void:
 		data[1]["hp"] = 1), _i10_problems,
 		["no armored bird (hp 2 or more)"])
-	_expect_problems("I10 a chapter introducing nothing", _mutated("birds.json", func(data: Array) -> void: data[4]["chapter"] = 3), _i10_problems,
-		["chapter 4 introduces no bird"])
+	_expect_problems("I10 a chapter introducing nothing", _mutated("birds.json", func(data: Array) -> void: data[4]["chapter"] = "sunset"), _i10_problems,
+		["chapter night introduces no bird"])
 	_expect_problems("I10 a bird that never appears", _mutated("modes.json", func(data: Array) -> void: (data[0]["birds"] as Array).pop_back()), _i10_problems,
-		["no zigzag bird (pattern zigzag)", "chapter 4 introduces no bird", "zigzag never appears"])
+		["no zigzag bird (pattern zigzag)", "chapter night introduces no bird", "zigzag never appears (not in a mix, not a golden bird, not a split child)"])
 
 
 ## I11: every bird fits the field it flies in (Play.FIELD): narrower than it, and its
@@ -290,7 +315,18 @@ func _test_i10_roster_and_chapters() -> void:
 func _test_i11_fits_field() -> void:
 	_check(_i11_problems().is_empty(), "I11 every bird fits the field", "\n".join(_i11_problems()))
 	_expect_problems("I11 a bird too tall with its wobble", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = [96, 360]), _i11_problems,
-		["goose: size (96.0, 360.0) with wobble 14.0 does not fit the field"])
+		["goose: size (96.0, 360.0) with wobble 14.0 does not fit the field (960.0, 384.0)"])
+
+
+## I12: every hitbox's bounding box is at least HITBOX_SIDE_MIN on each side, so a
+## fingertip can hit every bird.
+func _test_i12_hitbox_touch_size() -> void:
+	_check(_i12_problems().is_empty(), "I12 every hitbox is big enough to touch", "\n".join(_i12_problems()))
+	# The step 3 gosling: 56x42 art with a 38x27 hitbox.
+	_expect_problems("I12 a hitbox smaller than a fingertip", _mutated("birds.json", func(data: Array) -> void:
+		data[3]["size"] = [56, 42]
+		data[3]["hitbox"] = [[-18, 6], [-14, -2], [-4, -4], [6, -3], [8, -10], [13, -12], [19, -9], [20, -3], [14, 2], [12, 9], [-4, 15], [-14, 12]]), _i12_problems,
+		["gosling: hitbox bounding box (38.0, 27.0) is under 44 base units on a side (the smallest touch target)"])
 
 
 func _i5_problems() -> Array[String]:
@@ -303,17 +339,21 @@ func _i5_problems() -> Array[String]:
 			var scale := Vector2(art.get_size()) / spec.size
 			var inside := 0
 			var on_art := 0
+			var opaque := 0
 			for y in int(spec.size.y):
 				for x in int(spec.size.x):
 					var local := Vector2(x + 0.5, y + 0.5) - spec.size / 2.0
-					if not Geometry2D.is_point_in_polygon(local, spec.hitbox):
-						continue
-					inside += 1
-					if art.get_pixelv(Vector2i(((local + spec.size / 2.0) * scale).floor())).a >= OPAQUE_ALPHA:
-						on_art += 1
+					var in_hitbox := Geometry2D.is_point_in_polygon(local, spec.hitbox)
+					var on := art.get_pixelv(Vector2i(((local + spec.size / 2.0) * scale).floor())).a >= OPAQUE_ALPHA
+					inside += int(in_hitbox)
+					opaque += int(on)
+					on_art += int(in_hitbox and on)
 			var share := float(on_art) / inside if inside > 0 else 0.0
 			if share < HITBOX_ART_MIN:
 				problems.append("%s %s: %.1f%% of the hitbox's sample points lie on opaque art (needs %d%%)" % [spec.id, frame, share * 100.0, roundi(HITBOX_ART_MIN * 100.0)])
+			var cover := float(on_art) / opaque if opaque > 0 else 0.0
+			if cover < HITBOX_COVER_MIN:
+				problems.append("%s %s: the hitbox covers %.1f%% of the opaque art (needs %d%%)" % [spec.id, frame, cover * 100.0, roundi(HITBOX_COVER_MIN * 100.0)])
 	return problems
 
 
@@ -413,9 +453,9 @@ func _i10_problems() -> Array[String]:
 	for kind: String in kinds:
 		if not birds.any(func(spec: BirdSpec) -> bool: return appears.has(spec.id) and kinds[kind].call(spec)):
 			problems.append("no %s" % kind)
-	for chapter in range(1, CHAPTERS + 1):
+	for chapter in Content.CHAPTERS:
 		if not birds.any(func(spec: BirdSpec) -> bool: return spec.chapter == chapter and appears.has(spec.id)):
-			problems.append("chapter %d introduces no bird" % chapter)
+			problems.append("chapter %s introduces no bird" % chapter)
 	for spec in birds:
 		if not appears.has(spec.id):
 			problems.append("%s never appears (not in a mix, not a golden bird, not a split child)" % spec.id)
@@ -427,6 +467,17 @@ func _i11_problems() -> Array[String]:
 	for spec in Content.birds():
 		if spec.size.x >= Play.FIELD.size.x or spec.size.y + 2.0 * spec.wobble >= Play.FIELD.size.y:
 			problems.append("%s: size %s with wobble %s does not fit the field %s" % [spec.id, spec.size, spec.wobble, Play.FIELD.size])
+	return problems
+
+
+func _i12_problems() -> Array[String]:
+	var problems: Array[String] = []
+	for spec in Content.birds():
+		var box := Rect2(spec.hitbox[0], Vector2.ZERO) if not spec.hitbox.is_empty() else Rect2()
+		for point in spec.hitbox:
+			box = box.expand(point)
+		if box.size.x < HITBOX_SIDE_MIN or box.size.y < HITBOX_SIDE_MIN:
+			problems.append("%s: hitbox bounding box %s is under %d base units on a side (the smallest touch target)" % [spec.id, box.size, roundi(HITBOX_SIDE_MIN)])
 	return problems
 
 
@@ -494,14 +545,14 @@ func _load_quietly(texts: Dictionary[String, String]) -> Array[String]:
 	return Content.errors()
 
 
-## The loader reported exactly `expected` (each a prefix of one error, in order).
+## The loader reported exactly `expected` (each the whole error line, in order).
 func _expect_load_errors(label: String, errors: Array[String], expected: Array[String]) -> void:
 	_check(_matches(errors, expected), label + " is reported", "got:\n%s\nexpected:\n%s" % ["\n".join(errors), "\n".join(expected)])
 	Content.reload()
 
 
 ## `check` (an invariant's problem list) on the mutated data now loaded reports exactly
-## `expected` (each a prefix of one problem, in order), and the loader reported exactly
+## `expected` (each the whole problem line, in order), and the loader reported exactly
 ## `load_errors` (none, unless the mutation also breaks a loader rule), so it is the
 ## invariant's check that catches the mutation.
 func _expect_problems(label: String, errors: Array[String], check: Callable, expected: Array[String], load_errors: Array[String] = []) -> void:
@@ -515,7 +566,7 @@ func _matches(found: Array[String], expected: Array[String]) -> bool:
 	if found.size() != expected.size():
 		return false
 	for i in found.size():
-		if not found[i].begins_with(expected[i]):
+		if found[i] != expected[i]:
 			return false
 	return true
 
