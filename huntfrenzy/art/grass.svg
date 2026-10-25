@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120" viewBox="0 0 240 120">
+  <!-- First-pass front grass strip, tiled across the screen; blade tips above y 24, solid below. -->
+  <path d="M0 24 L10 2 L18 24 L30 6 L40 24 L52 0 L60 24 L72 8 L82 24 L94 2 L102 24 L116 6 L124 24 L136 0 L146 24 L158 8 L166 24 L178 2 L188 24 L200 6 L210 24 L222 0 L230 24 L240 24 L240 120 L0 120 Z" fill="#4f7a3c"/>
+  <rect y="24" width="240" height="96" fill="#4f7a3c"/>
+  <path d="M8 40 L14 28 M50 46 L56 30 M100 40 L106 28 M150 46 L156 30 M200 40 L206 28" stroke="#6c9a4f" stroke-width="3" stroke-linecap="round"/>
+</svg>

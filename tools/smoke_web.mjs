@@ -7,18 +7,25 @@
 // a screenshot with nothing drawn (taken once the title has arrived: "[Game] Arrived at
 // TITLE"). Then:
 //   desktop, mobile-landscape: tap Play where the title logged it ("[Title] Play button
-//     at ...", base units) with the mouse / a CDP touch, and require "[Title] Play pressed (1)";
+//     at ...", base units) with the mouse / a CDP touch, require "[Title] Play pressed (1)"
+//     and the play scene, then shoot the run's first goose where it logs itself ("[Bird]
+//     goose #1 at (x, y) v (vx, vy)", base units, every 0.25 s), led by its velocity for
+//     the time since the line arrived plus AIM_LATENCY_S, and require "[Play] Hit goose #1"
+//     (up to HIT_ATTEMPTS shots; a miss is logged and the next shot aims again); then a
+//     visibilitychange with document.hidden true must log "[Play] Paused (page hidden)";
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Play is and Enter press nothing, turn the phone to landscape (844x390),
 //     require "[Game] Rotate overlay hidden ... unpaused", then tap Play and require the press;
-//   keyboard: Tab (shows the focus ring) and Enter on the focused Play, require the press.
-// Not covered yet: hitting the first bird of level 1 (plan AC 32) needs the play scene of step 2.
+//   keyboard: Tab (shows the focus ring) and Enter on the focused Play, require the press and
+//     the play scene; Escape opens the pause menu, Enter on the focused Resume resumes,
+//     Escape opens it again, Down Down Enter quits to the title.
 // Usage: node tools/smoke_web.mjs [buildDir]   (default: build/web)
 // Env:   SMOKE_BOOT_TIMEOUT_MS (default 30000), SMOKE_SETTLE_MS (default 2000),
 //        SMOKE_STEP_TIMEOUT_MS (each waited-for log line, default 20000)
 // Screenshots (next to buildDir): build/smoke-<run>.png (title) and build/smoke-<run>-play.png
-// (after Play), plus build/smoke-mobile-portrait-rotate.png (the overlay) and
-// build/smoke-keyboard-focus.png (the focus ring after Tab).
+// (after the goose is hit; the run's start for keyboard; the title for portrait), plus
+// build/smoke-mobile-portrait-rotate.png (the overlay), build/smoke-keyboard-focus.png (the
+// focus ring after Tab) and build/smoke-keyboard-pause.png (the pause menu).
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome, serveBuild } from './web_util.mjs';
@@ -47,15 +54,23 @@ const BASE = { width: 960, height: 540 };
 // How long a blocked input is given to (wrongly) reach the game.
 const BLOCKED_WAIT_MS = 1500;
 const PLAY_RECT = /^\[Title\] Play button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const FIRST_GOOSE = /^\[Bird\] goose #1 at \(([\d.-]+), ([\d.-]+)\) v \(([\d.-]+), ([\d.-]+)\)/;
+// Shot outcomes the play scene logs for a shot.
+const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused)/;
+// The grass line (Play.GRASS_Y): the goose is aimed at once its centre is well above it.
+const AIM_ABOVE_Y = 400;
+// Seconds from a click or touch to the frame that handles it.
+const AIM_LATENCY_S = 0.05;
+const HIT_ATTEMPTS = 4;
 
 // Waits until a console line logged at or after index `from` matches `pattern` (a RegExp)
-// and returns its match.
+// and returns its match (with `index`: the line's index in logs).
 async function waitForLog(page, logs, pattern, what, from = 0) {
   const deadline = Date.now() + STEP_TIMEOUT_MS;
   while (Date.now() < deadline) {
     for (let i = logs.length - 1; i >= from; i--) {
       const match = logs[i].match(pattern);
-      if (match) return match;
+      if (match) return Object.assign(match, { index: i });
     }
     await page.waitForTimeout(50);
   }
@@ -76,15 +91,40 @@ async function pointerFor(page, context, run) {
   };
 }
 
+// A base-unit point in page coordinates. Godot fits the 960x540 base by the smaller ratio
+// and expands the other axis from the top-left; the web reports no safe-area insets.
+async function pagePoint(page, x, y) {
+  const box = await page.locator('canvas').boundingBox();
+  const scale = Math.min(box.width / BASE.width, box.height / BASE.height);
+  return { x: box.x + x * scale, y: box.y + y * scale };
+}
+
 // The centre of the Play button in page coordinates, from the latest logged rect.
-// Godot fits the 960x540 base by the smaller ratio and expands the other axis from the
-// top-left; the web reports no safe-area insets.
 async function playPoint(page, logs) {
   const match = await waitForLog(page, logs, PLAY_RECT, 'the Play button layout');
   const [x, y, w, h] = match.slice(1).map(Number);
-  const box = await page.locator('canvas').boundingBox();
-  const scale = Math.min(box.width / BASE.width, box.height / BASE.height);
-  return { x: box.x + (x + w / 2) * scale, y: box.y + (y + h / 2) * scale };
+  return pagePoint(page, x + w / 2, y + h / 2);
+}
+
+// Shoots the run's first goose where it last logged itself, led by its velocity for the
+// age of that line plus AIM_LATENCY_S; retries on a miss. Throws unless it is hit.
+async function shootFirstGoose(page, logs, logTimes, pointer, from) {
+  const outcomes = [];
+  for (let attempt = 1; attempt <= HIT_ATTEMPTS; attempt++) {
+    let track;
+    do {
+      track = await waitForLog(page, logs, FIRST_GOOSE, 'the first goose to fly above the grass', from);
+      from = track.index + 1;
+    } while (Number(track[2]) > AIM_ABOVE_Y);
+    const [x, y, vx, vy] = track.slice(1).map(Number);
+    const lead = (Date.now() - logTimes[track.index]) / 1000 + AIM_LATENCY_S;
+    const shotFrom = logs.length;
+    await pointer.tap(await pagePoint(page, x + vx * lead, y + vy * lead));
+    const outcome = await waitForLog(page, logs, SHOT_RESULT, 'the shot to be logged', shotFrom);
+    outcomes.push(outcome[1]);
+    if (outcome[1] === 'Hit goose #1') return outcomes;
+  }
+  throw new Error(`the first goose was not hit in ${HIT_ATTEMPTS} shots: ${outcomes.join(', ')}`);
 }
 
 function pressCount(logs) {
@@ -92,7 +132,7 @@ function pressCount(logs) {
 }
 
 // The run's scripted path once the title is up; throws on a missing log line.
-async function playPath(page, context, run, logs, shot) {
+async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.keyboard) {
     // Tab is keyboard navigation, which shows the focus ring (hidden on arrival) before the press.
     await page.keyboard.press('Tab');
@@ -100,7 +140,23 @@ async function playPath(page, context, run, logs, shot) {
     await shot('focus');
     await page.keyboard.press('Enter');
     await waitForLog(page, logs, /^\[Title\] Play pressed \(1\)/, 'Play to be pressed (Tab, Enter on the focused Play)');
+    await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene');
     await shot('play');
+    let from = logs.length;
+    await page.keyboard.press('Escape');
+    await waitForLog(page, logs, /^\[Play\] Paused \(Escape\)/, 'Escape to open the pause menu', from);
+    await page.waitForTimeout(300);
+    await shot('pause');
+    from = logs.length;
+    await page.keyboard.press('Enter');
+    await waitForLog(page, logs, /^\[Play\] Resumed/, 'Enter on the focused Resume to resume', from);
+    from = logs.length;
+    await page.keyboard.press('Escape');
+    await waitForLog(page, logs, /^\[Play\] Paused \(Escape\)/, 'Escape to open the pause menu again', from);
+    from = logs.length;
+    for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Play\] Left the run \(Quit to title\)/, 'Down, Down, Enter to press Quit to title', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after quitting', from);
     return [];
   }
   const pointer = await pointerFor(page, context, run);
@@ -122,13 +178,29 @@ async function playPath(page, context, run, logs, shot) {
   }
   await pointer.tap(await playPoint(page, logs));
   await waitForLog(page, logs, /^\[Title\] Play pressed \(1\)/, `Play to be pressed (${run.context.hasTouch ? 'touch' : 'mouse'} tap)`);
+  if (run.portrait) {
+    await shot('play');
+    return failures;
+  }
+  const arrived = await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene');
+  const outcomes = await shootFirstGoose(page, logs, logTimes, pointer, arrived.index + 1);
+  console.log(`[${run.name}] shots at the first goose: ${outcomes.join(', ')}`);
   await shot('play');
+  // The page becoming hidden (another tab, the phone's home button) pauses the run.
+  const hiddenFrom = logs.length;
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await waitForLog(page, logs, /^\[Play\] Paused \(page hidden\)/, 'the hidden page to pause the run', hiddenFrom);
   return failures;
 }
 
 async function smoke(browser, url, run) {
   const failures = [];
   const logs = [];
+  // When each console line arrived (Date.now()), for aiming at a logged position.
+  const logTimes = [];
   const context = await browser.newContext(run.context);
   try {
     const page = await context.newPage();
@@ -139,6 +211,7 @@ async function smoke(browser, url, run) {
       // SwiftShader emits GPU performance warnings; only real errors fail the test.
       if (m.type() === 'error') failures.push(`console error: ${m.text()}`);
       logs.push(m.text());
+      logTimes.push(Date.now());
     });
     const shot = async (tag) => {
       const path = join(buildDir, '..', `smoke-${run.name}-${tag}.png`);
@@ -193,8 +266,8 @@ async function smoke(browser, url, run) {
       return colors.size;
     }, png.toString('base64'));
     if (distinctColors < 2) failures.push('screenshot is a single flat colour (nothing rendered)');
-    if (failures.length === 0) failures.push(...await playPath(page, context, run, logs, shot));
-    for (const line of logs.filter((l) => /^\[(Game|Title)\]/.test(l))) console.log(`[${run.name}] ${line}`);
+    if (failures.length === 0) failures.push(...await playPath(page, context, run, logs, logTimes, shot));
+    for (const line of logs.filter((l) => /^\[(Game|Title|Play|Results)\]/.test(l))) console.log(`[${run.name}] ${line}`);
   } catch (err) {
     failures.push(`smoke test aborted: ${err.message}`);
     // The game's last log lines show where the run got stuck.

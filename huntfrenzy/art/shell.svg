@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="12" height="28" viewBox="0 0 12 28">
+  <!-- First-pass shotgun shell for the HUD. -->
+  <rect x="1" y="1" width="10" height="19" rx="2" fill="#c8402e" stroke="#2b2622" stroke-width="1.5"/>
+  <rect x="1" y="19" width="10" height="8" rx="1" fill="#d9a441" stroke="#2b2622" stroke-width="1.5"/>
+  <rect x="3" y="3" width="2" height="14" fill="#e67a5c"/>
+</svg>

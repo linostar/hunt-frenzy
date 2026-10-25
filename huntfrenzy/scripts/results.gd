@@ -1,0 +1,75 @@
+class_name Results
+extends Control
+## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
+## shots, hits, escaped, best, new_best): score, accuracy (hits / shots, a dash with no
+## shots), birds hit, birds escaped and the Endless best, with "New best!" when the run
+## beat it. Play again (focused on arrival, ring hidden until keyboard navigation)
+## starts a new Endless run; Title goes to the title. Laid out in the safe area.
+
+const NO_VALUE := "—"
+const STAT_KEYS: Array[String] = ["score", "shots", "hits", "escaped", "best", "new_best"]
+
+var _game: GameState
+
+@onready var _safe: Control = $Safe
+@onready var _score: Label = $Safe/Stats/Score
+@onready var _accuracy: Label = $Safe/Stats/Accuracy
+@onready var _hits: Label = $Safe/Stats/Hits
+@onready var _escaped: Label = $Safe/Stats/Escaped
+@onready var _best: Label = $Safe/Stats/Best
+@onready var _new_best: Label = $Safe/NewBest
+@onready var _play_again_button: Button = $Safe/PlayAgainButton
+@onready var _title_button: Button = $Safe/TitleButton
+
+
+func _ready() -> void:
+	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
+	_game.screen_fit_changed.connect(_fit)
+	_fit()
+	_play_again_button.pressed.connect(_on_play_again_pressed)
+	_title_button.pressed.connect(_on_title_pressed)
+	_show_stats(_game.flow_args)
+	_play_again_button.grab_focus(true)
+
+
+## "75%" for 3 hits in 4 shots; NO_VALUE with no shots.
+static func accuracy_text(hits: int, shots: int) -> String:
+	if shots <= 0:
+		return NO_VALUE
+	return "%d%%" % roundi(100.0 * hits / shots)
+
+
+func _show_stats(stats: Dictionary) -> void:
+	for key in STAT_KEYS:
+		if not stats.has(key):
+			# Opened without a finished run (the project check, the editor's Run Current Scene).
+			print("[Results] Opened without run stats (missing '%s')" % key)
+			for label: Label in [_score, _accuracy, _hits, _escaped]:
+				label.text += " " + NO_VALUE
+			_best.text += " %d" % _game.best_endless
+			_new_best.hide()
+			return
+	_score.text += " %d" % stats["score"]
+	_accuracy.text += " " + accuracy_text(stats["hits"], stats["shots"])
+	_hits.text += " %d" % stats["hits"]
+	_escaped.text += " %d" % stats["escaped"]
+	_best.text += " %d" % stats["best"]
+	_new_best.visible = stats["new_best"]
+	print("[Results] Score %d, accuracy %s (%d of %d shots), %d escaped, best %d%s" % [
+		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["escaped"], stats["best"], ", new best" if stats["new_best"] else ""])
+
+
+func _fit() -> void:
+	var safe := _game.safe_rect()
+	_safe.position = safe.position
+	_safe.size = safe.size
+
+
+func _on_play_again_pressed() -> void:
+	print("[Results] Play again pressed")
+	_game.start_endless()
+
+
+func _on_title_pressed() -> void:
+	print("[Results] Title pressed")
+	_game.goto(GameState.Flow.TITLE)

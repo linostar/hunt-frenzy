@@ -3,10 +3,11 @@ extends Control
 ## Title screen (placeholder until the art pass): the game's name, a tagline and the
 ## Play button, laid out in the safe area (Game ScreenFit) and refitted whenever it
 ## changes. Play is focused on arrival (without drawing the focus ring until the
-## player navigates by keyboard), so Enter presses it. No mode is playable yet:
-## pressing Play shows NOT_YET_TEXT under it and logs the press.
+## player navigates by keyboard), so Enter presses it; pressing it starts an Endless
+## run (Game.start_endless). When Content reports errors in data/*.json, the
+## ContentErrorBanner says so and Play is disabled.
 
-const NOT_YET_TEXT := "The hunt opens in the next build."
+const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. Play is disabled."
 
 ## Times Play has been pressed on this screen (tests and the smoke test read the log).
 var play_presses := 0
@@ -15,7 +16,7 @@ var _game: GameState
 
 @onready var _safe: Control = $Safe
 @onready var _play_button: Button = $Safe/PlayButton
-@onready var _notice: Label = $Safe/Notice
+@onready var _banner: Label = $Safe/ContentErrorBanner
 
 
 func _ready() -> void:
@@ -23,6 +24,12 @@ func _ready() -> void:
 	_game.screen_fit_changed.connect(_fit)
 	_fit()
 	_play_button.pressed.connect(_on_play_pressed)
+	var content_errors := Content.errors()
+	if not content_errors.is_empty():
+		print("[Title] Content has %d problem(s); Play is disabled" % content_errors.size())
+		_banner.text = CONTENT_ERROR_MESSAGE % content_errors.size()
+		_banner.show()
+		_play_button.disabled = true
 	_play_button.grab_focus(true)
 
 
@@ -41,6 +48,5 @@ func _log_layout() -> void:
 
 func _on_play_pressed() -> void:
 	play_presses += 1
-	_notice.text = NOT_YET_TEXT
-	_notice.show()
-	print("[Title] Play pressed (%d); no mode is playable yet" % play_presses)
+	print("[Title] Play pressed (%d); starting Endless" % play_presses)
+	_game.start_endless()
