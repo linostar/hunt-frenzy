@@ -15,7 +15,12 @@ extends Node
 ## keys) is disabled.
 ## The save is versioned JSON at save_path, loaded at start: a missing save starts fresh,
 ## a corrupt or unknown-version one is moved to backup_path(), reported (log and error
-## label) and replaced by a fresh save.
+## label) and replaced by a fresh save. A failed save sets save_error (a short reason the
+## results screen shows), is reported and emits save_failed. On the web, user:// is an
+## in-memory filesystem that Godot copies to IndexedDB asynchronously, ignoring a failed
+## copy; so a web save is logged as written, then confirmed (or reported as lost) by
+## reading it back from IndexedDB (WEB_PERSIST_CHECK_JS), and storage that is unavailable
+## at start (OS.is_userfs_persistent() false) is reported at once.
 
 ## Emitted when a goto() has finished: the new scene is in place and the cover is gone.
 signal transition_finished(state: Flow)
@@ -27,6 +32,9 @@ signal rotate_overlay_changed(shown: bool)
 ## Godot's web build reports window blur but not page visibility, so Game watches the
 ## document's visibilitychange event itself.
 signal page_hidden
+## Emitted when a save fails: at once, or on the web when browser storage does not keep
+## it. `reason` is save_error.
+signal save_failed(reason: String)
 
 enum Flow { TITLE, PLAY, RESULTS }
 
@@ -49,6 +57,49 @@ const SAVE_KEYS: Dictionary[String, Variant.Type] = {"version": TYPE_INT, "best_
 const SAVE_SCORE_MAX := 999999999
 ## The largest whole number a float holds exactly (2^53); see _is_whole.
 const SAVE_EXACT_MAX := 9007199254740992.0
+## How long browser storage (IndexedDB) is given to hold a web save before it is
+## reported as lost.
+const WEB_PERSIST_TIMEOUT_MSEC := 5000
+## Defines window.huntFrenzyCheckPersisted(dbName, key, expected, timeoutMs, check, done).
+## Godot 4.7.1's web template mounts user:// as Emscripten IDBFS (database = the mount
+## path, store FILE_DATA, key = the file's full path, value {timestamp, mode, contents})
+## and syncs it after a file is written; a failed sync only logs "Failed to save IDB file
+## system". This polls that store every 250 ms until `key` holds `expected`, then calls
+## done(check, 1, milliseconds taken); on an IndexedDB error or after timeoutMs it calls
+## done(check, 0, reason), also when IndexedDB never answers (one overall deadline;
+## done is called exactly once). It never creates or changes the database.
+const WEB_PERSIST_CHECK_JS := """
+window.huntFrenzyCheckPersisted = function (dbName, key, expected, timeoutMs, check, done) {
+	const started = Date.now();
+	let last = 'nothing stored yet';
+	let finished = false;
+	const finish = (ok, detail) => { if (!finished) { finished = true; clearTimeout(deadline); done(check, ok, detail); } };
+	const deadline = setTimeout(() => finish(0, 'not stored after ' + timeoutMs + ' ms (' + last + ')'), timeoutMs);
+	const retry = () => { if (!finished) setTimeout(poll, 250); };
+	const poll = () => {
+		if (finished) return;
+		let request;
+		try { request = indexedDB.open(dbName); } catch (e) { finish(0, 'cannot open IndexedDB: ' + e); return; }
+		request.onupgradeneeded = (e) => e.target.transaction.abort();
+		request.onerror = (e) => { e.preventDefault(); finish(0, 'cannot open IndexedDB ' + dbName + ': ' + (request.error ? request.error.name + ' ' + request.error.message : 'unknown error')); };
+		request.onsuccess = () => {
+			const db = request.result;
+			let get;
+			try { get = db.transaction(['FILE_DATA'], 'readonly').objectStore('FILE_DATA').get(key); } catch (e) { db.close(); finish(0, 'cannot read IndexedDB: ' + e); return; }
+			get.onerror = (e) => { e.preventDefault(); db.close(); finish(0, 'cannot read ' + key + ': ' + (get.error ? get.error.name + ' ' + get.error.message : 'unknown error')); };
+			get.onsuccess = () => {
+				db.close();
+				const entry = get.result;
+				if (finished) return;
+				if (entry && entry.contents && new TextDecoder().decode(entry.contents) === expected) { finish(1, String(Date.now() - started)); return; }
+				last = entry ? 'an older save is stored' : 'nothing stored yet';
+				retry();
+			};
+		};
+	};
+	poll();
+};
+"""
 ## The base viewport (project.godot display/window/size): the playfield is laid out
 ## in it and is never cropped (aspect expand only adds room).
 const BASE_SIZE := Vector2(960, 540)
@@ -73,6 +124,13 @@ var safe_area_override := Rect2()
 var save_path := SAVE_PATH
 ## The best Endless score, persisted in the save.
 var best_endless := 0
+## Why the latest save failed, short enough for the results screen; "" after a save that
+## worked (on the web: once written; a later IndexedDB failure sets it again).
+var save_error := ""
+## False on the web when the browser gave Godot no IndexedDB at start (check_storage).
+var storage_persistent := true
+## The number of the latest web save check; an answer to an older one is ignored.
+var persist_check := 0
 
 var _transitioning := false
 var _visible_rect := Rect2()
@@ -81,6 +139,8 @@ var _safe_rect := Rect2()
 var _paused_by_rotate := false
 ## The JavaScript visibilitychange listener (web only); kept so it is not freed.
 var _visibility_listener: JavaScriptObject
+## The JavaScript callback of the web save checks (web only); kept so it is not freed.
+var _persist_callback: JavaScriptObject
 
 @onready var _cover: ColorRect = $Fade/Cover
 @onready var _error_label: Label = $Fade/ErrorLabel
@@ -92,6 +152,8 @@ func _ready() -> void:
 	# tree from a SceneTree script; they must never read or overwrite the player's save.
 	if get_tree().get_script() != null:
 		save_path = TOOL_SAVE_PATH
+	if OS.has_feature("web"):
+		check_storage(OS.is_userfs_persistent())
 	load_game()
 	_watch_page_visibility()
 	_fit_window()
@@ -210,8 +272,8 @@ func start_endless() -> void:
 	goto(Flow.PLAY, {"mode": ENDLESS_MODE, "seed": randi()})
 
 
-## Records the score of a finished Endless run: a new best is saved at once. Returns
-## true when it is a new best.
+## Records the score of a finished Endless run: a new best is saved at once (save_error
+## says why when that failed). Returns true when it is a new best.
 func record_endless(score: int) -> bool:
 	if score <= best_endless:
 		print("[Game] Endless score %d does not beat the best %d" % [score, best_endless])
@@ -222,28 +284,93 @@ func record_endless(score: int) -> bool:
 	return true
 
 
-## Writes the save to save_path; a failure is reported, never silent. The data goes to
-## a temporary file first, which then replaces the save, so a failed write leaves the
-## last good save in place.
-func save_game() -> void:
-	var data := {"version": SAVE_VERSION, "best_endless": best_endless}
+## Writes the save to save_path and returns whether it worked; a failure sets
+## save_error, is reported and emits save_failed, never silent. The data goes to a
+## temporary file first, which then replaces the save, so a failed write leaves the last
+## good save in place. On the web the write lands in memory: it is logged as written and
+## confirmed from IndexedDB later (or reported as lost then); with no browser storage at
+## all it fails at once.
+func save_game() -> bool:
+	save_error = ""
+	var text := JSON.stringify({"version": SAVE_VERSION, "best_endless": best_endless}, "  ")
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
 	if file == null:
-		report_error("Could not open '%s' for writing the save: %s; '%s' is unchanged" % [temp, error_string(FileAccess.get_open_error()), save_path])
-		return
-	var written := file.store_string(JSON.stringify(data, "  "))
+		var open_error := error_string(FileAccess.get_open_error())
+		_save_failed("Could not open '%s' for writing the save: %s; '%s' is unchanged" % [temp, open_error, save_path], "cannot open the save file (%s)" % open_error)
+		return false
+	var written := file.store_string(text)
 	file.close()
 	if not written:
 		DirAccess.remove_absolute(temp)
-		report_error("Could not write the save to '%s'; '%s' is unchanged" % [temp, save_path])
-		return
+		_save_failed("Could not write the save to '%s'; '%s' is unchanged" % [temp, save_path], "cannot write the save file")
+		return false
 	var replaced := DirAccess.rename_absolute(temp, save_path)
 	if replaced != OK:
 		DirAccess.remove_absolute(temp)
-		report_error("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)])
+		_save_failed("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)], "cannot replace the save file (%s)" % error_string(replaced))
+		return false
+	if not OS.has_feature("web"):
+		print("[Game] Saved to %s: version %d, Endless best %d" % [save_path, SAVE_VERSION, best_endless])
+		return true
+	if not storage_persistent:
+		_save_failed("Wrote the save (Endless best %d) to %s in memory only: browser storage is unavailable, so it is lost when the page closes" % [best_endless, save_path], "browser storage is unavailable")
+		return false
+	print("[Game] Saved to %s (written; waiting for browser storage to keep it): version %d, Endless best %d" % [save_path, SAVE_VERSION, best_endless])
+	_check_web_persisted(text)
+	return true
+
+
+## On the web, user:// persists only when the browser gave Godot IndexedDB at start;
+## without it every save lives in memory until the page closes, which the player is told
+## at once. Public for tests.
+func check_storage(persistent: bool) -> void:
+	storage_persistent = persistent
+	if persistent:
+		print("[Game] Browser storage (IndexedDB) is available for %s" % save_path)
 		return
-	print("[Game] Saved to %s: version %d, Endless best %d" % [save_path, SAVE_VERSION, best_endless])
+	report_error("Browser storage (IndexedDB) is unavailable (private browsing or blocked site data): best scores are kept only until the page closes")
+
+
+## The answer to web save check `check`: `ok` when IndexedDB holds the save, else
+## `detail` says why not. An answer to an older check is ignored (a newer save replaced
+## what it looked for). Public for tests.
+func persist_checked(check: int, ok: bool, detail: String) -> void:
+	if check != persist_check:
+		print("[Game] Ignored the answer to save check %d (superseded by check %d)" % [check, persist_check])
+		return
+	if ok:
+		print("[Game] Save persisted to browser storage: %s after %s ms (check %d)" % [save_path, detail, check])
+		return
+	_save_failed("The save (Endless best %d) was written to %s but browser storage (IndexedDB) did not keep it: %s (check %d); it is lost when the page closes" % [best_endless, save_path, detail, check], "browser storage did not keep it (%s)" % detail)
+
+
+## Asks the page to confirm that IndexedDB holds `text` at save_path (see WEB_PERSIST_CHECK_JS).
+func _check_web_persisted(text: String) -> void:
+	persist_check += 1
+	if _persist_callback == null:
+		JavaScriptBridge.eval(WEB_PERSIST_CHECK_JS, true)
+		_persist_callback = JavaScriptBridge.create_callback(_on_persist_checked)
+	var window := JavaScriptBridge.get_interface("window")
+	# A JavaScript boolean arrives as a number, so ask for one explicitly.
+	if window == null or int(JavaScriptBridge.eval("typeof window.huntFrenzyCheckPersisted === 'function' ? 1 : 0", true)) != 1:
+		persist_checked(persist_check, false, "the page cannot check browser storage")
+		return
+	# Emscripten's IDBFS names its database after the mount point: the path's first segment (/userfs).
+	var key := ProjectSettings.globalize_path(save_path)
+	window.huntFrenzyCheckPersisted(key.substr(0, key.find("/", 1)), key, text, WEB_PERSIST_TIMEOUT_MSEC, persist_check, _persist_callback)
+
+
+func _on_persist_checked(args: Array) -> void:
+	persist_checked(int(args[0]), int(args[1]) == 1, str(args[2]))
+
+
+## A failed save: `message` (with paths and causes) goes to the log and the error label,
+## `reason` to save_error for the results screen.
+func _save_failed(message: String, reason: String) -> void:
+	save_error = reason
+	report_error(message)
+	save_failed.emit(reason)
 
 
 ## Loads save_path. A missing save starts fresh (a log line only); an unreadable,

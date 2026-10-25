@@ -15,9 +15,11 @@ extends Node2D
 ## the sky and the grass stretch over the whole visible area. The HUD bar (a CanvasLayer)
 ## sits at the top of the safe area.
 ## Pause: the pause button, Escape (CancelKey), the window or app losing focus or
-## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate overlay hiding after it showed during the run open the
-## pause menu with the tree paused; Resume continues the run unchanged, Restart starts
-## a new Endless run, Quit goes to the title. Everything is logged with enough context
+## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate
+## overlay hiding after it showed during the run (or while the menu is open) open the
+## pause menu with the tree paused; Resume (or Escape on the open menu) continues the run
+## unchanged, Restart starts a new Endless run, Quit goes to the title. The grass hides
+## what is behind it: a shot on it (at or below GRASS_Y) hits no bird. Everything is logged with enough context
 ## (the run seed, wave times, shot positions) to replay the run.
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
@@ -25,9 +27,11 @@ const SHELL_TEXTURE := preload("res://art/shell.svg")
 ## The 960x540 base the playfield is laid out in.
 const BASE_SIZE := Vector2(960, 540)
 const HUD_BAR_HEIGHT := 56.0
-## The grass line: birds rise from behind the grass below it.
+## The grass line: grass.svg is solid from here down (_fit places it so), birds rise from
+## behind it, and a shot at or below it hits no bird (bird_at).
 const GRASS_Y := 440.0
-## How far grass.svg's blade tips reach above the grass line.
+## How far grass.svg's blade tips reach above the grass line (the tile's solid part starts
+## this far below its top).
 const GRASS_TIP := 24.0
 ## Where birds fly (World coordinates): below the HUD bar, above the grass line.
 const FIELD := Rect2(0, HUD_BAR_HEIGHT, 960, GRASS_Y - HUD_BAR_HEIGHT)
@@ -58,7 +62,8 @@ var _next_spawn := 0
 var _spawned := 0
 ## True once the run has ended or is being left: no more shots, pauses or waves.
 var _over := false
-## True while the rotate overlay that showed during the run has not hidden yet.
+## True while the rotate overlay that showed during the run (or before it, during the
+## transition in) has not hidden yet.
 var _rotated := false
 var _empty_tween: Tween
 
@@ -90,13 +95,15 @@ func _ready() -> void:
 	_game.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
 	_game.page_hidden.connect(open_pause.bind("page hidden"))
 	_shot_input.shot.connect(_on_shot)
-	_cancel_key.triggered.connect(open_pause.bind("Escape"))
+	_cancel_key.triggered.connect(_on_cancel)
 	_pause_button.pressed.connect(open_pause.bind("pause button"))
 	_resume_button.pressed.connect(resume)
 	_restart_button.pressed.connect(_restart)
 	_quit_button.pressed.connect(_quit)
 	_fit()
 	_start_run()
+	# The overlay may have shown before this scene existed (during the fade into the run).
+	_rotated = not _over and _game.is_rotate_overlay_shown()
 
 
 ## Window and app focus or visibility loss pauses the run (notifications arrive while
@@ -146,8 +153,11 @@ func flying_birds() -> Array[Bird]:
 
 
 ## The frontmost (latest spawned, drawn on top) flying bird whose hitbox holds `point`
-## (World coordinates), or null.
+## (World coordinates), or null. A point on the grass (at or below GRASS_Y) hits nothing:
+## the grass is drawn over the birds behind it.
 func bird_at(point: Vector2) -> Bird:
+	if point.y >= GRASS_Y:
+		return null
 	var flying := flying_birds()
 	for i in range(flying.size() - 1, -1, -1):
 		if flying[i].contains(point):
@@ -174,13 +184,15 @@ func open_pause(cause: String) -> void:
 	print("[Play] Paused (%s): wave %d at t %.2f, score %d" % [cause, wave.index, wave_clock, scoring.score])
 
 
-## Closes the pause menu and continues the run where it stopped.
-func resume() -> void:
-	if not _pause_menu.visible:
+## Closes the pause menu and continues the run where it stopped (`cause`: "Resume" for
+## the button, "Escape"). Ignored once the run is over (the menu of a run that could not
+## start stays up).
+func resume(cause := "Resume") -> void:
+	if not _pause_menu.visible or _over:
 		return
 	_pause_menu.hide()
 	get_tree().paused = false
-	print("[Play] Resumed (Resume): wave %d at t %.2f, score %d" % [wave.index, wave_clock, scoring.score])
+	print("[Play] Resumed (%s): wave %d at t %.2f, score %d" % [cause, wave.index, wave_clock, scoring.score])
 
 
 func is_paused() -> bool:
@@ -275,12 +287,16 @@ func _on_bird_escaped(bird: Bird) -> void:
 func _end_run() -> void:
 	_stop()
 	var new_best := _game.record_endless(scoring.score)
+	var save_error := _game.save_error if new_best else ""
 	var stats := {
 		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits,
-		"escaped": escaped, "best": _game.best_endless, "new_best": new_best,
+		"escaped": escaped, "best": _game.best_endless, "new_best": new_best, "save_error": save_error,
 	}
+	var best_note := ""
+	if new_best:
+		best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
 	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses), %d refused, %d escaped, best %d%s" % [
-		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, refused, escaped, _game.best_endless, " (new best)" if new_best else ""])
+		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, refused, escaped, _game.best_endless, best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -311,10 +327,21 @@ func _leave(cause: String) -> void:
 	print("[Play] Left the run (%s): mode %s, seed %d, wave %d, score %d, %d escaped" % [cause, mode.id, run_seed, wave.index, scoring.score, escaped])
 
 
+## Escape (CancelKey, which runs while paused too) opens the pause menu, or resumes the
+## run when the menu is open.
+func _on_cancel() -> void:
+	if is_paused():
+		resume("Escape")
+	else:
+		open_pause("Escape")
+
+
+## The overlay hiding unpauses the tree when it paused it; a run it covered (or one whose
+## pause menu is open) is paused again, so the menu never shows over a running tree.
 func _on_rotate_overlay_changed(shown: bool) -> void:
 	if shown:
 		_rotated = not _over
-	elif _rotated:
+	elif _rotated or is_paused():
 		_rotated = false
 		open_pause("rotate overlay")
 

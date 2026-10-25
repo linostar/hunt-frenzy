@@ -3,11 +3,14 @@ extends Control
 ## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
 ## shots, hits, escaped, best, new_best): score, accuracy (hits / shots, a dash with no
 ## shots), birds hit, birds escaped and the Endless best, with "New best!" when the run
-## beat it. Play again (focused on arrival, ring hidden until keyboard navigation)
+## beat it, and SaveError ("Your best could not be saved: <reason>") when saving that
+## best failed (the run's save_error, or a later Game.save_failed: a web save that browser
+## storage did not keep). Play again (focused on arrival, ring hidden until keyboard navigation)
 ## starts a new Endless run; Title goes to the title. Laid out in the safe area.
 
 const NO_VALUE := "—"
-const STAT_KEYS: Array[String] = ["score", "shots", "hits", "escaped", "best", "new_best"]
+const STAT_KEYS: Array[String] = ["score", "shots", "hits", "escaped", "best", "new_best", "save_error"]
+const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for details."
 
 var _game: GameState
 
@@ -18,6 +21,7 @@ var _game: GameState
 @onready var _escaped: Label = $Safe/Stats/Escaped
 @onready var _best: Label = $Safe/Stats/Best
 @onready var _new_best: Label = $Safe/NewBest
+@onready var _save_error: Label = $Safe/SaveError
 @onready var _play_again_button: Button = $Safe/PlayAgainButton
 @onready var _title_button: Button = $Safe/TitleButton
 
@@ -28,6 +32,7 @@ func _ready() -> void:
 	_fit()
 	_play_again_button.pressed.connect(_on_play_again_pressed)
 	_title_button.pressed.connect(_on_title_pressed)
+	_game.save_failed.connect(_show_save_error)
 	_show_stats(_game.flow_args)
 	_play_again_button.grab_focus(true)
 
@@ -55,8 +60,18 @@ func _show_stats(stats: Dictionary) -> void:
 	_escaped.text += " %d" % stats["escaped"]
 	_best.text += " %d" % stats["best"]
 	_new_best.visible = stats["new_best"]
+	# A web save can fail during the fade here, before save_failed is connected.
+	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] else "")
+	if save_error != "":
+		_show_save_error(save_error)
 	print("[Results] Score %d, accuracy %s (%d of %d shots), %d escaped, best %d%s" % [
 		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["escaped"], stats["best"], ", new best" if stats["new_best"] else ""])
+
+
+func _show_save_error(reason: String) -> void:
+	_save_error.text = SAVE_ERROR_TEXT % reason
+	_save_error.show()
+	print("[Results] Showing that the best was not saved: %s" % reason)
 
 
 func _fit() -> void:

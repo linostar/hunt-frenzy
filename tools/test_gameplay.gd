@@ -51,6 +51,19 @@ const LOCAL_JUST_OUTSIDE := Vector2(0, 22)
 const LOCAL_BOX_CORNER := Vector2(-40, -28)
 ## The goose's body centre, deep inside its hitbox.
 const LOCAL_BODY := Vector2(0, 5)
+## A point in the goose's head (front, top: non-zero local x, inside the hitbox), and its
+## mirror behind the tail (outside it): a hit test that ignores the facing gets these wrong.
+const LOCAL_HEAD := Vector2(36, -18)
+const LOCAL_HEAD_MIRRORED := Vector2(-36, -18)
+## A goose this old is well inside the field, above the grass (it climbs at least
+## sin(30 degrees) x speed 140 = 70 units per second from 50 below the grass line).
+const IN_FIELD_AGE := 2.0
+## The pause button's size (plan AC 8).
+const PAUSE_BUTTON_SIZE := Vector2(48, 48)
+## WCAG AA contrast for text at the HUD's size.
+const MIN_CONTRAST := 4.5
+## A save path in a directory that does not exist: opening it for writing fails.
+const UNWRITABLE_SAVE_PATH := "user://no_such_dir/save.json"
 ## Points in empty sky (World coordinates) while no bird is above the grass yet.
 const SKY_POINTS: Array[Vector2] = [Vector2(120, 120), Vector2(840, 120), Vector2(480, 100)]
 ## How much faster game time runs while the escape test waits for 10 escapes.
@@ -61,6 +74,32 @@ var _passed := 0
 var _deadline_msec := 0
 ## The "Game" autoload; this script compiles before autoloads exist, so it is fetched at start.
 var _game: GameState
+## Every line printed while the tests run (plan AC 15's log checks read it).
+var _log := LogCapture.new()
+
+
+## Records every printed line (OS.add_logger); the engine may log from other threads.
+class LogCapture extends Logger:
+	var _lines: PackedStringArray = []
+	var _mutex := Mutex.new()
+
+	func _log_message(message: String, _error: bool) -> void:
+		_mutex.lock()
+		_lines.append(message.strip_edges(false, true))
+		_mutex.unlock()
+
+	func size() -> int:
+		_mutex.lock()
+		var count := _lines.size()
+		_mutex.unlock()
+		return count
+
+	## The lines logged from index `from` on.
+	func since(from: int) -> PackedStringArray:
+		_mutex.lock()
+		var lines := _lines.slice(from)
+		_mutex.unlock()
+		return lines
 
 
 func _initialize() -> void:
@@ -70,6 +109,7 @@ func _initialize() -> void:
 		printerr("test_gameplay: FAILED: Game autoload not found")
 		quit(1)
 		return
+	OS.add_logger(_log)
 	_run.call_deferred()
 
 
@@ -109,8 +149,11 @@ func _tests() -> Array[Callable]:
 		_test_scoring_combo,
 		_test_save_and_reload,
 		_test_save_corrupt_and_unknown_version,
+		_test_save_web_persist_reporting,
 		_test_play_hud_layout,
 		_test_play_touch_hits_goose,
+		_test_play_hit_frame_keeps_facing,
+		_test_play_grass_hides_geese,
 		_test_play_touch_outside_polygon_misses,
 		_test_play_overlapping_hit_counts_once,
 		_test_play_two_fingers_two_shots,
@@ -118,9 +161,12 @@ func _tests() -> Array[Callable]:
 		_test_pause_causes_and_resume,
 		_test_pause_menu_keyboard,
 		_test_pause_touches_are_not_shots,
+		_test_pause_escape_toggles,
 		_test_pause_after_rotating,
+		_test_pause_after_overlay_during_transition_in,
 		_test_pause_restart_and_quit,
 		_test_run_ends_on_results,
+		_test_run_end_save_failure,
 	]
 
 
@@ -131,6 +177,7 @@ func _run() -> void:
 	for test in _tests():
 		await test.call()
 	_clear_tool_save()
+	OS.remove_logger(_log)
 	for failure in _failures:
 		printerr("test_gameplay: FAIL " + failure)
 	if _failures.is_empty():
@@ -509,15 +556,19 @@ func _test_flight_stays_in_field_and_turns() -> void:
 		if entered < 0.0 or entered > goose.flee_time / 2.0:
 			problems.append("seed %d enters the field at %.2f" % [bird_seed, entered])
 	_check(problems.is_empty(), "the goose stays inside the field until it flees", str(problems))
-	# At 3x speed a goose crosses the 960-wide field more than once before fleeing.
+	# At 3x speed a goose crosses the 960-wide field more than once before fleeing. A turn
+	# is a real reversal: the horizontal velocity goes from one sign to the other (a goose
+	# pinned at the edge, velocity 0, never turns).
 	var turns := 0
-	var last_x := 0.0
+	var last_sign := 0.0
 	for step in roundi(goose.flee_time * 60.0):
 		var moving := Flight.velocity(goose, 5, step / 60.0, Play.FIELD, 3.0)
-		if step > 0 and signf(moving.x) != signf(last_x):
+		if absf(moving.x) < 1.0:
+			continue
+		if last_sign != 0.0 and signf(moving.x) == -last_sign:
 			turns += 1
-		last_x = moving.x
-	_check(turns >= 1, "the goose turns back at the side edges", "%d turns" % turns)
+		last_sign = signf(moving.x)
+	_check(turns >= 1, "the goose turns back at the side edges (its velocity reverses)", "%d turns" % turns)
 	var placed := Flight.transform_at(goose, 5, 1.0, Play.FIELD, 3.0)
 	var moving_x := Flight.velocity(goose, 5, 1.0, Play.FIELD, 3.0).x
 	_check(signf(placed.x.x) == signf(moving_x), "the goose faces the way it flies", "x axis %s, vx %.1f" % [placed.x, moving_x])
@@ -558,6 +609,8 @@ func _test_flight_hitbox() -> void:
 		_check(not Flight.hits(goose, placed, placed * LOCAL_JUST_OUTSIDE), label + ": a point just outside the polygon misses", str(placed * LOCAL_JUST_OUTSIDE))
 		var in_box := absf(LOCAL_BOX_CORNER.x) < goose.size.x / 2.0 and absf(LOCAL_BOX_CORNER.y) < goose.size.y / 2.0
 		_check(in_box and not Flight.hits(goose, placed, placed * LOCAL_BOX_CORNER), label + ": inside the sprite box but outside the polygon misses", str(placed * LOCAL_BOX_CORNER))
+		_check(Flight.hits(goose, placed, placed * LOCAL_HEAD), label + ": a point in the head hits", str(placed * LOCAL_HEAD))
+		_check(not Flight.hits(goose, placed, placed * LOCAL_HEAD_MIRRORED), label + ": the head's mirror point behind the tail misses", str(placed * LOCAL_HEAD_MIRRORED))
 
 
 func _test_wave_schedule() -> void:
@@ -650,9 +703,14 @@ func _test_save_corrupt_and_unknown_version() -> void:
 
 
 ## The HUD bar: inside the safe area at the top, score, wave, shells as icons, combo,
-## escaped and the pause button (icon, "Pause", >= 44x44); the shot surface is below it.
+## escaped and the pause button (icon, "Pause", 48x48, the bar's only interactive Control);
+## the "Out of shells!" cue is readable on its own plate; the shot surface is below it.
+## The run's start and its first wave are logged (plan AC 15).
 func _test_play_hud_layout() -> void:
+	var from := _log.size()
 	var play := await _start_run(11)
+	_check_logged(from, "^\\[Play\\] Run start: mode endless, seed 11 \\(escape limit 10, combo cap 5, 3 shells per bird\\)$", "the run start is logged with its mode and seed")
+	_check_logged(from, "^\\[Play\\] Wave 1 start: 2 birds \\(goose, goose\\), 6 shells, speed x1\\.00$", "the wave start is logged with its birds and shells")
 	var bar := play.get_node("Hud/Bar") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Button
 	var shot_input := play.get_node("ShotInput") as Control
@@ -661,6 +719,14 @@ func _test_play_hud_layout() -> void:
 	_check(_shell_icons(play) == play.wave.shells and play.wave.shells == 6, "the HUD shows the shells as icons", "%d icons" % _shell_icons(play))
 	_check(pause_button.accessibility_name == "Pause" and pause_button.text.is_empty() and pause_button.icon != null, "the pause button is an icon named Pause", pause_button.accessibility_name)
 	_check(pause_button.focus_mode == Control.FOCUS_ALL, "the pause button takes keyboard focus", str(pause_button.focus_mode))
+	var interactive := _interactive_controls(bar)
+	_check(interactive == [pause_button], "the pause button is the only interactive Control in the HUD bar", str(interactive))
+	# "Out of shells!" is text (not a colour change alone) on an opaque plate, so its
+	# contrast does not depend on the sky behind the bar.
+	var empty := play.get_node("Hud/Bar/Stats/Empty") as Label
+	var plate := empty.get_theme_stylebox(&"normal") as StyleBoxFlat
+	var ratio := _contrast(empty.get_theme_color(&"font_color"), plate.bg_color) if plate != null else 0.0
+	_check(empty.text == "Out of shells!" and plate != null and is_equal_approx(plate.bg_color.a, 1.0) and ratio >= MIN_CONTRAST, "the empty cue is text on an opaque plate at >= 4.5:1 contrast", "plate %s, %.2f:1" % [plate, ratio])
 	for window in LANDSCAPE_WINDOWS:
 		root.size = window
 		await process_frame
@@ -668,7 +734,7 @@ func _test_play_hud_layout() -> void:
 		var label := "%dx%d HUD" % [window.x, window.y]
 		var rect := pause_button.get_global_rect()
 		var safe := _game.safe_rect()
-		_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and safe.encloses(rect), label + " pause button >= 44x44 inside the safe area", str(rect))
+		_check(rect.size.is_equal_approx(PAUSE_BUTTON_SIZE) and safe.encloses(rect), label + " pause button 48x48 inside the safe area", str(rect))
 		_check(bar.get_global_rect().is_equal_approx(Rect2(safe.position, Vector2(safe.size.x, Play.HUD_BAR_HEIGHT))) and rect.end.y <= safe.position.y + Play.HUD_BAR_HEIGHT, label + " bar at the top of the safe area", str(bar.get_global_rect()))
 		var surface := shot_input.get_global_rect()
 		_check(is_equal_approx(surface.position.y, safe.position.y + Play.HUD_BAR_HEIGHT) and is_equal_approx(surface.end.y, _game.visible_rect().end.y) and is_equal_approx(surface.size.x, _game.visible_rect().size.x), label + " shot surface fills the screen below the bar", str(surface))
@@ -686,9 +752,10 @@ func _test_play_hud_layout() -> void:
 ## shows its hit frame, falls off the bottom and is removed.
 func _test_play_touch_hits_goose() -> void:
 	var play := await _start_run(21)
-	var bird := play.spawn_bird("goose", 99)
-	await process_frame
+	var bird := await _spawn_flying(play, 99)
+	var from := _log.size()
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	_check_logged(from, "^\\[Play\\] Hit goose #%d at \\([\\d.]+, [\\d.]+\\): 100 points x1 = 100, score 100 \\(wave 1 at t -?[\\d.]+, 5 shells left\\)$" % bird.number, "the hit is logged with the bird, points and multiplier")
 	_check(bird.state != Bird.State.FLYING and play.scoring.hits == 1 and play.scoring.score == 100, "a touch on a goose hits it", "state %d, hits %d" % [bird.state, play.scoring.hits])
 	_check(play.ammo.shells == play.wave.shells - 1 and _shell_icons(play) == play.ammo.shells, "the hit used one shell", "%d left" % play.ammo.shells)
 	_check(_text(play, "Score") == "Score 100" and _text(play, "Combo") == "x2", "the HUD shows the score and combo", "%s %s" % [_text(play, "Score"), _text(play, "Combo")])
@@ -703,8 +770,7 @@ func _test_play_touch_hits_goose() -> void:
 			break
 		await process_frame
 	_check(fell[0] and not is_instance_valid(bird), "the hit goose falls off the screen and is removed", "fell %s" % fell[0])
-	var second := play.spawn_bird("goose", 99)
-	await process_frame
+	var second := await _spawn_flying(play, 99)
 	await _touch(_global(play, second.transform * LOCAL_BODY))
 	popups = play.get_node("World/Popups").get_children().filter(func(n: Node) -> bool: return not n.is_queued_for_deletion())
 	_check(play.scoring.score == 300 and (popups.back() as Label).text == "+200 x2", "a second hit scores x2 and its pop-up shows it", "%d %s" % [play.scoring.score, popups])
@@ -712,9 +778,12 @@ func _test_play_touch_hits_goose() -> void:
 
 func _test_play_touch_outside_polygon_misses() -> void:
 	var play := await _start_run(22)
-	var bird := play.spawn_bird("goose", 7)
-	await process_frame
+	var bird := await _spawn_flying(play, 7)
+	# Held still: these points are a unit from the polygon's edge, closer than a frame's flight.
+	bird.set_process(false)
+	var from := _log.size()
 	await _touch(_global(play, bird.transform * LOCAL_JUST_OUTSIDE))
+	_check_logged(from, "^\\[Play\\] Miss at \\([\\d.]+, [\\d.]+\\): combo reset, score 0 \\(wave 1 at t -?[\\d.]+, 5 shells left\\)$", "the miss is logged with its position")
 	_check(bird.is_flying() and play.scoring.hits == 0 and play.scoring.misses == 1, "a touch just outside the goose polygon misses", "hits %d, misses %d" % [play.scoring.hits, play.scoring.misses])
 	_check(play.ammo.shells == play.wave.shells - 1 and play.scoring.multiplier == 1, "a miss uses a shell and resets the combo", "%d left, x%d" % [play.ammo.shells, play.scoring.multiplier])
 	await _touch(_global(play, bird.transform * LOCAL_BOX_CORNER))
@@ -728,6 +797,8 @@ func _test_play_overlapping_hit_counts_once() -> void:
 	var play := await _start_run(23)
 	var back := play.spawn_bird("goose", 5)
 	var front := play.spawn_bird("goose", 5)
+	back.age = IN_FIELD_AGE
+	front.age = IN_FIELD_AGE
 	await process_frame
 	_check(back.transform.is_equal_approx(front.transform), "the two geese overlap", "%s vs %s" % [back.transform, front.transform])
 	await _touch(_global(play, front.transform * LOCAL_BODY))
@@ -746,6 +817,7 @@ func _test_play_two_fingers_two_shots() -> void:
 ## flying birds flee at once and later spawns flee from the start.
 func _test_play_empty_pool_refuses() -> void:
 	var play := await _start_run(25)
+	var from := _log.size()
 	var bird := play.spawn_bird("goose", 3)
 	await process_frame
 	var shells := play.ammo.shells
@@ -755,6 +827,8 @@ func _test_play_empty_pool_refuses() -> void:
 	_check(bird.flee_at <= bird.age and bird.flee_at < bird.spec.flee_time, "out of shells, the flying goose flees at once", "flee_at %.2f, age %.2f" % [bird.flee_at, bird.age])
 	await _touch(_global(play, SKY_POINTS[0]))
 	_check(play.refused == 1 and play.scoring.shots() == shells and play.scoring.misses == shells, "a shot with no shells is refused (no shot, no miss)", "refused %d, shots %d" % [play.refused, play.scoring.shots()])
+	_check_logged(from, "^\\[Play\\] Out of shells: \\d+ flying birds flee, \\d+ still to spawn will flee \\(wave 1\\)$", "running out of shells is logged")
+	_check_logged(from, "^\\[Play\\] Shot refused at \\([\\d.]+, [\\d.]+\\): no shells left \\(wave 1 at t -?[\\d.]+, 1 refused\\)$", "the refused shot is logged")
 	_check(play.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells") as Control).modulate == Play.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.is_empty_cue_shown())
 	var late := play.spawn_bird("goose", 4)
 	_check(late.flee_at == 0.0, "a goose spawned with no shells flees from the start", "flee_at %.2f" % late.flee_at)
@@ -772,6 +846,9 @@ func _test_play_empty_pool_refuses() -> void:
 	Engine.time_scale = 1.0
 	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.flying_birds().is_empty(), "the wave ends once its fleeing birds are gone, and the next starts with full shells", "wave %d, %d shells" % [play.wave.index, play.ammo.shells])
 	_check(play.escaped == 4 and not is_instance_valid(bird), "every bird of the emptied wave fled and escaped", "%d escaped" % play.escaped)
+	_check_logged(from, "^\\[Play\\] Spawned goose #\\d+ \\(wave 1, seed -?\\d+\\) at t [\\d.]+, fleeing \\(no shells\\)$", "a spawn is logged with its wave and seed")
+	_check_logged(from, "^\\[Play\\] Escaped goose #\\d+ \\(4/10, wave 1 at t [\\d.]+\\)$", "an escape is logged with the escaped total")
+	_check_logged(from, "^\\[Play\\] Wave 2 start: 3 birds \\(goose, goose, goose\\), 9 shells, speed x1\\.08$", "the next wave start is logged")
 
 
 ## Each pause cause opens the menu with the tree paused and Resume focused; the run is
@@ -791,8 +868,10 @@ func _test_pause_causes_and_resume() -> void:
 		"page hidden": func() -> void: _game.page_hidden.emit(),
 	}
 	for cause: String in causes:
+		var from := _log.size()
 		await causes[cause].call()
 		await process_frame
+		_check_logged(from, "^\\[Play\\] Paused \\(%s\\): wave 1 at t -?[\\d.]+, score 0$" % cause, "%s: the pause is logged with its cause" % cause)
 		_check(play.is_paused() and paused and play.pause_log.back() == cause, "%s opens the pause menu with the tree paused" % cause, "menu %s, paused %s, log %s" % [play.is_paused(), paused, play.pause_log])
 		_check(resume_button.has_focus(), "%s: Resume is focused" % cause, str(root.gui_get_focus_owner()))
 		var age := bird.age
@@ -802,6 +881,7 @@ func _test_pause_causes_and_resume() -> void:
 		_check(bird.age == age and play.wave_clock == clock, "%s: the run is frozen while paused" % cause, "age %.3f -> %.3f" % [age, bird.age])
 		await _key(KEY_ENTER)
 		_check(not play.is_paused() and not paused, "%s: Resume (Enter) closes the menu and unpauses" % cause, "menu %s, paused %s" % [play.is_paused(), paused])
+		_check_logged(from, "^\\[Play\\] Resumed \\(Resume\\): wave 1 at t -?[\\d.]+, score 0$", "%s: the resume is logged with its cause" % cause)
 		await process_frame
 		_check(bird.age > age and bird.is_flying(), "%s: the run continues unchanged" % cause, "age %.3f -> %.3f" % [age, bird.age])
 
@@ -911,9 +991,9 @@ func _test_pause_restart_and_quit() -> void:
 ## survives a reload; Play again starts a new run and Title goes to the title.
 func _test_run_ends_on_results() -> void:
 	var play := await _start_run(41)
-	var bird := play.spawn_bird("goose", 12)
-	await process_frame
+	var bird := await _spawn_flying(play, 12)
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	var from := _log.size()
 	_check(play.scoring.score == 100, "the run scores one hit first", str(play.scoring.score))
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 6000:
@@ -927,10 +1007,13 @@ func _test_run_ends_on_results() -> void:
 	if results == null:
 		return
 	var stats := _game.flow_args
-	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("shots") == 1 and stats.get("new_best") == true, "the results get the run's stats", str(stats))
+	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("shots") == 1 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
+	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 1, Endless best 100$", "the save is logged")
+	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses\\), 0 refused, 10 escaped, best 100 \\(new best\\)$", "the run end is logged with the run's stats")
 	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
 	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10", "Endless best 100"], "the results show score, accuracy, hits, escapes and best", str(shown))
-	_check((results.get_node("Safe/NewBest") as Label).visible, "the results say New best!", "hidden")
+	_check((results.get_node("Safe/NewBest") as Label).visible and not (results.get_node("Safe/SaveError") as Label).visible, "the results say New best! (and no save problem)", "hidden")
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
 	_check(again.has_focus() and again.get_global_rect().size.y >= MIN_TARGET and _game.safe_rect().encloses(again.get_global_rect()), "Play again is focused, >= 44 high, in the safe area", str(root.gui_get_focus_owner()))
@@ -939,16 +1022,199 @@ func _test_run_ends_on_results() -> void:
 	_check(_game.best_endless == 100, "the new best survives a save and reload", str(_game.best_endless))
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == results.get_node("Safe/TitleButton"), "Tab reaches Title", str(root.gui_get_focus_owner()))
+	var gotos := _game.transition_log.size()
+	await _key(KEY_ESCAPE)
+	await process_frame
+	_check(_game.state == GameState.Flow.RESULTS and current_scene == results and _game.transition_log.size() == gotos and not _game.is_transitioning(), "Escape on the results screen starts nothing", "%s, %d new gotos" % [current_scene, _game.transition_log.size() - gotos])
 	await _key(KEY_TAB)
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
-	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "escaped": 10, "best": 100, "new_best": false})
+	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "escaped": 10, "best": 100, "new_best": false, "save_error": ""})
 	await _game.transition_finished
 	_check(not (current_scene.get_node("Safe/NewBest") as Label).visible and (current_scene.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy " + Results.NO_VALUE, "a run below the best shows no New best!, and a dash for no shots", "shown")
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.TITLE, "Title goes to the title", str(_game.state))
+	_clear_tool_save()
+
+
+## Web save reporting. Headless has no IndexedDB, so the page's answers are fed in:
+## browser storage missing at start is reported at once; a check finding that IndexedDB
+## did not keep the save is reported (log, error label, save_error, save_failed, the
+## results notice); a confirmed check is logged as persisted; an answer to an older
+## check is ignored.
+func _test_save_web_persist_reporting() -> void:
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	var failed: Array[String] = []
+	var record := func(why: String) -> void: failed.append(why)
+	_game.save_failed.connect(record)
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.check_storage(false)
+	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(not _game.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
+	_game.check_storage(true)
+	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "escaped": 10, "best": 500, "new_best": true, "save_error": ""})
+	await _game.transition_finished
+	var results := current_scene as Results
+	var notice := results.get_node("Safe/SaveError") as Label
+	_check(not notice.visible, "no save notice before a save fails", notice.text)
+	_game.persist_check += 1
+	var check := _game.persist_check
+	var from := _log.size()
+	errors = _game.reported_errors.size()
+	_game.persist_checked(check - 1, false, "stale")
+	_check(_game.reported_errors.size() == errors and failed.is_empty(), "an answer to an older save check is ignored", str(failed))
+	_game.persist_checked(check, true, "12")
+	_check_logged(from, "^\\[Game\\] Save persisted to browser storage: user://tool_save\\.json after 12 ms \\(check %d\\)$" % check, "a web save browser storage kept is logged as persisted")
+	_check(_game.reported_errors.size() == errors and failed.is_empty() and not notice.visible, "a kept web save reports nothing", str(failed))
+	_game.persist_checked(check, false, "QuotaExceededError: the quota has been exceeded")
+	reported = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	var reason := "browser storage did not keep it (QuotaExceededError: the quota has been exceeded)"
+	_check(failed == [reason] and _game.save_error == reason, "a web save browser storage did not keep fails with its reason", "%s / %s" % [failed, _game.save_error])
+	_check("did not keep it: QuotaExceededError" in reported and _game.save_path in reported and error_label.visible and error_label.text == reported, "it is reported in the log and on the error label with the save path", reported)
+	_check(notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the results screen says the best could not be saved", notice.text)
+	_game.quiet_errors = false
+	_game.save_failed.disconnect(record)
+	_game.save_error = ""
+	error_label.hide()
+
+
+## A hit goose stops on its hit frame upright and facing the way it flew, and falls that
+## way: the whole basis, not only the rotation (a left-facing transform is rotation + PI
+## with scale (1, -1), so zeroing the rotation alone turns it upside down).
+func _test_play_hit_frame_keeps_facing() -> void:
+	var play := await _start_run(26)
+	var goose := Content.bird("goose")
+	var seeds: Dictionary[float, int] = {}
+	for bird_seed in 64:
+		var vx := Flight.velocity(goose, bird_seed, IN_FIELD_AGE, Play.FIELD).x
+		var later := Flight.velocity(goose, bird_seed, IN_FIELD_AGE + 0.2, Play.FIELD).x
+		if signf(vx) == signf(later) and not seeds.has(signf(vx)):
+			seeds[signf(vx)] = bird_seed
+	_check(seeds.size() == 2, "seeds for both facings", str(seeds))
+	for facing: float in seeds:
+		var label := "facing %s" % ("right" if facing > 0.0 else "left")
+		var bird := await _spawn_flying(play, seeds[facing])
+		var flying_x := Flight.velocity(goose, bird.bird_seed, bird.age, Play.FIELD).x
+		await _touch(_global(play, bird.transform * LOCAL_BODY))
+		_check(bird.state == Bird.State.HIT and signf(flying_x) == facing, label + ": the goose is hit", "state %d, vx %.1f" % [bird.state, flying_x])
+		var hit_y := bird.position.y
+		var upright := Transform2D(Vector2(facing, 0.0), Vector2(0.0, 1.0), Vector2.ZERO)
+		_check(bird.transform.basis_xform(Vector2.RIGHT).is_equal_approx(upright.x) and bird.transform.basis_xform(Vector2.DOWN).is_equal_approx(upright.y), label + ": the hit frame is upright and keeps its facing", "x %s, y %s" % [bird.transform.x, bird.transform.y])
+		for i in roundi(Bird.HIT_HOLD * 60.0) + 10:
+			await process_frame
+		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and bird.transform.x.is_equal_approx(upright.x) and bird.transform.y.is_equal_approx(upright.y), label + ": it falls upright, facing the same way", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
+
+
+## The grass hides what is behind it: a shot on the grass (at or below the grass line the
+## art is solid from) hits no goose, even inside its hitbox; a shot on the part of a rising
+## goose above the grass hits it.
+func _test_play_grass_hides_geese() -> void:
+	var play := await _start_run(27)
+	var grass := play.get_node("World/Grass") as Control
+	_check(is_equal_approx(grass.position.y + Play.GRASS_TIP, Play.GRASS_Y), "the grass is drawn solid from the grass line the hit rule uses", "grass top %.1f" % grass.position.y)
+	var bird := play.spawn_bird("goose", 3)
+	await process_frame
+	var under := bird.transform * LOCAL_BODY
+	_check(under.y > Play.GRASS_Y and bird.contains(under), "a just-spawned goose's body is behind the grass", str(under))
+	await _touch(_global(play, under))
+	_check(bird.is_flying() and play.scoring.hits == 0 and play.scoring.misses == 1, "a shot on the grass hits no goose behind it", "hits %d, misses %d" % [play.scoring.hits, play.scoring.misses])
+	if not bird.is_flying():
+		return
+	for i in 120:
+		if (bird.transform * LOCAL_HEAD).y < Play.GRASS_Y - 4.0:
+			break
+		await process_frame
+	var head := bird.transform * LOCAL_HEAD
+	var body := bird.transform * LOCAL_BODY
+	_check(head.y < Play.GRASS_Y and body.y > Play.GRASS_Y, "a rising goose shows its head above the grass, its body still behind it", "head %s, body %s" % [head, body])
+	await _touch(_global(play, head))
+	_check(not bird.is_flying() and play.scoring.hits == 1, "a shot on the part of a rising goose above the grass hits it", "hits %d" % play.scoring.hits)
+
+
+## Escape opens the pause menu and Escape on the open menu resumes the run (both logged
+## with their cause).
+func _test_pause_escape_toggles() -> void:
+	var play := await _start_run(38)
+	var from := _log.size()
+	await _key(KEY_ESCAPE)
+	_check(play.is_paused() and paused and play.pause_log.back() == "Escape", "Escape opens the pause menu", "menu %s, paused %s" % [play.is_paused(), paused])
+	var clock := play.wave_clock
+	await _key(KEY_ESCAPE)
+	await process_frame
+	_check(not play.is_paused() and not paused and play.wave_clock > clock, "Escape on the open pause menu resumes the run", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check_logged(from, "^\\[Play\\] Resumed \\(Escape\\): wave 1 at t -?[\\d.]+, score 0$", "the resume by Escape is logged with its cause")
+
+
+## The rotate overlay shows during the fade into a run (before the play scene exists); a
+## pause opens while the phone is upright; rotating back leaves the menu open with the
+## tree paused, and the run clock does not move behind it.
+func _test_pause_after_overlay_during_transition_in() -> void:
+	await _open_title()
+	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 37})
+	await process_frame
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.is_rotate_overlay_shown() and paused and _game.is_transitioning() and not (current_scene is Play), "the overlay shows during the fade into a run", "overlay %s, scene %s" % [_game.is_rotate_overlay_shown(), current_scene])
+	await _game.transition_finished
+	await process_frame
+	var play := current_scene as Play
+	play.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
+	await process_frame
+	_check(play.is_paused() and paused, "a pause opens while the phone is upright", "menu %s, paused %s" % [play.is_paused(), paused])
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	_check(not _game.is_rotate_overlay_shown() and play.is_paused() and paused, "rotating back keeps the menu open over a paused tree", "menu %s, paused %s" % [play.is_paused(), paused])
+	var clock := play.wave_clock
+	for i in 5:
+		await process_frame
+	_check(play.wave_clock == clock, "the run clock does not advance behind the menu", "%.3f -> %.3f" % [clock, play.wave_clock])
+	play.resume()
+
+
+## A new best that cannot be saved (the save path is unwritable) reaches the player on the
+## results screen with the reason ("New best!" plus the could-not-be-saved notice) and the
+## log, and nothing claims it was saved.
+func _test_run_end_save_failure() -> void:
+	_clear_tool_save()
+	var play := await _start_run(42)
+	var bird := await _spawn_flying(play, 12)
+	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	_game.save_path = UNWRITABLE_SAVE_PATH
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	play.escaped = play.mode.escape_limit - 1
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 6000:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	_game.quiet_errors = false
+	_game.save_path = GameState.TOOL_SAVE_PATH
+	var results := current_scene as Results
+	_check(results != null, "the run ends on the results screen", str(current_scene))
+	if results == null:
+		return
+	var reason: String = _game.flow_args.get("save_error", "")
+	_check(_game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file"), "the results get the new best and why it was not saved", str(_game.flow_args))
+	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(UNWRITABLE_SAVE_PATH in reported, "the save failure is reported with the save path", reported)
+	var notice := results.get_node("Safe/SaveError") as Label
+	_check((results.get_node("Safe/NewBest") as Label).visible and notice.is_visible_in_tree() and notice.text == Results.SAVE_ERROR_TEXT % reason, "the results say New best! and that it could not be saved, with the reason", "%s '%s'" % [notice.visible, notice.text])
+	var below := (results.get_node("Safe/PlayAgainButton") as Control).get_global_rect()
+	var above := (results.get_node("Safe/NewBest") as Control).get_global_rect()
+	_check(notice.get_global_rect().end.y <= below.position.y + 0.5 and notice.get_global_rect().position.y >= above.end.y - 0.5 and notice.get_visible_line_count() == notice.get_line_count(), "the notice fits between New best! and Play again, every line shown", "%s, %d of %d lines" % [notice.get_global_rect(), notice.get_visible_line_count(), notice.get_line_count()])
+	_check_logged(from, "^\\[Play\\] Run end: .* best 100 \\(new best, not saved: cannot open the save file", "the run end log says the new best was not saved")
+	_check(_log.since(from).find("[Game] Saved to %s" % UNWRITABLE_SAVE_PATH) == -1 and not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to")), "nothing logs the failed save as saved", "a Saved line")
+	_game.load_game()
+	_check(_game.best_endless == 0, "the unsaved best is not in the save", str(_game.best_endless))
+	_game.save_error = ""
 	_clear_tool_save()
 
 
@@ -958,6 +1224,40 @@ func _start_run(run_seed: int) -> Play:
 	await _game.transition_finished
 	await process_frame
 	return current_scene as Play
+
+
+## Spawns a goose with `bird_seed` already `age` seconds into its flight (inside the
+## field, above the grass) and waits a frame so it is placed there.
+func _spawn_flying(play: Play, bird_seed: int, age := IN_FIELD_AGE) -> Bird:
+	var bird := play.spawn_bird("goose", bird_seed)
+	bird.age = age
+	await process_frame
+	return bird
+
+
+## Every Control under `control` (itself included) that takes touches or focus.
+func _interactive_controls(control: Control) -> Array[Control]:
+	var found: Array[Control] = []
+	if control is BaseButton or control.mouse_filter != Control.MOUSE_FILTER_IGNORE or control.focus_mode != Control.FOCUS_NONE:
+		found.append(control)
+	for child in control.get_children():
+		if child is Control:
+			found.append_array(_interactive_controls(child as Control))
+	return found
+
+
+## The WCAG contrast ratio of two sRGB colours.
+func _contrast(a: Color, b: Color) -> float:
+	var la := a.srgb_to_linear().get_luminance()
+	var lb := b.srgb_to_linear().get_luminance()
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+## Checks that a line printed since log index `from` matches the RegEx `pattern`.
+func _check_logged(from: int, pattern: String, test_name: String) -> void:
+	var regex := RegEx.create_from_string(pattern)
+	var lines := _log.since(from)
+	_check(Array(lines).any(func(line: String) -> bool: return regex.search(line) != null), test_name, "no line matches %s in %d lines logged since" % [pattern, lines.size()])
 
 
 ## The canvas position of `point` in the play scene's World.

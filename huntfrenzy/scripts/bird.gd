@@ -106,12 +106,16 @@ func contains(point: Vector2) -> bool:
 	return Flight.hits(spec, transform, point)
 
 
-## Stops the bird on its hit frame; it then falls off the screen.
+## Stops the bird on its hit frame, upright and facing the way it flew; it then falls
+## off the screen.
 func hit() -> void:
 	state = State.HIT
 	_hold = HIT_HOLD
 	_sprite.texture = _textures["hit"]
-	rotation = 0.0
+	# Upright, keeping the facing. Flying left, the transform has a negative determinant
+	# (Node2D stores it as rotation + PI with scale (1, -1)), so `rotation = 0` alone would
+	# turn a left-facing goose upside down and facing right.
+	transform = Transform2D(Vector2(signf(transform.determinant()), 0.0), Vector2(0.0, 1.0), position)
 
 
 ## Makes a flying bird flee now (the wave's shells ran out).
