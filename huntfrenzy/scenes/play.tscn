@@ -125,6 +125,14 @@ mouse_filter = 2
 theme_override_constants/separation = 2
 alignment = 1
 
+[node name="Count" type="Label" parent="Hud/Bar/Stats/Shells"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 22
+text = "x0"
+vertical_alignment = 1
+
 [node name="Empty" type="Label" parent="Hud/Bar/Stats"]
 visible = false
 layout_mode = 2

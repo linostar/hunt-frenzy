@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60" viewBox="0 0 80 60">
+  <!-- First-pass gosling (the splitter's child), wings up (flap frame 1); faces right, centre (40, 30) is the bird's origin. -->
+  <path d="M14 36 L2 28 L4 44 L14 44 Z" fill="#c99a2a"/>
+  <path d="M48 28 Q56 22 62 28 L62 40 L50 40 Z" fill="#f2cf4a"/>
+  <ellipse cx="34" cy="38" rx="24" ry="17" fill="#f2cf4a" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="60" cy="20" r="12" fill="#f2cf4a" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M70 15 L80 20 L70 25 Z" fill="#e0782e" stroke="#2b2622" stroke-width="1" stroke-linejoin="round"/>
+  <circle cx="63" cy="17" r="2.2" fill="#2b2622"/>
+  <path d="M22 36 Q22 16 34 4 Q42 16 44 36 Z" fill="#f7e08a" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+</svg>

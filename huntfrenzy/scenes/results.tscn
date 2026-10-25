@@ -45,9 +45,9 @@ vertical_alignment = 1
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.2
+anchor_top = 0.18
 anchor_right = 0.5
-anchor_bottom = 0.62
+anchor_bottom = 0.6
 offset_left = -200.0
 offset_right = 200.0
 grow_horizontal = 2
@@ -64,28 +64,35 @@ horizontal_alignment = 1
 [node name="Accuracy" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 22
 text = "Accuracy"
 horizontal_alignment = 1
 
 [node name="Hits" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 22
 text = "Birds hit"
 horizontal_alignment = 1
 
 [node name="Escaped" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 22
 text = "Birds escaped"
+horizontal_alignment = 1
+
+[node name="Pigeons" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 22
+text = "Pigeons hit"
 horizontal_alignment = 1
 
 [node name="Best" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 22
 text = "Endless best"
 horizontal_alignment = 1
 

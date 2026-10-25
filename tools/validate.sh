@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Validation gate: asset import, project check (touch-first and landscape rules +
-# strict script compile) and its violation fixtures, headless gameplay tests,
-# headless run of the main scene. Exits non-zero on the first failure and points at
+# strict script compile) and its violation fixtures, content tests (data/SCHEMA.md
+# invariants), headless gameplay tests, headless run of the main scene. Exits non-zero on the first failure and points at
 # the log that explains it. Every Godot call is killed after GODOT_TIMEOUT seconds.
 # Env: GODOT (Godot binary), GODOT_TIMEOUT (default 300), RUN_FRAMES (headless run length, default 120).
 set -euo pipefail
@@ -14,7 +14,7 @@ mkdir -p "$LOG_DIR"
 
 fail() {
   echo "FAIL $1 (log: $2)" >&2
-  grep -E "ERROR|WARNING|check_project|test_gameplay|run_main" "$2" >&2 || true
+  grep -E "ERROR|WARNING|check_project|test_content|test_gameplay|run_main" "$2" >&2 || true
   exit 1
 }
 
@@ -100,8 +100,11 @@ for fixture in tools/check_fixtures/*/; do
   fi
   fixtures=$((fixtures + 1))
 done
+# The data first: every data/SCHEMA.md invariant on the real data, and each one firing on
+# a malformed copy.
+run_script test_content "$LOG_DIR/content.log"
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
-summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
+summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
 # The main scene (the title) runs 120 frames (2 s at 60 fixed fps) by default; run_main
 # requires the flow state to match the running scene.
 RUN_FRAMES="${RUN_FRAMES:-120}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60

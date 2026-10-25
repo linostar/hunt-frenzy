@@ -5,11 +5,17 @@ extends Node2D
 ## Waves follow one another (Wave.endless): each starts WAVE_LEAD seconds before its
 ## first spawn with a fresh shell pool (Ammo). Every pressed touch on the ShotInput
 ## (below the HUD bar) is a shot: it uses a shell and hits the frontmost flying bird
-## whose hitbox polygon holds the point (Scoring: points x combo), else it is a miss
-## (combo reset); with no shells left it is refused (no hit test, no miss) with the
-## empty cue on the HUD shells. When the shells run out, the wave's flying birds (and
-## any still to spawn) flee at once; the next wave starts when every bird of the wave
-## has spawned and none is flying. The run ends once escape_limit birds have escaped:
+## whose hitbox polygon holds the point, else it is a miss (combo reset); with no shells
+## left it is refused (no hit test, no miss) with the empty cue on the HUD shells.
+## A hit by bird type (BirdSpec): a hit short of the bird's hp (an armored bird's first)
+## damages it (no points, combo kept, a "Clank!" pop-up); a kill scores points x combo;
+## killing a splitter also launches split_count goslings from the hit point on diverging
+## headings (the splitter falls; it can no longer escape); a hit on the decoy (penalty > 0)
+## deducts its penalty (never below 0), resets the combo and shows a negative pop-up.
+## When the shells run out, the wave's flying birds (and any still to spawn, goslings
+## included) flee at once; the next wave starts when every bird of the wave has spawned
+## and none is flying. An escape counts toward escape_limit unless the bird's
+## escape_counts is false (the decoy). The run ends once escape_limit birds have escaped:
 ## the score is recorded (a new best is saved at once) and the results screen opens.
 ## World holds the 960x540 base playfield, centred horizontally in the visible area;
 ## the sky and the grass stretch over the whole visible area. The HUD bar (a CanvasLayer)
@@ -37,10 +43,18 @@ const GRASS_TIP := 24.0
 const FIELD := Rect2(0, HUD_BAR_HEIGHT, 960, GRASS_Y - HUD_BAR_HEIGHT)
 ## Seconds between a wave's start and its first spawn.
 const WAVE_LEAD := 1.0
+const POPUP_COLOR := Color(1.0, 0.93, 0.6)
+const PENALTY_COLOR := Color(1.0, 0.45, 0.4)
+## The pop-up of a hit that only damages a bird.
+const DAMAGE_TEXT := "Clank!"
 const POPUP_RISE := 48.0
 const POPUP_TIME := 0.8
 const EMPTY_CUE_TIME := 0.6
 const SHELL_ICON_SIZE := Vector2(12, 28)
+## The HUD shows a pool of up to this many shells as one icon per shell (hidden as used);
+## a bigger pool (Endless reaches 54) shows one icon and the shells left ("x36"), so the
+## bar never overflows whatever the pool.
+const SHELL_ICONS_MAX := 10
 const EMPTY_TINT := Color(1.0, 0.35, 0.3)
 
 var mode: ModeSpec
@@ -79,6 +93,7 @@ var _empty_tween: Tween
 @onready var _score_label: Label = $Hud/Bar/Stats/Score
 @onready var _wave_label: Label = $Hud/Bar/Stats/Wave
 @onready var _shells: HBoxContainer = $Hud/Bar/Stats/Shells
+@onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Count
 @onready var _empty_label: Label = $Hud/Bar/Stats/Empty
 @onready var _combo_label: Label = $Hud/Bar/Stats/Combo
 @onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped
@@ -132,11 +147,12 @@ func _process(delta: float) -> void:
 
 
 ## Adds a bird of type `bird_id` flying with `bird_seed` at the current wave's speed;
-## it flees at once when the shells are out.
-func spawn_bird(bird_id: String, bird_seed: int) -> Bird:
+## it flees at once when the shells are out. `from` and `heading` launch it from a point
+## (goslings).
+func spawn_bird(bird_id: String, bird_seed: int, from := Flight.NOT_LAUNCHED, heading := Vector2.ZERO) -> Bird:
 	_spawned += 1
 	var bird := BIRD_SCENE.instantiate() as Bird
-	bird.setup(Content.bird(bird_id), _spawned, bird_seed, wave.speed_scale, FIELD, ammo.is_empty())
+	bird.setup(Content.bird(bird_id), _spawned, bird_seed, wave.speed_scale, FIELD, ammo.is_empty(), from, heading)
 	bird.escaped.connect(_on_bird_escaped)
 	_birds.add_child(bird)
 	return bird
@@ -221,22 +237,29 @@ func _start_run() -> void:
 		return
 	run_seed = args["seed"]
 	scoring = Scoring.new(mode.combo_cap)
-	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per bird)" % [mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_bird])
+	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit)" % [mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit])
 	_start_wave(1)
 
 
 func _start_wave(index: int) -> void:
 	wave = Wave.endless(mode, index, run_seed)
-	ammo = Ammo.new(wave.shells)
 	wave_clock = -WAVE_LEAD
 	_next_spawn = 0
 	var ids := PackedStringArray()
 	for spawn in wave.spawns:
 		ids.append(spawn.bird_id)
 	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale])
+	set_shell_pool(wave.shells)
+
+
+## Gives the wave a fresh pool of `count` shells and shows it on the HUD: one icon per
+## shell up to SHELL_ICONS_MAX, else one icon and the count (public for tests).
+func set_shell_pool(count: int) -> void:
+	ammo = Ammo.new(count)
 	for icon in _shells.get_children():
-		icon.free()
-	for i in wave.shells:
+		if icon != _shell_count:
+			icon.free()
+	for i in count if count <= SHELL_ICONS_MAX else 1:
 		var icon := TextureRect.new()
 		icon.texture = SHELL_TEXTURE
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -244,6 +267,8 @@ func _start_wave(index: int) -> void:
 		icon.custom_minimum_size = SHELL_ICON_SIZE
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_shells.add_child(icon)
+		_shells.move_child(icon, _shell_count.get_index())
+	_shell_count.visible = count > SHELL_ICONS_MAX
 	_update_hud()
 
 
@@ -257,12 +282,10 @@ func _on_shot(at: Vector2) -> void:
 		_show_empty_cue()
 		return
 	var target := bird_at(point)
-	if target != null:
-		var multiplier := scoring.multiplier
-		var awarded := scoring.hit(target.spec.points)
-		target.hit()
-		_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier])
-		print("[Play] Hit %s #%d at (%.1f, %.1f): %d points x%d = %d, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, at.x, at.y, target.spec.points, multiplier, awarded, scoring.score, wave.index, wave_clock, ammo.shells])
+	if target != null and target.spec.penalty > 0:
+		_hit_decoy(target, point, at)
+	elif target != null:
+		_hit_bird(target, point, at)
 	else:
 		scoring.miss()
 		print("[Play] Miss at (%.1f, %.1f): combo reset, score %d (wave %d at t %.2f, %d shells left)" % [at.x, at.y, scoring.score, wave.index, wave_clock, ammo.shells])
@@ -274,8 +297,47 @@ func _on_shot(at: Vector2) -> void:
 	_update_hud()
 
 
+## A hit on a bird other than the decoy: damage short of its hp, else a kill that scores
+## (and splits a splitter).
+func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
+	var multiplier := scoring.multiplier
+	if not target.hit():
+		scoring.damage()
+		_popup(point, DAMAGE_TEXT)
+		print("[Play] Hit %s #%d (hit %d/%d) at (%.1f, %.1f): no points, combo x%d kept, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, multiplier, scoring.score, wave.index, wave_clock, ammo.shells])
+		return
+	var awarded := scoring.hit(target.spec.points)
+	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier])
+	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): %d points x%d = %d, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.points, multiplier, awarded, scoring.score, wave.index, wave_clock, ammo.shells])
+	if target.spec.split_count > 0:
+		_split(target, point)
+
+
+## Launches the killed splitter's goslings from `point` (World coordinates) on diverging
+## headings; each has its own seed derived from the splitter's.
+func _split(parent: Bird, point: Vector2) -> void:
+	var children := PackedStringArray()
+	var headings := Flight.split_headings(parent.spec.split_count)
+	for i in headings.size():
+		var child_seed := hash([parent.bird_seed, i])
+		var child := spawn_bird(parent.spec.splits_into, child_seed, point, headings[i])
+		children.append("#%d seed %d heading (%.2f, %.2f)" % [child.number, child_seed, headings[i].x, headings[i].y])
+	print("[Play] Split %s #%d at (%.1f, %.1f) into %d %s: %s (wave %d at t %.2f)%s" % [parent.spec.id, parent.number, point.x, point.y, headings.size(), parent.spec.splits_into, ", ".join(children), wave.index, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
+
+
+## A hit on the decoy: its penalty comes off the score (never below 0) and the combo resets.
+func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
+	target.hit()
+	var deducted := scoring.penalty(target.spec.penalty)
+	_popup(point, "-%d" % deducted, PENALTY_COLOR)
+	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): penalty %d, -%d, combo reset, score %d (%d pigeons hit, wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.penalty, deducted, scoring.score, scoring.penalties, wave.index, wave_clock, ammo.shells])
+
+
 func _on_bird_escaped(bird: Bird) -> void:
 	if _over:
+		return
+	if not bird.spec.escape_counts:
+		print("[Play] Escaped %s #%d (not counted, %d/%d, wave %d at t %.2f)" % [bird.spec.id, bird.number, escaped, mode.escape_limit, wave.index, wave_clock])
 		return
 	escaped += 1
 	print("[Play] Escaped %s #%d (%d/%d, wave %d at t %.2f)" % [bird.spec.id, bird.number, escaped, mode.escape_limit, wave.index, wave_clock])
@@ -289,14 +351,14 @@ func _end_run() -> void:
 	var new_best := _game.record_endless(scoring.score)
 	var save_error := _game.save_error if new_best else ""
 	var stats := {
-		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits,
-		"escaped": escaped, "best": _game.best_endless, "new_best": new_best, "save_error": save_error,
+		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits, "kills": scoring.kills,
+		"pigeons": scoring.penalties, "escaped": escaped, "best": _game.best_endless, "new_best": new_best, "save_error": save_error,
 	}
 	var best_note := ""
 	if new_best:
 		best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
-	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses), %d refused, %d escaped, best %d%s" % [
-		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, refused, escaped, _game.best_endless, best_note])
+	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped, best %d%s" % [
+		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, _game.best_endless, best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -361,11 +423,11 @@ func _hide_empty_cue() -> void:
 	_shells.modulate = Color.WHITE
 
 
-func _popup(point: Vector2, text: String) -> void:
+func _popup(point: Vector2, text: String, color := POPUP_COLOR) -> void:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override(&"font_size", 26)
-	label.add_theme_color_override(&"font_color", Color(1.0, 0.93, 0.6))
+	label.add_theme_color_override(&"font_color", color)
 	label.add_theme_color_override(&"font_outline_color", Color(0.17, 0.15, 0.13))
 	label.add_theme_constant_override(&"outline_size", 6)
 	_popups.add_child(label)
@@ -380,9 +442,12 @@ func _popup(point: Vector2, text: String) -> void:
 func _update_hud() -> void:
 	_score_label.text = "Score %d" % scoring.score
 	_wave_label.text = "Wave %d" % wave.index
-	var icons := _shells.get_children()
-	for i in icons.size():
-		(icons[i] as CanvasItem).visible = i < ammo.shells
+	if _shell_count.visible:
+		_shell_count.text = "x%d" % ammo.shells
+	else:
+		for icon in _shells.get_children():
+			if icon != _shell_count:
+				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
 	_combo_label.text = "x%d" % scoring.multiplier
 	_escaped_label.text = "Escaped %d/%d" % [escaped, mode.escape_limit]
 

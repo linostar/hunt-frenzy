@@ -12,9 +12,9 @@ func _init(count: int) -> void:
 	capacity = count
 
 
-## The pool of a wave of `birds` birds.
-static func pool_size(birds: int, shells_per_bird: int) -> int:
-	return birds * shells_per_bird
+## The pool of a wave whose birds need `hits` hits in all (Wave.hits_needed).
+static func pool_size(hits: int, shells_per_hit: int) -> int:
+	return hits * shells_per_hit
 
 
 ## Uses one shell; false (and nothing changes) when the pool is empty: the shot is refused.
