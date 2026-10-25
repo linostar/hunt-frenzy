@@ -31,14 +31,19 @@ godot() {
   return "$status"
 }
 
-# Runs a Godot --script and requires its explicit OK line and a log free of
-# ERROR/WARNING. Usage: run_script <name> <log> <extra godot args...>
+# Runs a Godot --script and requires exit status 0, its explicit OK line and a log
+# free of ERROR/WARNING. Usage: run_script <name> <log> <extra godot args...>
 run_script() {
   local name="$1" log="$2"
   shift 2
-  # Godot exits 0 even when a --script fails to compile, so the explicit OK line
-  # is the only trustworthy success signal for script runs.
-  godot "$log" --headless --path huntfrenzy "$@" --script "$PWD/tools/$name.gd" || true
+  # Godot exits 0 even when a --script fails to compile, so status 0 alone proves
+  # nothing: a run passes only with status 0 and its explicit OK line (a crash or
+  # signal after the OK line still fails).
+  local status=0
+  godot "$log" --headless --path huntfrenzy "$@" --script "$PWD/tools/$name.gd" || status=$?
+  if [ "$status" -ne 0 ]; then
+    fail "$name exited with status $status" "$log"
+  fi
   if ! grep -q "^$name: OK" "$log" || grep -qE "ERROR|WARNING" "$log"; then
     fail "$name" "$log"
   fi

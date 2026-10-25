@@ -12,3 +12,8 @@ func _gui_input(event: InputEvent) -> void:
 		accept_event()
 	elif event is InputEventKey or event.is_action_pressed("ui_accept"):
 		accept_event()
+
+
+func is_known_finger(fingers: Array[int]) -> bool:
+	var index := fingers.find(_finger)
+	return index >= 0

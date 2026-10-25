@@ -1,1 +1,2 @@
 res://scenes/part.tscn: interactive Control 'Unnamed' has no text and no accessibility_name
+res://scenes/part.tscn: interactive Control 'Picture' has no text and no accessibility_name

@@ -1,1 +1,3 @@
 res://scripts/shooter.gd: uses 'InputEventScreenTouch'
+res://scripts/shooter.gd: uses 'InputEventMagnifyGesture'
+res://scripts/shooter.gd: uses 'InputEventPanGesture'

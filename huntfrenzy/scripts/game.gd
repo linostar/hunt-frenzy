@@ -44,6 +44,9 @@ var transition_log: Array[String] = []
 var state := Flow.TITLE
 ## The args of the latest goto(); the new scene reads them in its _ready().
 var flow_args: Dictionary = {}
+## Tests set this (base units) to stand in for a notched screen's safe area; it applies
+## from the next ScreenFit update. An empty rect means the display's own safe area.
+var safe_area_override := Rect2()
 
 var _transitioning := false
 var _visible_rect := Rect2()
@@ -202,7 +205,7 @@ static func is_portrait(area: Vector2) -> bool:
 func _update_screen_fit() -> void:
 	var window := get_window()
 	var visible := get_viewport().get_visible_rect()
-	var safe := safe_rect_in(visible, DisplayServer.get_display_safe_area(), window.position, window.get_final_transform())
+	var safe := safe_area_override if safe_area_override.has_area() else safe_rect_in(visible, DisplayServer.get_display_safe_area(), window.position, window.get_final_transform())
 	if visible.is_equal_approx(_visible_rect) and safe.is_equal_approx(_safe_rect):
 		return
 	_visible_rect = visible

@@ -8,3 +8,7 @@ func is_first_finger(touch: InputEventScreenTouch) -> bool:
 
 func is_extra_finger(touch: InputEventScreenTouch) -> bool:
 	return 0 != touch.index
+
+
+func is_primary(touch_index: int) -> bool:
+	return touch_index == 0

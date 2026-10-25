@@ -11,8 +11,10 @@ extends SceneTree
 ## - every interactive Control in a saved scene is at least MIN_TARGET base units on
 ##   both axes; every BaseButton can take keyboard focus; an icon-only Button (no
 ##   text) and every TextureButton carry an accessibility_name,
-## - in full-screen scenes, the top HUD bar (the top HUD_BAR_HEIGHT base units of the
-##   screen) holds no interactive Control except one named HUD_BAR_NAME (PauseButton).
+## - in screen scenes (a root Control that fills the screen, or a root that is not a
+##   Control: a CanvasLayer HUD, a Node2D game scene), the top HUD bar (the top
+##   HUD_BAR_HEIGHT base units of the screen) holds no interactive Control except one
+##   named HUD_BAR_NAME (PauseButton).
 ## Also compiles every script: project.godot raises GDScript warnings to errors,
 ## so any warning fails here.
 ## Usage (from repo root): "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/check_project.gd"
@@ -21,30 +23,37 @@ extends SceneTree
 ##
 ## Limits: this is a text and saved-scene scan. It does not see Controls created at
 ## runtime (Button.new()), input read through indirection (a variable holding an event
-## class name), an index-0 filter written another way (a match on the index, a
-## variable compared with 0), or layouts that only exist after a script moves nodes.
-## Scenes are measured in a 960x540 window after two frames, so a Control sized by its
-## script's _ready() is measured as the script leaves it. The HUD-bar rule only applies
-## to scenes whose root Control fills the screen; parts are checked for size only. A
-## custom action named ui_something is indistinguishable from a built-in one here.
+## class name), an index-0 filter written another way (a match on the index, the index
+## copied into a variable first; only member `.index` and `*touch_index`/`*finger_index`
+## names are matched, so an `index` from find() is fine), or layouts that only exist
+## after a script moves nodes. Scenes are measured in a 960x540 window after two frames,
+## so a Control sized by its script's _ready() is measured as the script leaves it.
+## Control-rooted scenes that do not fill the screen are parts, checked for size only.
+## A custom action named ui_something is indistinguishable from a built-in one here.
 
 const UI_INPUT_PATH := "res://scripts/ui/"
 ## Mouse input: forbidden everywhere, scripts/ui/ included.
-## "mouse_position" also covers get_global_mouse_position and get_local_mouse_position.
+## "mouse_position" also covers get_global_mouse_position and get_local_mouse_position;
+## the DisplayServer reads and the CollisionObject mouse virtuals and signals are listed
+## by name (emulate_touch_from_mouse does not turn them into touches).
 const MOUSE_TOKENS: Array[String] = [
 	"InputEventMouse", "mouse_position", "get_last_mouse_velocity", "get_last_mouse_screen_velocity",
 	"is_mouse_button_pressed", "get_mouse_button_mask", "mouse_entered", "mouse_exited",
+	"mouse_get_position", "mouse_get_button_state", "_mouse_enter", "_mouse_exit",
+	"_mouse_shape_enter", "_mouse_shape_exit", "mouse_shape_entered", "mouse_shape_exited",
 ]
 ## Raw input reads, input callbacks and polling: only scripts/ui/ may use them.
 const RAW_INPUT_TOKENS: Array[String] = [
-	"InputEventScreenTouch", "InputEventScreenDrag", "InputEventGesture", "InputEventKey", "InputEventJoypad",
+	"InputEventScreenTouch", "InputEventScreenDrag", "InputEventKey", "InputEventJoypad",
+	"InputEventGesture", "InputEventMagnifyGesture", "InputEventPanGesture",
 	"func _input", "func _unhandled_input", "func _unhandled_key_input", "func _shortcut_input", "func _gui_input",
 	"gui_input.connect", "signal=\"gui_input\"", "input_event.connect", "signal=\"input_event\"",
 	"is_key_pressed", "is_physical_key_pressed", "is_key_label_pressed", "is_joy_button_pressed", "get_joy_axis",
 	"is_action", "get_action_strength", "get_action_raw_strength", "get_axis", "get_vector", "is_anything_pressed",
 ]
-## A touch index compared with 0 (either side), or "below 1".
-const INDEX_ZERO_PATTERN := "\\bindex\\s*(==|!=|<=|>=|<|>)\\s*0\\b|\\b0\\s*(==|!=|<=|>=|<|>)\\s*[\\w.]*\\bindex\\b|\\bindex\\s*<\\s*1\\b"
+## A touch index (a member `.index`, or a `*touch_index`/`*finger_index` name) compared
+## with 0 (either side), or "below 1".
+const INDEX_ZERO_PATTERN := "(?:\\.index|\\b\\w*(?:touch|finger)_index)\\s*(==|!=|<=|>=|<|>)\\s*0\\b|\\b0\\s*(==|!=|<=|>=|<|>)\\s*(?:[\\w.]*\\.index|\\w*(?:touch|finger)_index)\\b|(?:\\.index|\\b\\w*(?:touch|finger)_index)\\s*<\\s*1\\b"
 const SOURCE_EXTENSIONS: Array[String] = ["gd", "tscn", "tres"]
 const BASE_SIZE := Vector2i(960, 540)
 const MIN_TARGET := 44.0
@@ -135,7 +144,7 @@ func _check_scene(path: String) -> void:
 	await process_frame
 	await process_frame
 	var root_control := scene_root as Control
-	var full_screen := root_control != null and root_control.get_global_rect().size.is_equal_approx(root.get_visible_rect().size)
+	var full_screen := root_control == null or root_control.get_global_rect().size.is_equal_approx(root.get_visible_rect().size)
 	_check_node(path, scene_root, full_screen)
 	scene_root.queue_free()
 	await process_frame
@@ -159,11 +168,17 @@ func _check_node(path: String, node: Node, full_screen: bool) -> void:
 		_check_node(path, child, full_screen)
 
 
+## Built-in input Controls, and scripted Controls that handle _gui_input and receive
+## touches (mouse_filter STOP or PASS; PASS still delivers _gui_input).
 func _is_interactive(control: Control) -> bool:
-	if control is BaseButton or control is LineEdit or control is Slider or control is ScrollContainer or control is ItemList:
+	# Range covers Slider, SpinBox and ScrollBar; the progress bars only display a value.
+	var takes_input_range := control is Range and not (control is ProgressBar or control is TextureProgressBar)
+	if (takes_input_range or control is BaseButton or control is LineEdit or control is TextEdit or control is ScrollContainer
+			or control is ItemList or control is Tree or control is TabBar or control is TabContainer or control is ColorPicker
+			or control is GraphEdit):
 		return true
 	var script := control.get_script() as Script
-	if control.mouse_filter != Control.MOUSE_FILTER_STOP or script == null:
+	if control.mouse_filter == Control.MOUSE_FILTER_IGNORE or script == null:
 		return false
 	return script.get_script_method_list().any(func(method: Dictionary) -> bool: return method["name"] == "_gui_input")
 

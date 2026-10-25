@@ -23,6 +23,22 @@ const MIN_TARGET := 44.0
 ## The CSS html/head_include must set so the browser never pulls to refresh, zooms on a
 ## double tap, selects text or opens a long-press menu.
 const TOUCH_CSS: Array[String] = ["touch-action: none", "overscroll-behavior: none", "user-select: none", "-webkit-user-select: none", "-webkit-touch-callout: none"]
+## The GDScript warnings project.godot raises to errors (level 2): with them, any warning
+## fails the strict compile in check_project.gd.
+const STRICT_WARNINGS: Array[String] = [
+	"unassigned_variable", "unassigned_variable_op_assign", "unused_variable", "unused_local_constant",
+	"unused_private_class_variable", "unused_parameter", "unused_signal", "shadowed_variable",
+	"shadowed_variable_base_class", "shadowed_global_identifier", "unreachable_code", "unreachable_pattern",
+	"standalone_expression", "standalone_ternary", "incompatible_ternary", "untyped_declaration",
+	"unsafe_void_return", "static_called_on_instance", "missing_tool", "redundant_static_unload",
+	"redundant_await", "assert_always_true", "assert_always_false", "integer_division", "narrowing_conversion",
+	"int_as_enum_without_cast", "int_as_enum_without_match", "enum_variable_without_default", "empty_file",
+	"deprecated_keyword", "confusable_identifier", "confusable_local_declaration", "confusable_local_usage",
+	"confusable_capture_reassignment", "confusable_temporary_modification", "property_used_as_function",
+	"constant_used_as_function", "function_used_as_property",
+]
+## A 2340x1080 phone at 2x (visible 1170x540) with a 66-unit notch on the left, in base units.
+const NOTCHED_SAFE_RECT := Rect2(66, 0, 1104, 540)
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
 const WATCHDOG_MSEC := 60000
 
@@ -53,6 +69,7 @@ func _process(_delta: float) -> bool:
 func _tests() -> Array[Callable]:
 	return [
 		_test_project_display_and_input,
+		_test_project_strict_warnings,
 		_test_web_export_preset,
 		_test_goto_logs_transition,
 		_test_goto_missing_scene_shows_error,
@@ -61,6 +78,7 @@ func _tests() -> Array[Callable]:
 		_test_safe_area_notch,
 		_test_fit_window_rect,
 		_test_title_button_layout,
+		_test_title_follows_notched_safe_area,
 		_test_title_button_tap_and_enter,
 		_test_rotate_overlay_shows_and_pauses,
 		_test_rotate_overlay_blocks_input,
@@ -102,6 +120,15 @@ func _test_project_display_and_input() -> void:
 	for key: String in settings:
 		var value: Variant = ProjectSettings.get_setting(key)
 		_check(value == settings[key], "project setting " + key, "%s, expected %s" % [value, settings[key]])
+
+
+## project.godot keeps GDScript warnings on and raises every STRICT_WARNINGS entry to an error.
+func _test_project_strict_warnings() -> void:
+	var enabled: Variant = ProjectSettings.get_setting("debug/gdscript/warnings/enable")
+	_check(enabled == true, "GDScript warnings are enabled", str(enabled))
+	for warning in STRICT_WARNINGS:
+		var level: Variant = ProjectSettings.get_setting("debug/gdscript/warnings/" + warning)
+		_check(level == 2, "warning %s is an error" % warning, "level %s, expected 2" % level)
 
 
 ## The web preset exports single-threaded and its head_include carries the touch CSS.
@@ -183,7 +210,7 @@ func _test_safe_area_notch() -> void:
 	# A 2340x1080 phone at 2x (visible 1170x540) with a 132 px notch on the left.
 	var visible := Rect2(0, 0, 1170, 540)
 	var safe := GameState.safe_rect_in(visible, Rect2i(132, 0, 2208, 1080), Vector2i.ZERO, Transform2D.IDENTITY.scaled(Vector2(2, 2)))
-	_check(safe.is_equal_approx(Rect2(66, 0, 1104, 540)), "safe area converts to base units", str(safe))
+	_check(safe.is_equal_approx(NOTCHED_SAFE_RECT), "safe area converts to base units", str(safe))
 	var empty := GameState.safe_rect_in(visible, Rect2i(), Vector2i.ZERO, Transform2D.IDENTITY)
 	_check(empty == visible, "empty safe area means the visible rect", str(empty))
 	var outside := GameState.safe_rect_in(visible, Rect2i(5000, 5000, 10, 10), Vector2i.ZERO, Transform2D.IDENTITY)
@@ -229,6 +256,25 @@ func _test_title_button_layout() -> void:
 		var rect := button.get_global_rect()
 		_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET, label + " size", str(rect.size))
 		_check(_game.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.safe_rect()])
+	root.size = BASE_WINDOW
+	await process_frame
+
+
+## With a notch narrowing the safe area, the title lays out in the safe rect, not the
+## visible rect, and Play stays clear of the notch.
+func _test_title_follows_notched_safe_area() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var safe := title.get_node("Safe") as Control
+	var button := title.get_node("Safe/PlayButton") as Button
+	_game.safe_area_override = NOTCHED_SAFE_RECT
+	root.size = LANDSCAPE_19_5_9
+	await process_frame
+	await process_frame
+	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
+	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
+	_check(NOTCHED_SAFE_RECT.encloses(button.get_global_rect()), "Play is clear of the notch", str(button.get_global_rect()))
+	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 

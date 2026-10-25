@@ -19,3 +19,10 @@ offset_top = 10.0
 offset_right = 160.0
 offset_bottom = 70.0
 accessibility_name = "Settings"
+
+[node name="Picture" type="TextureButton" parent="."]
+layout_mode = 0
+offset_left = 200.0
+offset_top = 10.0
+offset_right = 260.0
+offset_bottom = 70.0
