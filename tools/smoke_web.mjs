@@ -9,9 +9,11 @@
 //   desktop, mobile-landscape: tap Play where the title logged it ("[Title] Play button
 //     at ...", base units) with the mouse / a CDP touch, require "[Title] Play pressed (1)"
 //     and the play scene, then shoot the run's first goose where it logs itself ("[Bird]
-//     goose #1 at (x, y) v (vx, vy)", base units, every 0.25 s), led by its velocity for
-//     the time since the line arrived plus AIM_LATENCY_S, and require "[Play] Hit goose #1"
-//     (up to HIT_ATTEMPTS shots; a miss is logged and the next shot aims again); then a
+//     goose #1 at (x, y) ... age a ahead (x1, y1) ...", base units, every 0.25 s, with the
+//     positions its flight reaches every 0.1 s ahead), at the point of that path it reaches
+//     when the shot lands: the time since the line arrived plus the input latency (first
+//     guessed, then measured from each logged shot's game time), and require "[Play] Hit
+//     goose #1" (up to HIT_ATTEMPTS shots; a miss is logged and the next shot aims again); then a
 //     visibilitychange with document.hidden true must log "[Play] Paused (page hidden)";
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Play is and Enter press nothing, turn the phone to landscape (844x390),
@@ -54,14 +56,20 @@ const BASE = { width: 960, height: 540 };
 // How long a blocked input is given to (wrongly) reach the game.
 const BLOCKED_WAIT_MS = 1500;
 const PLAY_RECT = /^\[Title\] Play button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
-const FIRST_GOOSE = /^\[Bird\] goose #1 at \(([\d.-]+), ([\d.-]+)\) v \(([\d.-]+), ([\d.-]+)\)/;
-// Shot outcomes the play scene logs for a shot.
-const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused)/;
+const FIRST_GOOSE = /^\[Bird\] goose #1 at \(([\d.-]+), ([\d.-]+)\) v \([\d.-]+, [\d.-]+\) age ([\d.]+) ahead (.*)$/;
+const FIRST_SPAWN = /^\[Play\] Spawned goose #1 \(.*\) at t ([\d.-]+)/;
+// Shot outcomes the play scene logs for a shot, with the wave time it was handled at.
+const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused).* at t ([\d.-]+)/;
+// Seconds between two "ahead" points of a [Bird] line (Bird.TRACK_AHEAD_STEP).
+const AHEAD_STEP_S = 0.1;
+// Points ahead per [Bird] line (Bird.TRACK_AHEAD_STEPS).
+const AHEAD_STEPS = 6;
 // The grass line (Play.GRASS_Y): the goose is aimed at once its centre is well above it.
 const AIM_ABOVE_Y = 400;
-// Seconds from a click or touch to the frame that handles it.
-const AIM_LATENCY_S = 0.05;
-const HIT_ATTEMPTS = 4;
+// First guess of the seconds from a click or touch to the frame that handles it; each
+// shot then measures it.
+const AIM_LATENCY_S = 0.1;
+const HIT_ATTEMPTS = 5;
 
 // Waits until a console line logged at or after index `from` matches `pattern` (a RegExp)
 // and returns its match (with `index`: the line's index in logs).
@@ -106,23 +114,42 @@ async function playPoint(page, logs) {
   return pagePoint(page, x + w / 2, y + h / 2);
 }
 
-// Shoots the run's first goose where it last logged itself, led by its velocity for the
-// age of that line plus AIM_LATENCY_S; retries on a miss. Throws unless it is hit.
+// The point of a logged path (`points[k]` at k x AHEAD_STEP_S seconds) at `lead` seconds.
+function pathAt(points, lead) {
+  const k = Math.min(Math.floor(lead / AHEAD_STEP_S), points.length - 2);
+  const f = lead / AHEAD_STEP_S - k;
+  return { x: points[k].x + (points[k + 1].x - points[k].x) * f, y: points[k].y + (points[k + 1].y - points[k].y) * f };
+}
+
+// Shoots the run's first goose at the point of its logged path it reaches when the shot
+// lands; retries on a miss, measuring the input latency from each shot's logged game time.
+// Throws unless it is hit.
 async function shootFirstGoose(page, logs, logTimes, pointer, from) {
+  const spawned = Number((await waitForLog(page, logs, FIRST_SPAWN, 'the first goose to spawn', from))[1]);
+  const horizon = AHEAD_STEPS * AHEAD_STEP_S;
   const outcomes = [];
+  let latency = AIM_LATENCY_S;
   for (let attempt = 1; attempt <= HIT_ATTEMPTS; attempt++) {
     let track;
-    do {
+    let lead;
+    // The latest line of the goose above the grass whose path still reaches the shot.
+    for (;;) {
       track = await waitForLog(page, logs, FIRST_GOOSE, 'the first goose to fly above the grass', from);
       from = track.index + 1;
-    } while (Number(track[2]) > AIM_ABOVE_Y);
-    const [x, y, vx, vy] = track.slice(1).map(Number);
-    const lead = (Date.now() - logTimes[track.index]) / 1000 + AIM_LATENCY_S;
+      lead = (Date.now() - logTimes[track.index]) / 1000 + latency;
+      if (Number(track[2]) <= AIM_ABOVE_Y && lead < horizon) break;
+    }
+    const points = [{ x: Number(track[1]), y: Number(track[2]) }].concat(
+      [...track[4].matchAll(/\(([\d.-]+), ([\d.-]+)\)/g)].map((m) => ({ x: Number(m[1]), y: Number(m[2]) })));
+    const aim = pathAt(points, lead);
     const shotFrom = logs.length;
-    await pointer.tap(await pagePoint(page, x + vx * lead, y + vy * lead));
+    const sent = (Date.now() - logTimes[track.index]) / 1000;
+    await pointer.tap(await pagePoint(page, aim.x, aim.y));
     const outcome = await waitForLog(page, logs, SHOT_RESULT, 'the shot to be logged', shotFrom);
-    outcomes.push(outcome[1]);
+    outcomes.push(`${outcome[1]} (lead ${lead.toFixed(2)} s)`);
     if (outcome[1] === 'Hit goose #1') return outcomes;
+    // The goose's age when the shot was handled, against its age when the tap was sent.
+    latency = Math.max(0, Number(outcome[2]) - spawned - (Number(track[3]) + sent));
   }
   throw new Error(`the first goose was not hit in ${HIT_ATTEMPTS} shots: ${outcomes.join(', ')}`);
 }

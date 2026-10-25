@@ -5,7 +5,9 @@ extends Node2D
 ## once it has escaped (Flight.has_escaped) it emits `escaped` and frees itself. A hit
 ## stops it on its hit frame for HIT_HOLD seconds, then it falls off the bottom of the
 ## screen, emits `gone` and frees itself. While flying it logs its position and velocity
-## (canvas base units) every TRACK_INTERVAL seconds, which the smoke test aims at.
+## (canvas base units) every TRACK_INTERVAL seconds, with where its flight will take it
+## TRACK_AHEAD_STEP, 2 x TRACK_AHEAD_STEP, ... seconds later (TRACK_AHEAD_STEPS points);
+## the smoke test aims at the goose from these lines.
 ## Configure with setup() before adding it to the tree.
 
 signal escaped(bird: Bird)
@@ -18,6 +20,8 @@ const HIT_HOLD := 0.25
 ## Fall acceleration after a hit, base units per second squared.
 const GRAVITY := 1400.0
 const TRACK_INTERVAL := 0.25
+const TRACK_AHEAD_STEP := 0.1
+const TRACK_AHEAD_STEPS := 6
 
 var spec: BirdSpec
 ## The bird's number in its run (1 is the first bird spawned).
@@ -120,4 +124,8 @@ func _flight_transform() -> Transform2D:
 
 func _track() -> void:
 	var moving := Flight.velocity(spec, bird_seed, age, field, speed_scale, flee_at)
-	print("[Bird] %s #%d at (%.1f, %.1f) v (%.1f, %.1f) age %.2f" % [spec.id, number, global_position.x, global_position.y, moving.x, moving.y, age])
+	var ahead := PackedStringArray()
+	for step in range(1, TRACK_AHEAD_STEPS + 1):
+		var at := get_parent().to_global(Flight.position(spec, bird_seed, age + step * TRACK_AHEAD_STEP, field, speed_scale, flee_at)) as Vector2
+		ahead.append("(%.1f, %.1f)" % [at.x, at.y])
+	print("[Bird] %s #%d at (%.1f, %.1f) v (%.1f, %.1f) age %.2f ahead %s" % [spec.id, number, global_position.x, global_position.y, moving.x, moving.y, age, " ".join(ahead)])
