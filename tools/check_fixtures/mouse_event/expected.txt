@@ -1,0 +1,6 @@
+res://scripts/ui/cursor.gd: uses 'InputEventMouse'
+res://scripts/ui/cursor.gd: uses 'mouse_position'
+res://scripts/ui/target.gd: uses 'mouse_get_position'
+res://scripts/ui/target.gd: uses 'mouse_get_button_state'
+res://scripts/ui/target.gd: uses '_mouse_enter'
+res://scripts/ui/target.gd: uses 'mouse_shape_entered'

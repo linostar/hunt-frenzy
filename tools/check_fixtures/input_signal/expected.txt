@@ -1,0 +1,2 @@
+res://scenes/screen.tscn: uses 'signal="gui_input"'
+res://scripts/hud.gd: uses 'gui_input.connect'

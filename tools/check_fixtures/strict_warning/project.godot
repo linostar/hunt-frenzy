@@ -1,0 +1,9 @@
+config_version=5
+
+[application]
+
+config/name="check_fixture_strict_warning"
+
+[debug]
+
+gdscript/warnings/unused_variable=2

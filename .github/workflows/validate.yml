@@ -1,0 +1,91 @@
+# Runs the project's own gates on every push and pull request:
+# - validate: tools/validate.sh (import, check_project + its fixtures, gameplay tests,
+#   headless main-scene run),
+# - web: tools/build_web.sh (validate, web export, Playwright smoke in desktop, mobile
+#   landscape, mobile portrait and keyboard runs, itch zip). The 1.3 GB export templates archive is downloaded and
+#   checksum-verified only on a cache miss; only the single-threaded web templates the
+#   export preset uses are kept and cached.
+name: validate
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GODOT_VERSION: 4.7.1
+  GODOT_RELEASE_URL: https://github.com/godotengine/godot-builds/releases/download/4.7.1-stable
+  # From that release's SHA512-SUMS.txt.
+  GODOT_LINUX_SHA512: 4ccdab7a48eeccbe8819a2fc1f6262f8d72065d98601bcb3743fcbd7ebd39f373758a788ee3293a05ec5b2c48538266c437404312e372225cd2df273945a2de9
+  GODOT_TEMPLATES_SHA512: afcc83d8d3d298038f19c58744a0d660fa75dd4baa33cb55d1011bb2565a2a8c2381728924564cb909e37c205a23f21b521b23bd057993afd43ae4da0b2f9d47
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$GODOT_RELEASE_URL/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          echo "$GODOT_LINUX_SHA512  $RUNNER_TEMP/godot.zip" | sha512sum -c -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+      - name: Validate
+        run: tools/validate.sh
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: validate-logs
+          path: build/logs/
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/package-lock.json
+      - name: Install Godot
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$GODOT_RELEASE_URL/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          echo "$GODOT_LINUX_SHA512  $RUNNER_TEMP/godot.zip" | sha512sum -c -
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
+      - name: Cache the web export template
+        id: templates
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-web-template-${{ env.GODOT_VERSION }}-${{ env.GODOT_TEMPLATES_SHA512 }}
+      - name: Install the web export template
+        if: steps.templates.outputs.cache-hit != 'true'
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/templates.tpz" "$GODOT_RELEASE_URL/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          echo "$GODOT_TEMPLATES_SHA512  $RUNNER_TEMP/templates.tpz" | sha512sum -c -
+          dest="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dest"
+          # The preset exports single-threaded (variant/thread_support=false); Godot checks
+          # for the debug and release template pair.
+          unzip -q -j "$RUNNER_TEMP/templates.tpz" templates/version.txt templates/web_nothreads_debug.zip templates/web_nothreads_release.zip -d "$dest"
+          rm "$RUNNER_TEMP/templates.tpz"
+      - name: Install the smoke test tools
+        # Playwright drives the runner's installed Google Chrome (tools/web_util.mjs).
+        run: PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm --prefix tools ci
+      - name: Build and smoke test
+        run: tools/build_web.sh
+      - name: Upload logs and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: |
+            build/logs/
+            build/smoke-*.png
+            build/huntfrenzy.zip

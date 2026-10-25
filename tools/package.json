@@ -1,0 +1,11 @@
+{
+  "name": "hunt-frenzy-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node smoke_web.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
