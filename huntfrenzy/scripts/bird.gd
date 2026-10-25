@@ -3,8 +3,10 @@ extends Node2D
 ## One bird of a run, driven by Flight: while flying its transform is
 ## Flight.transform_at(spec, seed, age, ...) and it flaps between its two fly frames;
 ## once it has escaped (Flight.has_escaped) it emits `escaped` and frees itself. A hit
-## stops it on its hit frame for HIT_HOLD seconds, then it falls off the bottom of the
-## screen, emits `gone` and frees itself. While flying, the run's first bird (TRACKED_NUMBER)
+## that leaves it hit points (an armored bird's first) only switches it to its damaged
+## flap frames; the killing hit stops it on its hit frame for HIT_HOLD seconds, then it
+## falls off the bottom of the screen, emits `gone` and frees itself. A bird launched
+## from a point (a splitter's gosling) flies Flight's launched path from there. While flying, the run's first bird (TRACKED_NUMBER)
 ## logs its position and velocity (canvas base units) every TRACK_INTERVAL seconds, with
 ## where its flight will take it TRACK_AHEAD_STEP, 2 x TRACK_AHEAD_STEP, ... seconds later
 ## (TRACK_AHEAD_STEPS points); the smoke test aims at it from these lines. Other birds are
@@ -35,6 +37,12 @@ var field := Rect2()
 var age := 0.0
 ## The age it was told to flee at (INF: it flees at its spec's flee_time).
 var flee_at := INF
+## The launch point and heading of a launched bird (Flight.NOT_LAUNCHED: it rises from
+## below the grass).
+var launch_from := Flight.NOT_LAUNCHED
+var launch_heading := Vector2.ZERO
+## Hits taken so far (a kill at spec.hp).
+var hits_taken := 0
 var state := State.FLYING
 
 var _textures: Dictionary[String, Texture2D] = {}
@@ -45,13 +53,16 @@ var _track_clock := 0.0
 @onready var _sprite: Sprite2D = $Sprite
 
 
-## Sets the bird up to fly from age 0; `fleeing` makes it flee at once (no shells left).
-func setup(bird_spec: BirdSpec, bird_number: int, flight_seed: int, scale_of_speed: float, flight_field: Rect2, fleeing: bool) -> void:
+## Sets the bird up to fly from age 0; `fleeing` makes it flee at once (no shells left);
+## `from` and `heading` launch it from a point (goslings).
+func setup(bird_spec: BirdSpec, bird_number: int, flight_seed: int, scale_of_speed: float, flight_field: Rect2, fleeing: bool, from := Flight.NOT_LAUNCHED, heading := Vector2.ZERO) -> void:
 	spec = bird_spec
 	number = bird_number
 	bird_seed = flight_seed
 	speed_scale = scale_of_speed
 	field = flight_field
+	launch_from = from
+	launch_heading = heading
 	if fleeing:
 		flee_at = 0.0
 
@@ -61,7 +72,7 @@ func _ready() -> void:
 	if spec == null:
 		set_process(false)
 		return
-	for frame in Content.BIRD_FRAMES:
+	for frame in spec.frames():
 		_textures[frame] = load(spec.texture_path(frame)) as Texture2D
 	_sprite.texture = _textures["fly_1"]
 	_sprite.scale = spec.size / _sprite.texture.get_size()
@@ -73,13 +84,13 @@ func _process(delta: float) -> void:
 	match state:
 		State.FLYING:
 			age += delta
-			if Flight.has_escaped(spec, bird_seed, age, field, speed_scale, flee_at):
+			if Flight.has_escaped(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading):
 				set_process(false)
 				escaped.emit(self)
 				queue_free()
 				return
 			transform = _flight_transform()
-			_sprite.texture = _textures["fly_1" if int(age / FLAP_TIME) % 2 == 0 else "fly_2"]
+			_sprite.texture = _textures[_flap_frame()]
 			_track_clock += delta
 			if _track_clock >= TRACK_INTERVAL:
 				_track_clock -= TRACK_INTERVAL
@@ -106,9 +117,18 @@ func contains(point: Vector2) -> bool:
 	return Flight.hits(spec, transform, point)
 
 
-## Stops the bird on its hit frame, upright and facing the way it flew; it then falls
-## off the screen.
-func hit() -> void:
+func is_damaged() -> bool:
+	return hits_taken > 0
+
+
+## Takes a hit. Short of spec.hp it keeps flying on its damaged flap frames and this
+## returns false; the killing hit stops it on its hit frame, upright and facing the way it
+## flew (it then falls off the screen), and returns true.
+func hit() -> bool:
+	hits_taken += 1
+	if hits_taken < spec.hp:
+		_sprite.texture = _textures[_flap_frame()]
+		return false
 	state = State.HIT
 	_hold = HIT_HOLD
 	_sprite.texture = _textures["hit"]
@@ -116,6 +136,7 @@ func hit() -> void:
 	# (Node2D stores it as rotation + PI with scale (1, -1)), so `rotation = 0` alone would
 	# turn a left-facing goose upside down and facing right.
 	transform = Transform2D(Vector2(signf(transform.determinant()), 0.0), Vector2(0.0, 1.0), position)
+	return true
 
 
 ## Makes a flying bird flee now (the wave's shells ran out).
@@ -125,15 +146,20 @@ func flee() -> void:
 
 
 func _flight_transform() -> Transform2D:
-	return Flight.transform_at(spec, bird_seed, age, field, speed_scale, flee_at)
+	return Flight.transform_at(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading)
+
+
+## The flap frame for the current age: fly_1 / fly_2, or their damaged versions once hit.
+func _flap_frame() -> String:
+	return ("damaged_" if is_damaged() else "") + ("fly_1" if int(age / FLAP_TIME) % 2 == 0 else "fly_2")
 
 
 func _track() -> void:
 	if number != TRACKED_NUMBER:
 		return
-	var moving := Flight.velocity(spec, bird_seed, age, field, speed_scale, flee_at)
+	var moving := Flight.velocity(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading)
 	var ahead := PackedStringArray()
 	for step in range(1, TRACK_AHEAD_STEPS + 1):
-		var at := get_parent().to_global(Flight.position(spec, bird_seed, age + step * TRACK_AHEAD_STEP, field, speed_scale, flee_at)) as Vector2
+		var at := get_parent().to_global(Flight.position(spec, bird_seed, age + step * TRACK_AHEAD_STEP, field, speed_scale, flee_at, launch_from, launch_heading)) as Vector2
 		ahead.append("(%.1f, %.1f)" % [at.x, at.y])
 	print("[Bird] %s #%d at (%.1f, %.1f) v (%.1f, %.1f) age %.2f ahead %s" % [spec.id, number, global_position.x, global_position.y, moving.x, moving.y, age, " ".join(ahead)])

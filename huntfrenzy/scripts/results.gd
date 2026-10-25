@@ -1,15 +1,16 @@
 class_name Results
 extends Control
 ## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
-## shots, hits, escaped, best, new_best): score, accuracy (hits / shots, a dash with no
-## shots), birds hit, birds escaped and the Endless best, with "New best!" when the run
+## shots, hits, pigeons, escaped, best, new_best): score, accuracy (hits / shots, a dash
+## with no shots; a hit on the decoy pigeon is a shot but not a hit), birds hit, birds
+## escaped, pigeons hit (the decoy) and the Endless best, with "New best!" when the run
 ## beat it, and SaveError ("Your best could not be saved: <reason>") when saving that
 ## best failed (the run's save_error, or a later Game.save_failed: a web save that browser
 ## storage did not keep). Play again (focused on arrival, ring hidden until keyboard navigation)
 ## starts a new Endless run; Title goes to the title. Laid out in the safe area.
 
 const NO_VALUE := "—"
-const STAT_KEYS: Array[String] = ["score", "shots", "hits", "escaped", "best", "new_best", "save_error"]
+const STAT_KEYS: Array[String] = ["score", "shots", "hits", "pigeons", "escaped", "best", "new_best", "save_error"]
 const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for details."
 
 var _game: GameState
@@ -19,6 +20,7 @@ var _game: GameState
 @onready var _accuracy: Label = $Safe/Stats/Accuracy
 @onready var _hits: Label = $Safe/Stats/Hits
 @onready var _escaped: Label = $Safe/Stats/Escaped
+@onready var _pigeons: Label = $Safe/Stats/Pigeons
 @onready var _best: Label = $Safe/Stats/Best
 @onready var _new_best: Label = $Safe/NewBest
 @onready var _save_error: Label = $Safe/SaveError
@@ -49,7 +51,7 @@ func _show_stats(stats: Dictionary) -> void:
 		if not stats.has(key):
 			# Opened without a finished run (the project check, the editor's Run Current Scene).
 			print("[Results] Opened without run stats (missing '%s')" % key)
-			for label: Label in [_score, _accuracy, _hits, _escaped]:
+			for label: Label in [_score, _accuracy, _hits, _escaped, _pigeons]:
 				label.text += " " + NO_VALUE
 			_best.text += " %d" % _game.best_endless
 			_new_best.hide()
@@ -58,14 +60,15 @@ func _show_stats(stats: Dictionary) -> void:
 	_accuracy.text += " " + accuracy_text(stats["hits"], stats["shots"])
 	_hits.text += " %d" % stats["hits"]
 	_escaped.text += " %d" % stats["escaped"]
+	_pigeons.text += " %d" % stats["pigeons"]
 	_best.text += " %d" % stats["best"]
 	_new_best.visible = stats["new_best"]
 	# A web save can fail during the fade here, before save_failed is connected.
 	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] else "")
 	if save_error != "":
 		_show_save_error(save_error)
-	print("[Results] Score %d, accuracy %s (%d of %d shots), %d escaped, best %d%s" % [
-		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["escaped"], stats["best"], ", new best" if stats["new_best"] else ""])
+	print("[Results] Score %d, accuracy %s (%d of %d shots), %d escaped, %d pigeons hit, best %d%s" % [
+		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["escaped"], stats["pigeons"], stats["best"], ", new best" if stats["new_best"] else ""])
 
 
 func _show_save_error(reason: String) -> void:

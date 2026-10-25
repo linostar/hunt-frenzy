@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="72" viewBox="0 0 96 72">
+  <!-- First-pass armored goose, damaged after its first hit, wings down (damaged flap frame 2): dented plate, cracked helmet; faces right, centre (48, 36) is the bird's origin. -->
+  <path d="M12 36 L24 28 Q40 24 52 26 L60 24 Q64 30 70 30 L74 34 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#5c6068" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M20 46 Q34 54 54 52 Q66 50 70 42 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#b9bcc2"/>
+  <path d="M12 36 L4 30 L6 40 L2 44 L14 44 Z" fill="#2b2622"/>
+  <path d="M58 30 Q62 18 72 14 Q80 10 86 14 Q90 18 86 22 Q78 22 74 26 Q70 32 70 36 Z" fill="#2b2622"/>
+  <path d="M86 16 L95 19 L86 22 Z" fill="#3b3430"/>
+  <path d="M56 30 Q72 32 73 44 Q68 54 56 56 L60 46 L56 42 L61 38 Z" fill="#8d959e" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M62 36 L66 41 L63 46 L67 51" stroke="#2b2622" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <path d="M71 18 Q73 7 82 8 Q88 9 88 14 L80 13 Z" fill="#8d959e" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M78 9 L80 13 L77 15" stroke="#2b2622" stroke-width="1.5" fill="none"/>
+  <circle cx="81" cy="17" r="2" fill="#f4efe6"/>
+  <path d="M30 40 Q32 60 42 70 Q50 58 54 40 Z" fill="#7d838c" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M36 30 L46 28 M38 24 L48 24" stroke="#2b2622" stroke-width="1.5" stroke-linecap="round"/>
+</svg>

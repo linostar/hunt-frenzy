@@ -2,7 +2,16 @@
   {
     "id": "endless",
     "name": "Endless",
-    "birds": ["goose"],
+    "birds": [
+      {"bird": "goose", "from_wave": 1, "weight": 10},
+      {"bird": "armored", "from_wave": 3, "weight": 4},
+      {"bird": "splitter", "from_wave": 5, "weight": 3},
+      {"bird": "decoy", "from_wave": 5, "weight": 2},
+      {"bird": "zigzag", "from_wave": 7, "weight": 3}
+    ],
+    "golden_bird": "golden",
+    "golden_from_wave": 2,
+    "golden_chance": 0.08,
     "start_birds": 2,
     "bird_growth": 1,
     "max_birds": 6,

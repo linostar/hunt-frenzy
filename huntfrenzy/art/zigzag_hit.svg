@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="88" height="56" viewBox="0 0 88 56">
+  <!-- First-pass zigzag swift, hit frame: wings splayed, crossed-out eye; faces right, centre (44, 28) is the bird's origin. -->
+  <path d="M14 29 L0 20 L7 29 L0 38 Z" fill="#1f5f5c"/>
+  <path d="M10 29 Q30 19 56 21 Q66 14 76 17 Q82 21 80 26 Q72 34 56 36 Q30 39 10 29 Z" fill="#2f8f8a" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M78 21 L88 24 L78 27 Z" fill="#d9a441"/>
+  <path d="M22 29 L34 25 L33 30 L48 25 L46 30 L58 27" stroke="#f2cf4a" stroke-width="2" fill="none" stroke-linejoin="round"/>
+  <path d="M68 18 L72 22 M72 18 L68 22" stroke="#f4efe6" stroke-width="2" stroke-linecap="round"/>
+  <path d="M28 25 Q14 12 16 2 Q32 10 44 24 Z" fill="#5fb8b0" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M40 33 Q48 48 62 54 Q60 42 54 33 Z" fill="#5fb8b0" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+</svg>

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="104" height="80" viewBox="0 0 104 80">
+  <!-- First-pass splitter goose, wings down (flap frame 2); faces right, centre (52, 40) is the bird's origin. -->
+  <path d="M14 42 L2 36 L5 48 L0 54 L16 52 Z" fill="#2b2622"/>
+  <ellipse cx="48" cy="46" rx="36" ry="22" fill="#7d5fa6" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M48 24 Q84 26 84 46 Q84 66 48 68 Z" fill="#a98bd0"/>
+  <ellipse cx="48" cy="46" rx="36" ry="22" fill="none" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M48 25 L48 67" stroke="#f4efe6" stroke-width="2" stroke-dasharray="3 3"/>
+  <path d="M74 34 Q78 20 88 16 Q96 14 99 20 Q100 26 94 28 Q88 28 84 34 Q82 40 80 44 Z" fill="#2b2622"/>
+  <path d="M98 19 L104 23 L97 26 Z" fill="#d9a441"/>
+  <circle cx="92" cy="20" r="2" fill="#f4efe6"/>
+  <path d="M34 48 Q36 68 46 78 Q56 66 60 48 Z" fill="#c9b3e6" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+</svg>

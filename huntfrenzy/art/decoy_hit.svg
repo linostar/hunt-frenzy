@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+  <!-- First-pass decoy: the rival's pet pigeon in a tiny top hat, hit frame: hat knocked off, wings splayed, crossed-out eye; faces right, centre (36, 36) is the bird's origin. -->
+  <path d="M12 42 L0 38 L2 52 L13 52 Z" fill="#4c5160"/>
+  <ellipse cx="32" cy="46" rx="24" ry="16" fill="#8e97a8" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M44 34 Q50 28 56 33 L57 44 Q50 47 43 42 Z" fill="#5f8f7a"/>
+  <circle cx="54" cy="30" r="9" fill="#8e97a8" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M62 28 L69 31 L62 33 Z" fill="#e0b090" stroke="#2b2622" stroke-width="1" stroke-linejoin="round"/>
+  <path d="M54 26 L58 30 M58 26 L54 30" stroke="#2b2622" stroke-width="1.5" stroke-linecap="round"/>
+  <g transform="rotate(-25 58 12)">
+    <rect x="50" y="2" width="12" height="16" fill="#2b2622"/>
+    <rect x="50" y="13" width="12" height="3" fill="#c8402e"/>
+    <rect x="46" y="17" width="20" height="3" rx="1.5" fill="#2b2622"/>
+  </g>
+  <path d="M20 40 Q10 24 14 14 Q26 22 34 38 Z" fill="#b4bccb" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M30 52 Q34 66 44 70 Q44 60 40 50 Z" fill="#b4bccb" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+</svg>
