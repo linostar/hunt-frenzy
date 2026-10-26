@@ -6,9 +6,12 @@
 // status overlay, a missing canvas, a page whose touch/selection CSS is not applied, or
 // a screenshot with nothing drawn (taken once the title has arrived: "[Game] Arrived at
 // TITLE"). Then:
-//   desktop, mobile-landscape: tap Play where the title logged it ("[Title] Play button
-//     at ...", base units) with the mouse / a CDP touch, require "[Title] Play pressed (1)"
-//     and the play scene, then shoot the run's first goose where it logs itself ("[Bird]
+//   desktop, mobile-landscape: reach campaign level dawn_1 through the menus with the mouse /
+//     CDP touches, each tapped where its screen logged it (base units): Campaign ("[Title]
+//     Campaign button at ...", require "[Title] Campaign pressed (1)" and the chapter select),
+//     dawn ("[ChapterSelect] Chapter dawn at ...", require its press and the level select),
+//     level 1 ("[LevelSelect] Level dawn_1 at ...", require its press and the play scene with
+//     "[Play] Run start: level dawn_1"), then shoot the level's first goose where it logs itself ("[Bird]
 //     goose #1 at (x, y) ... age a ahead (x1, y1) ...", base units, every 0.25 s, with the
 //     positions its flight reaches every 0.1 s ahead), at the point of that path it reaches
 //     when the shot lands: the time since the line arrived plus the input latency (first
@@ -20,11 +23,12 @@
 //     a miss, a combo, a steal or at the latest wave 1's end always brings one); then a
 //     visibilitychange with document.hidden true must log "[Play] Paused (page hidden)";
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
-//     touch where Play is and Enter press nothing, turn the phone to landscape (844x390),
-//     require "[Game] Rotate overlay hidden ... unpaused", then tap Play and require the press;
-//   keyboard: Tab (shows the focus ring) and Enter on the focused Play, require the press and
-//     the play scene; Escape opens the pause menu, Enter on the focused Resume resumes,
-//     Escape opens it again, Down Down Enter quits to the title.
+//     touch where Campaign is and Enter press nothing, turn the phone to landscape (844x390),
+//     require "[Game] Rotate overlay hidden ... unpaused", then tap Campaign and require the press;
+//   keyboard: Tab, Tab (back to Campaign, showing the focus ring) and Enter on the focused
+//     Campaign, Enter on the focused dawn chapter, Enter on the focused level 1, require each
+//     press and the play scene running dawn_1; Escape opens the pause menu, Enter on the
+//     focused Resume resumes, Escape opens it again, Down Down Enter quits to the title.
 // Usage: node tools/smoke_web.mjs [buildDir]   (default: build/web)
 // Env:   SMOKE_BOOT_TIMEOUT_MS (default 30000), SMOKE_SETTLE_MS (default 2000),
 //        SMOKE_STEP_TIMEOUT_MS (each waited-for log line, default 20000)
@@ -59,7 +63,12 @@ const TOUCH_CSS = { touchAction: 'none', overscrollBehavior: 'none', userSelect:
 const BASE = { width: 960, height: 540 };
 // How long a blocked input is given to (wrongly) reach the game.
 const BLOCKED_WAIT_MS = 1500;
-const PLAY_RECT = /^\[Title\] Play button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+// Where each screen logs the button the path taps (base units).
+const CAMPAIGN_RECT = /^\[Title\] Campaign button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const DAWN_RECT = /^\[ChapterSelect\] Chapter dawn at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const LEVEL_RECT = /^\[LevelSelect\] Level dawn_1 at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+// The campaign level the path plays, logged by the play scene before it arrives.
+const LEVEL_RUN = /^\[Play\] Run start: level dawn_1 /;
 const FIRST_GOOSE = /^\[Bird\] goose #1 at \(([\d.-]+), ([\d.-]+)\) v \([\d.-]+, [\d.-]+\) age ([\d.]+) ahead (.*)$/;
 const FIRST_SPAWN = /^\[Play\] Spawned goose #1 \(.*\) at t ([\d.-]+)/;
 // The first wave's shell pool (logged by the play scene before it arrives).
@@ -131,11 +140,30 @@ function toPage(box, x, y) {
   return { x: box.x + x * scale, y: box.y + y * scale };
 }
 
-// The centre of the Play button in page coordinates, from the latest logged rect.
-async function playPoint(page, logs) {
-  const match = await waitForLog(page, logs, PLAY_RECT, 'the Play button layout');
+// The centre of a button in page coordinates, from the latest rect matching `pattern`
+// logged at or after index `from`.
+async function buttonPoint(page, logs, pattern, what, from = 0) {
+  const match = await waitForLog(page, logs, pattern, what, from);
   const [x, y, w, h] = match.slice(1).map(Number);
   return pagePoint(page, x + w / 2, y + h / 2);
+}
+
+// Taps Campaign, the dawn chapter and level 1 where their screens log them, requiring each
+// press and screen; returns the "[Game] Arrived at PLAY" match.
+async function reachFirstLevel(page, logs, pointer, how) {
+  let from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, CAMPAIGN_RECT, 'the Campaign button layout'));
+  await waitForLog(page, logs, /^\[Title\] Campaign pressed \(1\)/, `Campaign to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, /^\[Game\] Arrived at CHAPTER_SELECT/, 'the chapter select', from);
+  from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, DAWN_RECT, 'the dawn chapter button layout'));
+  await waitForLog(page, logs, /^\[ChapterSelect\] Chapter dawn pressed/, `the dawn chapter to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, /^\[Game\] Arrived at LEVEL_SELECT/, 'the level select', from);
+  from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, LEVEL_RECT, 'the level 1 button layout'));
+  await waitForLog(page, logs, /^\[LevelSelect\] Level dawn_1 pressed/, `level 1 to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, LEVEL_RUN, 'level dawn_1 to start', from);
+  return waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene', from);
 }
 
 // The point of a logged path (`points[k]` at k x AHEAD_STEP_S seconds) at `lead` seconds.
@@ -203,21 +231,33 @@ async function shootFirstGoose(page, logs, logTimes, pointer, from) {
 }
 
 function pressCount(logs) {
-  return logs.filter((l) => /^\[Title\] Play pressed/.test(l)).length;
+  return logs.filter((l) => /^\[Title\] (Campaign|Endless) pressed/.test(l)).length;
 }
 
 // The run's scripted path once the title is up; throws on a missing log line.
 async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.keyboard) {
-    // Tab is keyboard navigation, which shows the focus ring (hidden on arrival) before the press.
+    // Tab is keyboard navigation, which shows the focus ring (hidden on arrival); Tab again
+    // wraps from Endless back to Campaign.
+    await page.keyboard.press('Tab');
     await page.keyboard.press('Tab');
     await page.waitForTimeout(300);
     await shot('focus');
-    await page.keyboard.press('Enter');
-    await waitForLog(page, logs, /^\[Title\] Play pressed \(1\)/, 'Play to be pressed (Tab, Enter on the focused Play)');
-    await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene');
-    await shot('play');
     let from = logs.length;
+    await page.keyboard.press('Enter');
+    await waitForLog(page, logs, /^\[Title\] Campaign pressed \(1\)/, 'Campaign to be pressed (Tab, Tab, Enter on the focused Campaign)', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at CHAPTER_SELECT/, 'the chapter select', from);
+    from = logs.length;
+    await page.keyboard.press('Enter');
+    await waitForLog(page, logs, /^\[ChapterSelect\] Chapter dawn pressed/, 'Enter on the focused dawn chapter', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at LEVEL_SELECT/, 'the level select', from);
+    from = logs.length;
+    await page.keyboard.press('Enter');
+    await waitForLog(page, logs, /^\[LevelSelect\] Level dawn_1 pressed/, 'Enter on the focused level 1', from);
+    await waitForLog(page, logs, LEVEL_RUN, 'level dawn_1 to start', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene', from);
+    await shot('play');
+    from = logs.length;
     await page.keyboard.press('Escape');
     await waitForLog(page, logs, /^\[Play\] Paused \(Escape\)/, 'Escape to open the pause menu', from);
     await page.waitForTimeout(300);
@@ -239,25 +279,24 @@ async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.portrait) {
     await waitForLog(page, logs, /^\[Game\] Rotate overlay shown .*tree paused/, 'the rotate overlay (portrait)');
     await shot('rotate');
-    await pointer.tap(await playPoint(page, logs));
+    await pointer.tap(await buttonPoint(page, logs, CAMPAIGN_RECT, 'the Campaign button layout'));
     await page.keyboard.press('Enter');
     await page.waitForTimeout(BLOCKED_WAIT_MS);
-    if (pressCount(logs) !== 0) failures.push('Play was pressed under the rotate overlay');
+    if (pressCount(logs) !== 0) failures.push('Campaign or Endless was pressed under the rotate overlay');
     const turned = logs.length;
     await page.setViewportSize(LANDSCAPE_PHONE);
     await waitForLog(page, logs, /^\[Game\] Rotate overlay hidden .*unpaused/, 'the rotate overlay to hide (turned to landscape)', turned);
-    // The title refits to the landscape safe area and logs Play's new rect.
-    await waitForLog(page, logs, PLAY_RECT, 'the Play button layout in landscape', turned);
+    // The title refits to the landscape safe area and logs Campaign's new rect.
+    await waitForLog(page, logs, CAMPAIGN_RECT, 'the Campaign button layout in landscape', turned);
+    const pressed = logs.length;
+    await pointer.tap(await buttonPoint(page, logs, CAMPAIGN_RECT, 'the Campaign button layout'));
+    await waitForLog(page, logs, /^\[Title\] Campaign pressed \(1\)/, 'Campaign to be pressed (touch tap, back in landscape)', pressed);
+    await shot('play');
+    return failures;
   } else if (logs.some((l) => /^\[Game\] Rotate overlay shown/.test(l))) {
     failures.push('rotate overlay shown in a landscape viewport');
   }
-  await pointer.tap(await playPoint(page, logs));
-  await waitForLog(page, logs, /^\[Title\] Play pressed \(1\)/, `Play to be pressed (${run.context.hasTouch ? 'touch' : 'mouse'} tap)`);
-  if (run.portrait) {
-    await shot('play');
-    return failures;
-  }
-  const arrived = await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene');
+  const arrived = await reachFirstLevel(page, logs, pointer, run.context.hasTouch ? 'touch' : 'mouse');
   const outcomes = await shootFirstGoose(page, logs, logTimes, pointer, arrived.index + 1);
   console.log(`[${run.name}] shots at the first goose: ${outcomes.join(', ')}`);
   await shot('play');
@@ -344,7 +383,7 @@ async function smoke(browser, url, run) {
     }, png.toString('base64'));
     if (distinctColors < 2) failures.push('screenshot is a single flat colour (nothing rendered)');
     if (failures.length === 0) failures.push(...await playPath(page, context, run, logs, logTimes, shot));
-    for (const line of logs.filter((l) => /^\[(Game|Title|Play|Results)\]/.test(l))) console.log(`[${run.name}] ${line}`);
+    for (const line of logs.filter((l) => /^\[(Game|Title|ChapterSelect|LevelSelect|Play|Results)\]/.test(l))) console.log(`[${run.name}] ${line}`);
   } catch (err) {
     failures.push(`smoke test aborted: ${err.message}`);
     // The game's last log lines show where the run got stuck.

@@ -1,33 +1,51 @@
 class_name Content
 extends RefCounted
-## All game content: the JSON in res://data/ parsed into typed resources (BirdSpec,
-## ModeSpec, RivalLines). Static only. The data is loaded once, lazily, on the first call of any
+## All game content: the JSON in res://data/ parsed into typed resources (ChapterSpec,
+## BirdSpec, ModeSpec, LevelSpec, RivalLines). Static only. The data is loaded once, lazily, on the first call of any
 ## public function (the title screen's errors() call does it at boot); reload() and
 ## load_texts() replace it (tests).
 ## Every problem (unreadable file, bad JSON, a file with no entries, missing or unknown key,
 ## wrong type, non-integer int, out-of-range value, unknown enum value, duplicate id,
 ## unknown reference, a sprite missing a frame, a hitbox outside its sprite or crossing
 ## itself, a split field without its pair, a wave mix with nothing from wave 1, a missing,
-## unknown or empty rival line category, a rival line too long for the bubble, and I13: a
-## bird whose linger_time + the rival's aim_time does not end before it flees) is
+## unknown or empty rival line category, a rival line too long for the bubble, not exactly
+## CHAPTER_COUNT chapters, a chapter whose rival_linger_scale rises above the one before's,
+## a chapter without exactly its levels 1..LEVELS_PER_CHAPTER, a boss on any level but the
+## last of its chapter, star thresholds that do not rise, and I13: a bird whose scaled
+## linger_time + the rival's aim_time does not end before it flees) is
 ## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" (rival_lines.json,
 ## a single object, names the line category as the entry, "-" for its top-level fields) and reported with
 ## push_error, all of them, not just the first. Entries with problems are still loaded as
 ## far as they parse (bad fields keep their resource defaults or a fallback). A check that
 ## depends on a field that already failed is skipped (the hitbox against a bad size, I13
-## against a bad flee_time, linger_time or aim_time), so a fallback value is never blamed.
+## against a bad flee_time, linger_time, aim_time or rival_linger_scale, the scale order
+## against a bad scale, the boss rule against a bad index), so a fallback value is never blamed.
 ## The title screen disables Play while errors() is non-empty, so no default ever reaches a run.
 
 const DATA_DIR := "res://data/"
-## Load order: modes reference birds, so birds load first; I13 needs the birds and the
-## rival's aim_time, so it is checked once rival_lines.json is loaded.
-const FILES: Array[String] = ["birds.json", "modes.json", "rival_lines.json"]
+## Load order: birds reference chapters, modes and levels reference birds (levels also
+## chapters); I13 needs the birds, the modes, the chapters and the rival's aim_time, so it is
+## checked once rival_lines.json is loaded.
+const FILES: Array[String] = ["chapters.json", "birds.json", "modes.json", "levels.json", "rival_lines.json"]
 const NAME_MAX := 26
 ## Flight patterns (Flight).
 const PATTERNS: Array[String] = ["rise", "zigzag"]
-## The campaign's chapter ids, in campaign order (main plan: dawn, noon, sunset, night). A
-## bird's `chapter` is one of them. Step 5's chapters.json takes this list over.
-const CHAPTERS: Array[String] = ["dawn", "noon", "sunset", "night"]
+## The campaign: exactly CHAPTER_COUNT chapters (dawn, noon, sunset, night) of exactly
+## LEVELS_PER_CHAPTER levels each, the last one the chapter's boss level.
+const CHAPTER_COUNT := 4
+const LEVELS_PER_CHAPTER := 6
+## A chapter's weather ids (placeholder until the art pass draws them).
+const WEATHERS: Array[String] = ["mist", "wind", "rain", "snow"]
+## A chapter's sky tint: "#rrggbb".
+const COLOR_PATTERN := "^#[0-9a-f]{6}$"
+## A level's star thresholds: STAR_COUNT final scores, each 1..STAR_SCORE_MAX.
+const STAR_COUNT := 3
+const STAR_SCORE_MAX := 10000000
+## A level's fixed seed lies in 0..SEED_MAX, its waves in 1..LEVEL_WAVES_MAX, its speed
+## scales in LEVEL_SPEED_MIN..SPEED_CAP_MAX.
+const SEED_MAX := 2147483647
+const LEVEL_WAVES_MAX := 20
+const LEVEL_SPEED_MIN := 0.5
 const HP_MAX := 5
 const SPLIT_COUNT_MAX := 4
 const SPEED_MAX := 1000.0
@@ -67,19 +85,24 @@ static var quiet_errors := false
 
 static var _loaded := false
 static var _errors: Array[String] = []
+static var _chapters: Dictionary[String, ChapterSpec] = {}
 static var _birds: Dictionary[String, BirdSpec] = {}
 static var _modes: Dictionary[String, ModeSpec] = {}
+static var _levels: Dictionary[String, LevelSpec] = {}
 static var _rival_lines := RivalLines.new()
 ## The top-level fields of the current entry that already have an error ("size" for
 ## "size[0]" too); checks that depend on one of them are skipped, so a field's fallback
 ## value is never blamed. Cleared at each bird and mode entry and at each file.
 static var _failed: Dictionary[String, bool] = {}
-## Ids of the birds whose flee_time or linger_time failed, which I13 skips.
+## Ids of the birds whose flee_time or linger_time failed, and of the chapters whose
+## rival_linger_scale failed, which I13 skips.
 static var _bad_timing: Dictionary[String, bool] = {}
+static var _bad_scale: Dictionary[String, bool] = {}
 ## The file and entry the loader is reading, for error messages.
 static var _file := ""
 static var _entry := ""
 static var _snake_case := RegEx.create_from_string("^[a-z][a-z0-9_]*$")
+static var _color_pattern := RegEx.create_from_string(COLOR_PATTERN)
 
 
 ## Every content problem found by the last load, oldest first. Empty means the data is valid.
@@ -126,6 +149,40 @@ static func mode(id: String) -> ModeSpec:
 	return _lookup(_modes, id, "mode") as ModeSpec
 
 
+## The chapter `id`, or null (with push_error) if there is none.
+static func chapter(id: String) -> ChapterSpec:
+	_ensure_loaded()
+	return _lookup(_chapters, id, "chapter") as ChapterSpec
+
+
+## The level `id`, or null (with push_error) if there is none.
+static func level(id: String) -> LevelSpec:
+	_ensure_loaded()
+	return _lookup(_levels, id, "level") as LevelSpec
+
+
+## Whether `id` is a level of levels.json (no error when it is not).
+static func has_level(id: String) -> bool:
+	_ensure_loaded()
+	return _levels.has(id)
+
+
+## Every chapter, in data (campaign) order.
+static func chapters() -> Array[ChapterSpec]:
+	_ensure_loaded()
+	var result: Array[ChapterSpec] = []
+	result.assign(_chapters.values())
+	return result
+
+
+## Every level, in data order (Campaign.levels() gives campaign order).
+static func levels() -> Array[LevelSpec]:
+	_ensure_loaded()
+	var result: Array[LevelSpec] = []
+	result.assign(_levels.values())
+	return result
+
+
 ## Every bird type, in data order.
 static func birds() -> Array[BirdSpec]:
 	_ensure_loaded()
@@ -156,10 +213,13 @@ static func _ensure_loaded() -> void:
 static func _reset() -> void:
 	_loaded = true
 	_errors.clear()
+	_chapters.clear()
 	_birds.clear()
 	_modes.clear()
+	_levels.clear()
 	_rival_lines = RivalLines.new()
 	_bad_timing.clear()
+	_bad_scale.clear()
 
 
 static func _load(texts: Dictionary[String, String]) -> void:
@@ -169,16 +229,157 @@ static func _load(texts: Dictionary[String, String]) -> void:
 			continue
 		_begin_file(file)
 		match file:
+			"chapters.json":
+				_load_chapters(_parse_entries(texts[file]))
 			"birds.json":
 				_load_birds(_parse_entries(texts[file]))
 			"modes.json":
 				_load_modes(_parse_entries(texts[file]))
+			"levels.json":
+				_load_levels(_parse_entries(texts[file]))
 			"rival_lines.json":
 				_load_rival_lines(_parse_object(texts[file]))
 	var line_count := 0
 	for category in _rival_lines.lines:
 		line_count += _rival_lines.lines[category].size()
-	print("[Content] Loaded %d birds, %d modes, %d rival lines: %d problem(s)" % [_birds.size(), _modes.size(), line_count, _errors.size()])
+	print("[Content] Loaded %d chapters, %d birds, %d modes, %d levels, %d rival lines: %d problem(s)" % [_chapters.size(), _birds.size(), _modes.size(), _levels.size(), line_count, _errors.size()])
+
+
+## chapters.json: exactly CHAPTER_COUNT chapters in campaign order, each rival_linger_scale
+## in (0, 1] and at most the one before's (the rival never gets slower).
+static func _load_chapters(entries: Array[Dictionary]) -> void:
+	var previous: ChapterSpec = null
+	for entry in entries:
+		var item := ChapterSpec.new()
+		item.id = _begin_entry(entry, ["id", "name", "sky_tint", "weather", "rival_linger_scale"], _chapters)
+		item.name = _string(entry, "name", NAME_MAX)
+		item.sky_tint = _color(entry, "sky_tint")
+		item.weather = _enum(entry, "weather", WEATHERS)
+		item.rival_linger_scale = _scale(entry, "rival_linger_scale")
+		if _failed.has("rival_linger_scale"):
+			_bad_scale[_entry] = true
+		else:
+			if previous != null and item.rival_linger_scale > previous.rival_linger_scale:
+				_error("rival_linger_scale", "%s is above %s's %s (the rival never gets slower: a chapter's scale is at most the one before's)" % [item.rival_linger_scale, previous.id, previous.rival_linger_scale])
+			previous = item
+		if item.id != "":
+			_chapters[item.id] = item
+	if not entries.is_empty() and _chapters.size() != CHAPTER_COUNT:
+		_entry = "-"
+		_error("(file)", "has %d chapters, needs exactly %d" % [_chapters.size(), CHAPTER_COUNT])
+
+
+## levels.json: each level's fields, then every chapter holds exactly its levels
+## 1..LEVELS_PER_CHAPTER, and the last of them (and only it) has the boss flock.
+static func _load_levels(entries: Array[Dictionary]) -> void:
+	# "<chapter>:<index>" -> the level id that holds it.
+	var taken: Dictionary[String, String] = {}
+	for entry in entries:
+		var item := LevelSpec.new()
+		item.id = _begin_entry(entry, ["id", "chapter", "index", "seed", "waves", "wave_birds", "mix", "golden_bird", "golden_chance", "speed_scale", "spawn_interval", "shells_per_hit", "combo_cap", "stars"], _levels, ["boss"])
+		item.chapter = _reference(entry, "chapter", _chapters, "chapter")
+		item.index = _int(entry, "index", 1, LEVELS_PER_CHAPTER)
+		item.level_seed = _int(entry, "seed", 0, SEED_MAX)
+		item.waves = _int(entry, "waves", 1, LEVEL_WAVES_MAX)
+		item.wave_birds = _int(entry, "wave_birds", 1, WAVE_BIRDS_MAX)
+		item.mix = _mix(entry, "mix", false)
+		item.golden_bird = _reference(entry, "golden_bird", _birds, "bird")
+		item.golden_chance = _float(entry, "golden_chance", 0.0, 1.0)
+		item.speed_scale = _float(entry, "speed_scale", LEVEL_SPEED_MIN, SPEED_CAP_MAX)
+		item.spawn_interval = _float(entry, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
+		item.shells_per_hit = _int(entry, "shells_per_hit", 1, SHELLS_PER_HIT_MAX)
+		item.combo_cap = _int(entry, "combo_cap", 1, COMBO_CAP_MAX)
+		item.stars = _stars(entry, "stars")
+		if entry.has("boss"):
+			item.boss = _boss(entry["boss"])
+		if entry.has("index") and not _failed.has("index"):
+			if item.index == LEVELS_PER_CHAPTER and not entry.has("boss"):
+				_error("boss", "missing key (level %d is its chapter's boss level)" % LEVELS_PER_CHAPTER)
+			elif item.index != LEVELS_PER_CHAPTER and entry.has("boss"):
+				_error("boss", "level %d is no boss level (only level %d is)" % [item.index, LEVELS_PER_CHAPTER])
+			if item.chapter != "":
+				var slot := "%s:%d" % [item.chapter, item.index]
+				if taken.has(slot):
+					_error("index", "%d of chapter %s is already level %s" % [item.index, item.chapter, taken[slot]])
+				else:
+					taken[slot] = _entry
+		if item.id != "":
+			_levels[item.id] = item
+	if entries.is_empty():
+		return
+	_entry = "-"
+	for chapter_id in _chapters:
+		for index in range(1, LEVELS_PER_CHAPTER + 1):
+			if not taken.has("%s:%d" % [chapter_id, index]):
+				_error("chapter", "%s has no level %d (each chapter has levels 1..%d)" % [chapter_id, index, LEVELS_PER_CHAPTER])
+
+
+## A level's boss flock: {"birds", "spawn_interval", "speed_scale", "mix"}.
+static func _boss(value: Variant) -> LevelSpec.Boss:
+	var boss := LevelSpec.Boss.new()
+	if typeof(value) != TYPE_DICTIONARY:
+		_error("boss", "expected Dictionary, got %s" % type_string(typeof(value)))
+		return boss
+	var part: Dictionary = value
+	var keys: Array[String] = ["birds", "spawn_interval", "speed_scale", "mix"]
+	for name in keys:
+		if not part.has(name):
+			_error("boss." + name, "missing key")
+	for name: Variant in part:
+		if not str(name) in keys:
+			_error("boss.%s" % name, "unknown key")
+	boss.birds = _int(part, "birds", 1, WAVE_BIRDS_MAX, "boss.")
+	boss.spawn_interval = _float(part, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX, "boss.")
+	boss.speed_scale = _float(part, "speed_scale", LEVEL_SPEED_MIN, SPEED_CAP_MAX, "boss.")
+	boss.mix = _mix(part, "mix", false, "boss.")
+	return boss
+
+
+## A level's star thresholds: STAR_COUNT whole scores of 1..STAR_SCORE_MAX, each above the one before.
+static func _stars(object: Dictionary, key: String) -> Array[int]:
+	var result: Array[int] = []
+	if not object.has(key):
+		return result
+	if typeof(object[key]) != TYPE_ARRAY or (object[key] as Array).size() != STAR_COUNT:
+		_error(key, "expected an array of %d scores (1, 2 and 3 stars), got %s" % [STAR_COUNT, object[key]])
+		return result
+	var list: Array = object[key]
+	for i in list.size():
+		result.append(_int({key: list[i]}, key, 1, STAR_SCORE_MAX, "", "%s[%d]" % [key, i]))
+	if _failed.has(key):
+		return result
+	for i in range(1, result.size()):
+		if result[i] <= result[i - 1]:
+			_error("%s[%d]" % [key, i], "%d is not above %s[%d] %d (the thresholds rise strictly)" % [result[i], key, i - 1, result[i - 1]])
+	return result
+
+
+## A "#rrggbb" colour.
+static func _color(object: Dictionary, key: String) -> Color:
+	if not object.has(key):
+		return Color.WHITE
+	if typeof(object[key]) != TYPE_STRING:
+		_error(key, "expected String, got %s" % type_string(typeof(object[key])))
+		return Color.WHITE
+	if _color_pattern.search(object[key]) == null:
+		_error(key, "'%s' is not a colour \"#rrggbb\" (lowercase hex)" % object[key])
+		return Color.WHITE
+	return Color.html(object[key])
+
+
+## A scale in (0, 1]: more than 0, at most 1.
+static func _scale(object: Dictionary, key: String) -> float:
+	if not object.has(key):
+		return 1.0
+	var value: Variant = object[key]
+	if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
+		_error(key, "expected float, got %s" % type_string(typeof(value)))
+		return 1.0
+	var number: float = value
+	if number <= 0.0 or number > 1.0:
+		_error(key, "%s is outside (0.0, 1.0]" % number)
+		return 1.0
+	return number
 
 
 static func _load_birds(entries: Array[Dictionary]) -> void:
@@ -188,7 +389,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 		item.id = _begin_entry(entry, ["id", "name", "chapter", "pattern", "speed", "wobble", "wobble_hz", "flee_time", "linger_time", "points", "hp", "sprite", "size", "hitbox"], _birds,
 			["splits_into", "split_count", "penalty", "escape_counts"])
 		item.name = _string(entry, "name", NAME_MAX)
-		item.chapter = _enum(entry, "chapter", CHAPTERS)
+		item.chapter = _reference(entry, "chapter", _chapters, "chapter")
 		item.pattern = _enum(entry, "pattern", PATTERNS)
 		item.speed = _float(entry, "speed", 1.0, SPEED_MAX)
 		item.wobble = _float(entry, "wobble", 0.0, WOBBLE_MAX)
@@ -309,43 +510,62 @@ static func _lines(value: Variant) -> PackedStringArray:
 	return result
 
 
-## I13: every bird the rival can steal (all but the decoy) has linger_time + aim_time under
-## its flee_time, so every cue can finish before the bird flees on its own. A bird whose
-## flee_time or linger_time already has an error is skipped (its fallback value would be
-## blamed instead).
+## I13: every bird the rival can steal (all but the decoy) has every linger the rival uses
+## plus aim_time under its flee_time, so every cue can finish before the bird flees on its
+## own. The rival waits linger_time x 1 in a mode with rival_steals and linger_time x the
+## chapter's rival_linger_scale in each chapter (the campaign always steals). One line per
+## bird, at the largest failing scale, naming every mode and chapter that fails. A bird
+## whose flee_time or linger_time already has an error is skipped, and so is a chapter whose
+## scale has one (its fallback value would be blamed instead).
 static func _check_linger(aim_time: float) -> void:
+	var scales: Dictionary[String, float] = {}
+	for mode_spec: ModeSpec in _modes.values():
+		if mode_spec.rival_steals:
+			scales[mode_spec.id] = 1.0
+	for chapter_spec: ChapterSpec in _chapters.values():
+		if not _bad_scale.has(chapter_spec.id):
+			scales[chapter_spec.id] = chapter_spec.rival_linger_scale
 	_file = "data/birds.json"
 	for spec: BirdSpec in _birds.values():
 		if spec.penalty > 0 or _bad_timing.has(spec.id):
 			continue
 		_entry = spec.id
-		if spec.linger_time + aim_time >= spec.flee_time:
-			_error("linger_time", "%s + aim_time %s is not under flee_time %s (I13: the rival's cue must end before the bird flees)" % [spec.linger_time, aim_time, spec.flee_time])
+		var failing := PackedStringArray()
+		var worst := 0.0
+		for where in scales:
+			if spec.linger_time * scales[where] + aim_time >= spec.flee_time:
+				failing.append(where)
+				worst = maxf(worst, scales[where])
+		if not failing.is_empty():
+			_error("linger_time", "%s x %s (%s) + aim_time %s is not under flee_time %s (I13: the rival's cue must end before the bird flees)" % [spec.linger_time, worst, ", ".join(failing), aim_time, spec.flee_time])
 	_file = "data/rival_lines.json"
 
 
-## A mode's wave mix: a non-empty array of {"bird", "from_wave", "weight"} objects, each
-## bird a known id at most once, at least one of them from wave 1 (so every wave has a
-## bird to pick).
-static func _mix(object: Dictionary, key: String) -> Array[ModeSpec.Entry]:
+## A wave mix: a non-empty array of {"bird", "from_wave", "weight"} objects (a mode's), or
+## of {"bird", "weight"} objects when `with_from_wave` is false (a level's, every bird from
+## wave 1), each bird a known id at most once, at least one of them from wave 1 (so every
+## wave has a bird to pick). `prefix` names the object it is in ("boss.").
+static func _mix(object: Dictionary, key: String, with_from_wave := true, prefix := "") -> Array[ModeSpec.Entry]:
 	var result: Array[ModeSpec.Entry] = []
 	if not object.has(key):
 		return result
 	if typeof(object[key]) != TYPE_ARRAY:
-		_error(key, "expected Array, got %s" % type_string(typeof(object[key])))
+		_error(prefix + key, "expected Array, got %s" % type_string(typeof(object[key])))
 		return result
 	var list: Array = object[key]
 	if list.is_empty():
-		_error(key, "is empty")
+		_error(prefix + key, "is empty")
 		return result
 	var seen: Dictionary[String, int] = {}
 	for i in list.size():
-		var field := "%s[%d]" % [key, i]
+		var field := "%s%s[%d]" % [prefix, key, i]
 		if typeof(list[i]) != TYPE_DICTIONARY:
 			_error(field, "expected Dictionary, got %s" % type_string(typeof(list[i])))
 			continue
 		var part: Dictionary = list[i]
-		var keys: Array[String] = ["bird", "from_wave", "weight"]
+		var keys: Array[String] = ["bird", "weight"]
+		if with_from_wave:
+			keys.insert(1, "from_wave")
 		for name in keys:
 			if not part.has(name):
 				_error("%s.%s" % [field, name], "missing key")
@@ -354,16 +574,17 @@ static func _mix(object: Dictionary, key: String) -> Array[ModeSpec.Entry]:
 				_error("%s.%s" % [field, name], "unknown key")
 		var entry := ModeSpec.Entry.new()
 		entry.bird = _reference(part, "bird", _birds, "bird", field + ".")
-		entry.from_wave = _int(part, "from_wave", 1, WAVE_MAX, field + ".")
+		if with_from_wave:
+			entry.from_wave = _int(part, "from_wave", 1, WAVE_MAX, field + ".")
 		entry.weight = _int(part, "weight", 1, WEIGHT_MAX, field + ".")
 		if entry.bird != "":
 			if seen.has(entry.bird):
-				_error(field + ".bird", "'%s' is already in the mix (%s[%d])" % [entry.bird, key, seen[entry.bird]])
+				_error(field + ".bird", "'%s' is already in the mix (%s%s[%d])" % [entry.bird, prefix, key, seen[entry.bird]])
 				continue
 			seen[entry.bird] = i
 			result.append(entry)
 	if not result.is_empty() and not result.any(func(e: ModeSpec.Entry) -> bool: return e.from_wave == 1):
-		_error(key, "no bird from wave 1 (wave 1 would have nothing to spawn)")
+		_error(prefix + key, "no bird from wave 1 (wave 1 would have nothing to spawn)")
 	return result
 
 
@@ -446,11 +667,12 @@ static func _string(object: Dictionary, key: String, max_length: int) -> String:
 	return text
 
 
-## `prefix` names the object inside the entry ("birds[0].") in error messages.
-static func _int(object: Dictionary, key: String, low: int, high: int, prefix := "") -> int:
+## `prefix` names the object inside the entry ("birds[0].") in error messages; `name`, when
+## set, replaces the whole field name ("stars[1]").
+static func _int(object: Dictionary, key: String, low: int, high: int, prefix := "", name := "") -> int:
 	if not object.has(key):
 		return low
-	var field := prefix + key
+	var field := name if name != "" else prefix + key
 	var value: Variant = object[key]
 	if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
 		_error(field, "expected int, got %s" % type_string(typeof(value)))
@@ -499,10 +721,10 @@ static func _reference(object: Dictionary, key: String, known: Dictionary, kind:
 	return object[key]
 
 
-static func _float(object: Dictionary, key: String, low: float, high: float) -> float:
+static func _float(object: Dictionary, key: String, low: float, high: float, prefix := "") -> float:
 	if not object.has(key):
 		return low
-	return _float_value(object[key], key, low, high)
+	return _float_value(object[key], prefix + key, low, high)
 
 
 static func _float_value(value: Variant, field: String, low: float, high: float) -> float:

@@ -9,6 +9,7 @@ extends SceneTree
 
 const TITLE_PATH := "res://scenes/title.tscn"
 const PLAY_PATH := "res://scenes/play.tscn"
+const CHAPTER_SELECT_PATH := "res://scenes/chapter_select.tscn"
 const EXPORT_PRESETS_PATH := "res://export_presets.cfg"
 ## Every synthetic touch uses this index: a web build's index is the browser's
 ## Touch.identifier, which iOS Safari makes large and never 0.
@@ -44,7 +45,7 @@ const NOTCHED_SAFE_RECT := Rect2(66, 0, 1104, 540)
 ## A 19.5:9 phone in landscape whose safe area also leaves out the iOS home indicator at
 ## the bottom, and the smallest safe height the results screen must fit.
 const RESULTS_INSET_SAFE_RECT := Rect2(66, 0, 1104, 511)
-const RESULTS_MIN_SAFE_HEIGHT := 480
+const RESULTS_MIN_SAFE_HEIGHT := 470
 ## Real-time limit for the whole run; a test stuck on an await fails instead of hanging.
 const WATCHDOG_MSEC := 120000
 ## A goose's hitbox (data/birds.json) holds LOCAL_INSIDE (1 unit inside its bottom edge)
@@ -195,6 +196,21 @@ func _tests() -> Array[Callable]:
 		_test_pause_restart_and_quit,
 		_test_run_ends_on_results,
 		_test_run_end_save_failure,
+		_test_campaign_wave_schedule,
+		_test_campaign_stars_unlocks_and_best,
+		_test_campaign_record_level,
+		_test_save_v1_migrates_to_v2,
+		_test_save_settings_and_bad_entries,
+		_test_campaign_level_plays_all_waves,
+		_test_campaign_pass_next_retry_levels,
+		_test_campaign_save_failure,
+		_test_campaign_unknown_level,
+		_test_campaign_rival_linger_scale,
+		_test_results_verdict,
+		_test_chapter_select,
+		_test_level_select,
+		_test_save_dropped_backup_failure,
+		_test_select_focus_returns,
 	]
 
 
@@ -350,27 +366,36 @@ func _test_fit_window_rect() -> void:
 	_check(full_hd.size == base, "fit_window_rect leaves a roomy 1x screen unchanged", str(full_hd))
 
 
-## The title's Play button: at least 44x44, inside the safe area, focused on arrival with
-## a visible focus style, at 16:9, 19.5:9 and 4:3.
+## The title's Campaign and Endless buttons: side by side, at least 44x44, inside the safe
+## area, with a visible focus style, at 16:9, 19.5:9 and 4:3; Campaign is focused on
+## arrival and Tab moves to Endless.
 func _test_title_button_layout() -> void:
 	await _open_title()
 	var title := current_scene as Title
-	var button := title.get_node("Safe/PlayButton") as Button
-	_check(button.has_focus(), "title focuses Play on arrival", str(root.gui_get_focus_owner()))
-	var focus_style := button.get_theme_stylebox(&"focus")
-	_check(focus_style != null and not (focus_style is StyleBoxEmpty), "Play has a visible focus style", str(focus_style))
-	_check(button.focus_mode == Control.FOCUS_ALL, "Play takes keyboard focus", str(button.focus_mode))
-	_check(not button.has_focus(true), "the focus ring is hidden on arrival (no stray ring on phones)", "focus visible")
+	var campaign := title.get_node("Safe/CampaignButton") as Button
+	var endless := title.get_node("Safe/EndlessButton") as Button
+	_check(campaign.has_focus(), "title focuses Campaign on arrival", str(root.gui_get_focus_owner()))
+	for button: Button in [campaign, endless]:
+		var focus_style := button.get_theme_stylebox(&"focus")
+		_check(focus_style != null and not (focus_style is StyleBoxEmpty), "%s has a visible focus style" % button.text, str(focus_style))
+		_check(button.focus_mode == Control.FOCUS_ALL, "%s takes keyboard focus" % button.text, str(button.focus_mode))
+	_check(campaign.text == "Campaign" and endless.text == "Endless", "the title offers Campaign and Endless", "%s, %s" % [campaign.text, endless.text])
+	_check(not campaign.has_focus(true), "the focus ring is hidden on arrival (no stray ring on phones)", "focus visible")
 	await _key(KEY_TAB)
-	_check(button.has_focus(true), "keyboard navigation shows Play's focus ring", "focus still hidden")
+	_check(endless.has_focus(true), "Tab moves to Endless and shows its focus ring", str(root.gui_get_focus_owner()))
+	await _key(KEY_TAB)
+	_check(campaign.has_focus(true), "Tab wraps back to Campaign", str(root.gui_get_focus_owner()))
 	for window in LANDSCAPE_WINDOWS:
 		root.size = window
 		await process_frame
 		await process_frame
-		var label := "%dx%d Play" % [window.x, window.y]
-		var rect := button.get_global_rect()
-		_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET, label + " size", str(rect.size))
-		_check(_game.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.safe_rect()])
+		for button: Button in [campaign, endless]:
+			var label := "%dx%d %s" % [window.x, window.y, button.text]
+			var rect := button.get_global_rect()
+			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET, label + " size", str(rect.size))
+			_check(_game.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.safe_rect()])
+		_check(is_equal_approx(campaign.get_global_rect().get_center().y, endless.get_global_rect().get_center().y) and campaign.get_global_rect().end.x < endless.get_global_rect().position.x,
+			"%dx%d Campaign sits next to Endless" % [window.x, window.y], "%s, %s" % [campaign.get_global_rect(), endless.get_global_rect()])
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -381,38 +406,44 @@ func _test_title_follows_notched_safe_area() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var safe := title.get_node("Safe") as Control
-	var button := title.get_node("Safe/PlayButton") as Button
+	var campaign := title.get_node("Safe/CampaignButton") as Button
+	var endless := title.get_node("Safe/EndlessButton") as Button
 	_game.safe_area_override = NOTCHED_SAFE_RECT
 	root.size = LANDSCAPE_19_5_9
 	await process_frame
 	await process_frame
 	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
 	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
-	_check(NOTCHED_SAFE_RECT.encloses(button.get_global_rect()), "Play is clear of the notch", str(button.get_global_rect()))
+	_check(NOTCHED_SAFE_RECT.encloses(campaign.get_global_rect()) and NOTCHED_SAFE_RECT.encloses(endless.get_global_rect()), "Campaign and Endless are clear of the notch", "%s, %s" % [campaign.get_global_rect(), endless.get_global_rect()])
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
 
-## A real touch on Play starts an Endless run (through goto, with a seed), and so does
-## Enter on the focused button.
+## A real touch on Endless starts an Endless run (through goto, with a seed), each with a
+## fresh seed; Enter on the focused Campaign opens the chapter select.
 func _test_title_button_tap_and_enter() -> void:
 	await _open_title()
 	var title := current_scene as Title
-	var button := title.get_node("Safe/PlayButton") as Button
-	await _tap(button)
-	_check(title.play_presses == 1, "a tap presses Play", "%d presses" % title.play_presses)
-	_check(_game.is_transitioning() and _game.transition_log.back().begins_with("TITLE -> PLAY (%s)" % PLAY_PATH), "Play goes to the play scene through goto", str(_game.transition_log.back()))
+	await _tap(title.get_node("Safe/EndlessButton") as Control)
+	_check(title.endless_presses == 1 and title.campaign_presses == 0, "a tap presses Endless", "%d presses" % title.endless_presses)
+	_check(_game.is_transitioning() and _game.transition_log.back().begins_with("TITLE -> PLAY (%s)" % PLAY_PATH), "Endless goes to the play scene through goto", str(_game.transition_log.back()))
 	await _game.transition_finished
-	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play starts a run", "%s %s" % [_game.state, current_scene])
+	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Endless starts a run", "%s %s" % [_game.state, current_scene])
 	_check(_game.flow_args.get("mode") == GameState.ENDLESS_MODE and _game.flow_args.get("seed") is int, "the run is Endless with a seed", str(_game.flow_args))
 	var first_seed: int = _game.flow_args["seed"]
 	await _open_title()
 	title = current_scene as Title
-	await _key(KEY_ENTER)
-	_check(title.play_presses == 1, "Enter presses the focused Play", "%d presses" % title.play_presses)
+	await _tap(title.get_node("Safe/EndlessButton") as Control)
 	await _game.transition_finished
 	_check(current_scene is Play and _game.flow_args.get("seed") != first_seed, "each run gets a fresh seed", "seeds %d and %s" % [first_seed, _game.flow_args.get("seed")])
+	await _open_title()
+	title = current_scene as Title
+	await _key(KEY_ENTER)
+	_check(title.campaign_presses == 1 and title.endless_presses == 0, "Enter presses the focused Campaign", "%d presses" % title.campaign_presses)
+	_check(_game.transition_log.back().begins_with("TITLE -> CHAPTER_SELECT (%s)" % CHAPTER_SELECT_PATH), "Campaign opens the chapter select through goto", str(_game.transition_log.back()))
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.CHAPTER_SELECT and current_scene is ChapterSelect, "Campaign shows the chapter select", "%s %s" % [_game.state, current_scene])
 
 
 ## A portrait window shows the rotate overlay over the whole screen and pauses the tree;
@@ -441,22 +472,22 @@ func _test_rotate_overlay_shows_and_pauses() -> void:
 	await process_frame
 
 
-## Under the rotate overlay neither a tap where Play is nor Enter presses Play.
+## Under the rotate overlay neither a tap where Campaign is nor Enter presses it.
 func _test_rotate_overlay_blocks_input() -> void:
 	await _open_title()
 	var title := current_scene as Title
-	var button := title.get_node("Safe/PlayButton") as Button
+	var button := title.get_node("Safe/CampaignButton") as Button
 	button.grab_focus()
 	root.size = PORTRAIT_9_19_5
 	await process_frame
 	await process_frame
 	await _tap(button)
 	await _key(KEY_ENTER)
-	_check(title.play_presses == 0, "the rotate overlay blocks taps and keys", "%d presses" % title.play_presses)
+	_check(title.campaign_presses == 0, "the rotate overlay blocks taps and keys", "%d presses" % title.campaign_presses)
 	root.size = BASE_WINDOW
 	await process_frame
 	await _key(KEY_ENTER)
-	_check(title.play_presses == 1, "Play works again after rotating back", "%d presses" % title.play_presses)
+	_check(title.campaign_presses == 1, "Campaign works again after rotating back", "%d presses" % title.campaign_presses)
 	await _game.transition_finished
 
 
@@ -472,8 +503,8 @@ func _test_rotate_overlay_keeps_existing_pause() -> void:
 	paused = false
 
 
-## With content errors the title shows the banner and Play is disabled; with clean data
-## the banner is hidden and Play works.
+## With content errors the title shows the banner and Campaign and Endless are disabled;
+## with clean data the banner is hidden and both work.
 func _test_title_content_error_banner() -> void:
 	Content.quiet_errors = true
 	Content.load_texts({"birds.json": "[]"})
@@ -481,16 +512,18 @@ func _test_title_content_error_banner() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var banner := title.get_node("Safe/ContentErrorBanner") as Label
-	var button := title.get_node("Safe/PlayButton") as Button
+	var campaign := title.get_node("Safe/CampaignButton") as Button
+	var endless := title.get_node("Safe/EndlessButton") as Button
 	_check(banner.visible and banner.text == Title.CONTENT_ERROR_MESSAGE % problems, "content errors show the banner", "%s '%s'" % [banner.visible, banner.text])
-	_check(button.disabled, "content errors disable Play", "enabled")
-	await _tap(button)
-	_check(title.play_presses == 0 and not _game.is_transitioning(), "a disabled Play starts nothing", "%d presses" % title.play_presses)
+	_check(campaign.disabled and endless.disabled, "content errors disable Campaign and Endless", "enabled")
+	await _tap(campaign)
+	await _tap(endless)
+	_check(title.campaign_presses == 0 and title.endless_presses == 0 and not _game.is_transitioning(), "a disabled Campaign or Endless starts nothing", "%d, %d presses" % [title.campaign_presses, title.endless_presses])
 	Content.quiet_errors = false
 	Content.reload()
 	await _open_title()
 	title = current_scene as Title
-	_check(not (title.get_node("Safe/ContentErrorBanner") as Label).visible and not (title.get_node("Safe/PlayButton") as Button).disabled, "clean content: no banner, Play enabled", "banner or disabled")
+	_check(not (title.get_node("Safe/ContentErrorBanner") as Label).visible and not (title.get_node("Safe/CampaignButton") as Button).disabled and not (title.get_node("Safe/EndlessButton") as Button).disabled, "clean content: no banner, Campaign and Endless enabled", "banner or disabled")
 
 
 func _test_flight_determinism() -> void:
@@ -646,7 +679,8 @@ func _test_save_and_reload() -> void:
 func _test_save_corrupt_and_unknown_version() -> void:
 	var cases := {
 		"{not json": "corrupt (line",
-		JSON.stringify({"version": 2, "best_endless": 5}): "version 2 is not this game's version 1",
+		JSON.stringify({"version": 3, "best_endless": 5}): "version 3 is newer than this game's 2",
+		JSON.stringify({"version": 0, "best_endless": 5}): "'version' is not a whole number >= 1",
 		JSON.stringify({"version": 1, "best_endless": "lots"}): "'best_endless' is not a whole number",
 		JSON.stringify({"version": 1, "best_endless": 5, "coins": 3}): "unknown key 'coins'",
 		JSON.stringify({"version": 1}): "missing key 'best_endless'",
@@ -1046,7 +1080,7 @@ func _test_run_ends_on_results() -> void:
 	var stats := _game.flow_args
 	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 1, Endless best 100$", "the save is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 2, Endless best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
 	var stolen: int = stats.get("stolen", -1)
 	var rival_score: int = stats.get("rival_score", -1)
 	var steal_line := RegEx.create_from_string("^\\[Play\\] Stolen \\w+ #\\d+ by the rival after a [\\d.]+ s cue: (\\d+) points to the rival")
@@ -1060,8 +1094,9 @@ func _test_run_ends_on_results() -> void:
 		taken += points
 	_check(stolen > 0 and stolen == steals.size() and rival_score == taken and Content.rival_lines().lines["results"].has(stats.get("rival_line")), "the results get the birds stolen, the rival's score (the points of every logged steal) and a results line", "%s; logged steals %s" % [stats, steals])
 	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, 10 escaped \\(%d stolen\\), rival score %d, best 100 \\(new best\\)$" % [stolen, rival_score], "the run end is logged with the run's stats, the birds stolen and the rival's score")
-	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Stolen", "RivalScore", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10", "Birds stolen %d" % stolen, "Rival score %d" % rival_score, "Pigeons hit 0", "Endless best 100"], "the results show score, accuracy, hits, escapes, birds stolen, the rival's score, pigeons hit and best", str(shown))
+	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Verdict", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
+	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10 (%d stolen)" % stolen, Results.verdict_text(100, rival_score), "Pigeons hit 0", "Endless best 100"], "the results show score, accuracy, hits, escapes with the birds stolen, the verdict with the rival's score, pigeons hit and best", str(shown))
+	_check((results.get_node("Safe/Stats/Verdict") as Label).visible and not (results.get_node("Safe/Stats/Stars") as Label).visible and (results.get_node("Safe/Heading") as Label).text == Results.ENDLESS_HEADING, "Endless results show the verdict, no stars", "verdict or stars")
 	var last_stat := (results.get_node("Safe/Stats/Best") as Control).get_global_rect()
 	_check(last_stat.end.y <= (results.get_node("Safe/NewBest") as Control).get_global_rect().position.y + 0.5, "the stats (now eight lines) fit above New best!", str(last_stat))
 	var rival_line := results.get_node("Safe/RivalLine") as Label
@@ -1085,7 +1120,7 @@ func _test_run_ends_on_results() -> void:
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
-	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "best": 100, "new_best": false, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 100, "new_best": false, "save_error": ""})
 	await _game.transition_finished
 	_check(not (current_scene.get_node("Safe/NewBest") as Label).visible and (current_scene.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy " + Results.NO_VALUE, "a run below the best shows no New best!, and a dash for no shots", "shown")
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
@@ -1102,7 +1137,11 @@ func _check_results_fit(results: Results) -> void:
 	var save_error := results.get_node("Safe/SaveError") as Label
 	save_error.text = Results.SAVE_ERROR_TEXT % "the file could not be written because the disk is full, so the new best will be lost when the game is closed"
 	save_error.show()
-	var names: Array[String] = ["Heading", "Stats/Score", "Stats/Accuracy", "Stats/Hits", "Stats/Escaped", "Stats/Stolen", "Stats/RivalScore", "Stats/Pigeons", "Stats/Best", "NewBest", "SaveError", "PlayAgainButton", "TitleButton", "RivalLine"]
+	var names: Array[String] = ["Heading", "Stats/Score", "Stats/Accuracy", "Stats/Hits", "Stats/Escaped", "Stats/Verdict", "Stats/Pigeons", "Stats/Best", "NewBest", "SaveError", "RivalLine"]
+	if (results.get_node("Safe/Stats/Stars") as Control).visible:
+		names.append_array(["Stats/Stars", "NextButton", "RetryButton", "LevelsButton"])
+	else:
+		names.append_array(["PlayAgainButton", "TitleButton"])
 	var cases: Array[String] = ["16:9", "4:3", "19.5:9 notched, home indicator", "16:9, safe height %d" % RESULTS_MIN_SAFE_HEIGHT]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
 	var safes: Array[Rect2] = [Rect2(), Rect2(), RESULTS_INSET_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
@@ -1157,7 +1196,7 @@ func _test_save_web_persist_reporting() -> void:
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(not _game.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
 	_game.check_storage(true)
-	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "best": 500, "new_best": true, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 500, "new_best": true, "save_error": ""})
 	await _game.transition_finished
 	var results := current_scene as Results
 	var notice := results.get_node("Safe/SaveError") as Label
@@ -1846,8 +1885,8 @@ func _test_rival_steal_ends_run() -> void:
 	_check_logged(from, "^\\[Play\\] Run end: .*, 10 escaped \\(1 stolen\\), rival score 120, best ", "the run end logs the birds stolen and the rival's score")
 	_check_logged(from, "^\\[Play\\] Heckle \\(results\\) #\\d+: \".+\" ", "the results line is logged")
 	if results != null:
-		var shown := ["Escaped", "Stolen", "RivalScore"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-		_check(shown == ["Birds escaped 10", "Birds stolen 1", "Rival score 120"], "the results show the birds stolen and the rival's score", str(shown))
+		var shown := ["Escaped", "Verdict"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
+		_check(shown == ["Birds escaped 10 (1 stolen)", "You 0 vs rival 120: the rival wins"], "the results show the birds stolen and the rival's score in the verdict", str(shown))
 		_check_logged(from, "^\\[Results\\] Score 0, .*, 10 escaped, 1 stolen, rival score 120, 0 pigeons hit, best 0; rival: \".+\"$", "the results log the birds stolen, the rival's score and line")
 	_clear_tool_save()
 
@@ -2039,6 +2078,642 @@ func _test_rival_layout_and_pass_through() -> void:
 	_check_logged(from, "^\\[Play\\] Miss at ", "the shots on the rival and his bubble are logged as misses")
 
 
+## Campaign waves (Wave.campaign) are a pure function of the level and the wave index (the
+## level's fixed seed): the same level and index give the same spawns, shells and speed,
+## another level other seeds. A plain wave holds wave_birds birds every spawn_interval at
+## speed_scale, with the shells for every hit; the boss level's last wave (and no other) is
+## the boss flock, with more birds, a shorter interval and a higher speed than every other
+## wave of its chapter, most of its birds the chapter's own type; golden_chance turns slots golden.
+func _test_campaign_wave_schedule() -> void:
+	var level := Content.level("noon_3")
+	var a := Wave.campaign(level, 2)
+	var b := Wave.campaign(level, 2)
+	var same := a.shells == b.shells and a.spawns.size() == b.spawns.size() and is_equal_approx(a.speed_scale, b.speed_scale) and a.boss == b.boss
+	for i in mini(a.spawns.size(), b.spawns.size()):
+		same = same and a.spawns[i].bird_id == b.spawns[i].bird_id and a.spawns[i].time == b.spawns[i].time and a.spawns[i].bird_seed == b.spawns[i].bird_seed
+	_check(same, "a campaign wave is a pure function of the level and the wave index", "differs")
+	_check(Wave.campaign(Content.level("noon_4"), 2).spawns[0].bird_seed != a.spawns[0].bird_seed and Wave.campaign(level, 3).spawns[0].bird_seed != a.spawns[0].bird_seed, "another level or wave gives other bird seeds", str(a.spawns[0].bird_seed))
+	var hits := 0
+	var timed := true
+	for i in a.spawns.size():
+		hits += Wave.hits_needed(Content.bird(a.spawns[i].bird_id))
+		timed = timed and is_equal_approx(a.spawns[i].time, i * level.spawn_interval)
+	_check(a.spawns.size() == level.wave_birds and timed and is_equal_approx(a.speed_scale, level.speed_scale) and not a.boss, "a plain wave holds wave_birds birds every spawn_interval at the level's speed", "%d birds, x%.2f" % [a.spawns.size(), a.speed_scale])
+	_check(a.shells == Ammo.pool_size(hits, level.shells_per_hit), "a campaign wave's shells cover every hit its birds need", "%d shells for %d hits" % [a.shells, hits])
+	var problems: Array[String] = []
+	for boss_level in Content.levels():
+		var last := Wave.campaign(boss_level, boss_level.waves)
+		if not boss_level.is_boss():
+			if last.boss:
+				problems.append("%s's last wave is a boss flock" % boss_level.id)
+			continue
+		var boss := boss_level.boss
+		var counts: Dictionary[String, int] = {}
+		var boss_timed := true
+		for i in last.spawns.size():
+			counts[last.spawns[i].bird_id] = counts.get(last.spawns[i].bird_id, 0) + 1
+			boss_timed = boss_timed and is_equal_approx(last.spawns[i].time, i * boss.spawn_interval)
+		if not last.boss or last.spawns.size() != boss.birds or not boss_timed or not is_equal_approx(last.speed_scale, boss.speed_scale):
+			problems.append("%s's last wave is not its boss flock (%d birds, x%.2f)" % [boss_level.id, last.spawns.size(), last.speed_scale])
+		var most: String = counts.keys().reduce(func(x: String, y: String) -> String: return y if counts[y] > counts[x] else x)
+		if Content.bird(most).chapter != boss_level.chapter:
+			problems.append("%s's boss flock is mostly %s, not the chapter's bird (%s)" % [boss_level.id, most, counts])
+		for other in Campaign.chapter_levels(boss_level.chapter):
+			for wave_index in range(1, other.waves + 1):
+				var plan := Wave.campaign(other, wave_index)
+				if plan == last or (other == boss_level and wave_index == boss_level.waves):
+					continue
+				if plan.boss or plan.spawns.size() >= last.spawns.size() or plan.speed_scale >= last.speed_scale or plan.spawns[1].time <= last.spawns[1].time:
+					problems.append("%s wave %d is not smaller, slower and sparser than %s's boss flock" % [other.id, wave_index, boss_level.id])
+	_check(problems.is_empty(), "every boss level ends on its boss flock, bigger, faster and denser than every other wave of its chapter and mostly the chapter's bird", "\n".join(problems))
+	var dawn_2 := Content.level("dawn_2")
+	dawn_2.golden_chance = 1.0
+	var golden := Wave.campaign(dawn_2, 1)
+	dawn_2.golden_chance = 0.08
+	_check(golden.spawns.all(func(spawn: Wave.Spawn) -> bool: return spawn.bird_id == dawn_2.golden_bird), "golden_chance turns a level's spawn slots golden", str(golden.spawns.map(func(spawn: Wave.Spawn) -> String: return spawn.bird_id)))
+
+
+## Stars: one per threshold the final score reaches (0: not passed). Unlocks: only dawn_1 at
+## first; the next level opens when the level before is passed (1 star or more, across
+## chapters: dawn_6 opens noon_1); a chapter opens with its level 1. Progress keeps the best
+## stars and the best score, each on its own.
+func _test_campaign_stars_unlocks_and_best() -> void:
+	var dawn_1 := Content.level("dawn_1")
+	var earned: Array[int] = []
+	for score: int in [0, 849, 850, 1449, 1450, 2049, 2050, 99999]:
+		earned.append(Campaign.stars(dawn_1, score))
+	_check(earned == [0, 0, 1, 1, 2, 2, 3, 3], "a level's stars count the thresholds its final score reaches", str(earned))
+	_check(not Campaign.is_passed(0) and Campaign.is_passed(1) and Campaign.is_passed(3), "0 stars means not passed", "")
+	var order := Campaign.levels()
+	_check(order.size() == 24 and order[0].id == "dawn_1" and order[5].id == "dawn_6" and order[6].id == "noon_1" and order[23].id == "night_6", "the campaign runs chapter by chapter, level by level", str(order.map(func(level: LevelSpec) -> String: return level.id)))
+	var progress: Dictionary[String, Campaign.Record] = {}
+	var open := order.map(func(level: LevelSpec) -> bool: return Campaign.is_unlocked(level, progress))
+	_check(open.count(true) == 1 and open[0], "at first only dawn_1 is unlocked", str(open))
+	var chapters := Content.chapters().map(func(spec: ChapterSpec) -> bool: return Campaign.is_chapter_unlocked(spec.id, progress))
+	_check(chapters == [true, false, false, false], "at first only dawn is unlocked", str(chapters))
+	progress["dawn_1"] = Campaign.Record.new(0, 500)
+	_check(not Campaign.is_unlocked(Content.level("dawn_2"), progress), "a level finished with 0 stars unlocks nothing", "dawn_2 open")
+	progress["dawn_1"] = Campaign.Record.new(1, 900)
+	_check(Campaign.is_unlocked(Content.level("dawn_2"), progress) and not Campaign.is_unlocked(Content.level("dawn_3"), progress), "1 star on a level unlocks the next one only", "")
+	for index in range(1, 7):
+		progress["dawn_%d" % index] = Campaign.Record.new(3, 9000)
+	_check(Campaign.is_unlocked(Content.level("noon_1"), progress) and Campaign.is_chapter_unlocked("noon", progress) and not Campaign.is_chapter_unlocked("sunset", progress), "passing dawn_6 unlocks noon_1 and the noon chapter", "")
+	_check(Campaign.chapter_stars("dawn", progress) == 18 and Campaign.chapter_stars("noon", progress) == 0, "a chapter's stars add up its levels' best stars", str(Campaign.chapter_stars("dawn", progress)))
+	_check(Campaign.next_level(Content.level("dawn_6")) == Content.level("noon_1") and Campaign.next_level(dawn_1) == Content.level("dawn_2") and Campaign.next_level(Content.level("night_6")) == null, "the next level follows campaign order, none after night_6", "")
+	var first := Campaign.merge(null, 2, 900)
+	var kept := Campaign.merge(Campaign.Record.new(3, 100), 1, 900)
+	var lower := Campaign.merge(Campaign.Record.new(2, 900), 0, 50)
+	_check(first.stars == 2 and first.score == 900 and kept.stars == 3 and kept.score == 900 and lower.stars == 2 and lower.score == 900, "a replay keeps the best stars and the best score, never lowering either", "%d/%d %d/%d %d/%d" % [first.stars, first.score, kept.stars, kept.score, lower.stars, lower.score])
+
+
+## Game.record_level: the finished level's stars and score are kept as its best, saved at
+## once and logged with the level, the stars, the score and the level it unlocks; a lower
+## replay changes nothing; the progress survives a reload.
+func _test_campaign_record_level() -> void:
+	_clear_tool_save()
+	var dawn_1 := Content.level("dawn_1")
+	var from := _log.size()
+	_check(_game.record_level(dawn_1, 1500), "a first finish with points is a new best", "")
+	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's stars and score are recorded", str(_game.progress.keys()))
+	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 1500, 2 stars \\(passed\\); best 2 stars, score 1500 \\(was never finished\\); dawn_2 unlocked$", "the finished level is logged with its stars, score and unlock")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 2, Endless best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}}, "the save holds the level's best", str(saved))
+	from = _log.size()
+	_check(not _game.record_level(dawn_1, 900) and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "a lower replay keeps the best stars and score", "%d/%d" % [_game.progress["dawn_1"].stars, _game.progress["dawn_1"].score])
+	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 900, 1 stars \\(passed\\); best 2 stars, score 1500 \\(was 2 stars, score 1500\\)$", "a replay is logged with the best it keeps")
+	_check(not _game.record_level(Content.level("dawn_2"), 0) and _game.progress["dawn_2"].stars == 0, "a level finished with 0 stars is recorded, not passed", "")
+	_check_logged(from, "^\\[Game\\] Level dawn_2 finished: score 0, 0 stars \\(not passed\\); best 0 stars, score 0 \\(was never finished\\)$", "a level not passed is logged as such, unlocking nothing")
+	_check(_game.record_level(dawn_1, 2100) and _game.progress["dawn_1"].stars == 3, "a better replay raises the best", "")
+	_game.progress = {}
+	_game.load_game()
+	_check(_game.progress.size() == 2 and _game.progress["dawn_1"].stars == 3 and _game.progress["dawn_1"].score == 2100 and _game.progress["dawn_2"].stars == 0, "the progress survives a reload", str(_game.progress.keys()))
+	_clear_tool_save()
+
+
+## A version 1 save (the Endless best only) is upgraded to version 2: the best is kept, no
+## level is finished, the settings take their defaults, each step is logged, nothing is
+## reported or backed up, and the upgraded save is written back at once.
+func _test_save_v1_migrates_to_v2() -> void:
+	_clear_tool_save()
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"version": 1, "best_endless": 777}))
+	file.close()
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.music_volume = 5
+	_game.load_game()
+	_check(_game.best_endless == 777 and _game.progress.is_empty() and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and not _game.music_muted and not _game.sfx_muted,
+		"a v1 save migrates keeping the Endless best, no levels, default settings", "best %d, %d levels, music %d" % [_game.best_endless, _game.progress.size(), _game.music_volume])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_check_logged(from, "^\\[Game\\] Save upgrade 1 -> 2: Endless best 777 kept, no campaign levels finished yet, default settings$", "the migration step is logged")
+	_check_logged(from, "^\\[Game\\] Upgraded the save to version 2$", "the new version is logged")
+	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 2, Endless best 777, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 2$", "writing the upgraded save is logged")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("version") == 2.0 and saved.get("best_endless") == 777.0 and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false}, "the upgraded save is written as version 2", str(saved))
+	_clear_tool_save()
+
+
+## The settings (volumes and mutes) round-trip through the save; a save whose settings or
+## levels are malformed is corrupt (backed up, reported, fresh); a campaign entry naming an
+## unknown level, or with stars or a score out of range (or not an entry), is reported with
+## its key and dropped while the rest of the save loads.
+func _test_save_settings_and_bad_entries() -> void:
+	_clear_tool_save()
+	_game.music_volume = 30
+	_game.sfx_volume = 0
+	_game.music_muted = true
+	_game.progress["noon_2"] = Campaign.Record.new(1, 4000)
+	_game.save_game()
+	_game.music_volume = 70
+	_game.sfx_volume = 80
+	_game.music_muted = false
+	_game.progress = {}
+	_game.load_game()
+	_check(_game.music_volume == 30 and _game.sfx_volume == 0 and _game.music_muted and not _game.sfx_muted and _game.progress.has("noon_2") and _game.progress["noon_2"].score == 4000, "settings and progress survive a save and reload", "music %d, sfx %d, muted %s" % [_game.music_volume, _game.sfx_volume, _game.music_muted])
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	var levels := {
+		"dawn_1": {"stars": 2, "score": 1500}, "dusk_9": {"stars": 1, "score": 10}, "dawn_2": {"stars": 4, "score": 10},
+		"dawn_3": {"stars": 1, "score": -5}, "dawn_4": "lots", "dawn_5": {"stars": 1}, "dawn_6": {"stars": 1.5, "score": 3},
+	}
+	# Each drop names the key, the value stored and the problem.
+	var expected := {
+		"dusk_9": "{\"stars\":1,\"score\":10}: 'dusk_9' is not a level of levels.json", "dawn_2": "{\"stars\":4,\"score\":10}: stars 4 is not a whole number 0..3",
+		"dawn_3": "{\"stars\":1,\"score\":-5}: score -5 is not a whole number 0..999999999", "dawn_4": "\"lots\": not an object",
+		"dawn_5": "{\"stars\":1}: must be exactly [\"stars\", \"score\"]", "dawn_6": "{\"stars\":1.5,\"score\":3}: stars 1.5 is not a whole number 0..3",
+	}
+	var original := JSON.stringify({"version": 2, "best_endless": 42, "levels": levels, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}, "", false)
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(original)
+	file.close()
+	# An earlier corrupt-save backup must survive: the dropped entries' backup has its own name.
+	file = FileAccess.open(_game.backup_path(), FileAccess.WRITE)
+	file.store_string("earlier corrupt save")
+	file.close()
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.load_game()
+	_game.quiet_errors = false
+	var reported := _game.reported_errors.slice(errors)
+	var backup := _game.save_path.get_basename() + ".dropped.json"
+	_check(_game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 2 and _game.best_endless == 42, "bad campaign entries are dropped and the rest of the save loads", "%s, best %d" % [_game.progress.keys(), _game.best_endless])
+	for id: String in expected:
+		var line := "dropped the campaign entry levels.%s = %s" % [id, expected[id]]
+		_check(reported.any(func(message: String) -> bool: return message.contains(line) and message.contains(_game.save_path)), "a bad entry is reported with its key and stored value: " + id, "\n".join(reported))
+	var summary := "Save '%s': 6 campaign entries were dropped (see the log); the original is kept as '%s'" % [_game.save_path, backup]
+	_check(reported.size() == expected.size() + 1 and reported.back() == summary and error_label.visible and error_label.text == summary, "the screen says how many entries were dropped and where the original is", "%d reports, label '%s'" % [reported.size(), error_label.text])
+	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
+	_check_logged(from, "^\\[Game\\] Backed up the save with 6 dropped campaign entries to user://tool_save\\.dropped\\.json$", "the backup path is logged")
+	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("best_endless") == 42.0, "the save is written back without the dropped entries", str(rewritten))
+	# A second save with a bad entry: its backup takes the next free name.
+	var second := JSON.stringify({"version": 2, "best_endless": 42, "levels": {"old_level": {"stars": 3, "score": 999}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
+	file = FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(second)
+	file.close()
+	_game.quiet_errors = true
+	_game.load_game()
+	_game.quiet_errors = false
+	var next_backup := _game.save_path.get_basename() + ".dropped.2.json"
+	_check(FileAccess.get_file_as_string(next_backup) == second and FileAccess.get_file_as_string(backup) == original and error_label.text.contains("1 campaign entry was dropped") and error_label.text.contains(next_backup), "a later drop backs up to the next free name, keeping the first backup", error_label.text)
+	_clear_tool_save()
+	var corrupt := {
+		JSON.stringify({"version": 2, "best_endless": 0, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false}}): "settings must be exactly",
+		JSON.stringify({"version": 2, "best_endless": 0, "levels": {}, "settings": {"music": 101, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "settings.music is not a whole number 0..100",
+		JSON.stringify({"version": 2, "best_endless": 0, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": "yes"}}): "settings.sfx_muted is not true or false",
+		JSON.stringify({"version": 2, "best_endless": 0, "levels": [], "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "'levels' is not an object",
+	}
+	for text: String in corrupt:
+		file = FileAccess.open(_game.save_path, FileAccess.WRITE)
+		file.store_string(text)
+		file.close()
+		_game.quiet_errors = true
+		errors = _game.reported_errors.size()
+		_game.load_game()
+		_game.quiet_errors = false
+		var message: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+		_check(message.contains(corrupt[text]) and message.contains(_game.backup_path()) and FileAccess.get_file_as_string(_game.backup_path()) == text and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME, "save %s: backed up, reported, fresh" % corrupt[text], message)
+	error_label.hide()
+	_game.music_volume = GameState.DEFAULT_MUSIC_VOLUME
+	_game.sfx_volume = GameState.DEFAULT_SFX_VOLUME
+	_game.music_muted = false
+	_clear_tool_save()
+
+
+## A campaign level plays all its waves and only then ends on the results screen, however
+## many birds get away (no escape limit, no early fail): dawn_2 loses all 12 of its birds
+## (more than Endless's limit of 10) and still reaches wave 3. The run start, the waves and
+## the end are logged with the level; the HUD shows wave x/N and the escapes without a limit;
+## the sky takes the chapter's tint. A run with 0 stars is recorded as not passed: Next is
+## hidden, Retry is focused and plays the level again.
+func _test_campaign_level_plays_all_waves() -> void:
+	_clear_tool_save()
+	_game.progress["dawn_1"] = Campaign.Record.new(1, 900)
+	var from := _log.size()
+	var play := await _start_level("dawn_2")
+	_check_logged(from, "^\\[Play\\] Run start: level dawn_2 \\(Dawn 2 of 6\\), seed 102 \\(3 waves, no escape limit, combo cap 3, 3 shells per hit, rival steals on, linger x1\\.00, aim 1\\.00 s, heckle cooldown 4\\.00 s, sky #ffe2c4, weather mist\\)$", "the level's run start is logged with its seed and settings")
+	_check_logged(from, "^\\[Play\\] Wave 1 start: 4 birds \\(.+\\), \\d+ shells, speed x1\\.00 \\(wave 1 of 3, level dawn_2\\)$", "a level's wave start is logged with its place in the level")
+	_check(_text(play, "Wave") == "Wave 1/3" and _text(play, "Escaped") == "Escaped 0", "the HUD shows wave x/N and the escapes without a limit", "%s, %s" % [_text(play, "Wave"), _text(play, "Escaped")])
+	_check((play.get_node("World/Sky") as CanvasItem).modulate == Content.chapter("dawn").sky_tint, "the sky takes the chapter's tint", str((play.get_node("World/Sky") as CanvasItem).modulate))
+	var waves_seen: Array[int] = []
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 9000:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		if current_scene == play and play.wave != null and not play.wave.index in waves_seen:
+			waves_seen.append(play.wave.index)
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	var results := current_scene as Results
+	var stats := _game.flow_args
+	_check(results != null and waves_seen == [1, 2, 3] and stats.get("level") == "dawn_2" and stats.get("escaped") == 12 and stats.get("stars") == 0, "the level plays all 3 waves, losing all 12 birds, and then ends on results", "waves %s, %s" % [waves_seen, stats])
+	_check_logged(from, "^\\[Play\\] Run end: level dawn_2, seed 102, wave 3 of 3, score 0, 0 shots .*, 12 escaped \\(\\d+ stolen\\), rival score \\d+, 0 stars, level best 0 \\(0 stars\\)$", "the level's end is logged with its stars and best")
+	_check_logged(from, "^\\[Game\\] Level dawn_2 finished: score 0, 0 stars \\(not passed\\); best 0 stars, score 0 \\(was never finished\\)$", "the finished level is recorded as not passed")
+	_check(_game.progress.has("dawn_2") and not Campaign.is_unlocked(Content.level("dawn_3"), _game.progress), "0 stars unlocks nothing", "")
+	if results == null:
+		return
+	var shown := ["Heading", "Stats/Stars", "Stats/Verdict", "Stats/Best"].map(func(n: String) -> String: return (results.get_node("Safe/" + n) as Label).text)
+	_check(shown == ["Dawn 2: not passed", "0 stars: not passed", Results.verdict_text(0, stats["rival_score"]), "Level best 0 (0 of 3 stars)"], "the results show the level, its stars, the verdict and the level best", str(shown))
+	var buttons := ["NextButton", "RetryButton", "LevelsButton", "PlayAgainButton", "TitleButton"].map(func(n: String) -> bool: return (results.get_node("Safe/" + n) as Control).visible)
+	_check(buttons == [false, true, true, false, false] and (results.get_node("Safe/RetryButton") as Control).has_focus() and not (results.get_node("Safe/NewBest") as Control).visible, "without an open next level: Retry (focused) and Levels, no New best!", str(buttons))
+	if not (results.get_node("Safe/RetryButton") as Control).has_focus():
+		# Enter would press something else, which may start nothing to wait for.
+		_clear_tool_save()
+		return
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	_check(current_scene is Play and _game.flow_args == {"level": "dawn_2"} and (current_scene as Play).level == Content.level("dawn_2"), "Retry plays the level again", str(_game.flow_args))
+	_clear_tool_save()
+
+
+## A level passed with stars: the results show the stars, the level best, New best! and the
+## verdict, and Next (focused, the next level now open), Retry and Levels; Tab cycles them,
+## Escape does nothing, and the screen fits the safe area. Levels opens the chapter's level
+## select with the new best; Retry and the pause menu's Restart play the level again; Next
+## plays the next level. The progress survives a reload.
+func _test_campaign_pass_next_retry_levels() -> void:
+	_clear_tool_save()
+	var play := await _start_level("dawn_1")
+	play.scoring.score = 1500
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 9000:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	var results := current_scene as Results
+	var stats := _game.flow_args.duplicate()
+	_check(results != null and stats.get("stars") == 2 and stats.get("best") == 1500 and stats.get("best_stars") == 2 and stats.get("new_best") == true and stats.get("next_level") == "dawn_2" and stats.get("save_error") == "", "a level passed with 2 stars opens dawn_2", str(stats))
+	if results == null:
+		return
+	var shown := ["Heading", "Stats/Stars", "Stats/Verdict", "Stats/Best"].map(func(n: String) -> String: return (results.get_node("Safe/" + n) as Label).text)
+	_check(shown == ["Dawn 1: passed", "2 of 3 stars", Results.verdict_text(1500, stats["rival_score"]), "Level best 1500 (2 of 3 stars)"], "the results show the stars earned, the verdict and the level best", str(shown))
+	var next := results.get_node("Safe/NextButton") as Button
+	var retry := results.get_node("Safe/RetryButton") as Button
+	var levels := results.get_node("Safe/LevelsButton") as Button
+	_check(next.visible and retry.visible and levels.visible and next.has_focus() and (results.get_node("Safe/NewBest") as Control).visible, "Next (focused), Retry and Levels, and New best!", str(root.gui_get_focus_owner()))
+	for button: Button in [next, retry, levels]:
+		var focus_style := button.get_theme_stylebox(&"focus")
+		_check(button.focus_mode == Control.FOCUS_ALL and focus_style != null and not (focus_style is StyleBoxEmpty), "%s takes focus with a visible focus style" % button.text, str(focus_style))
+	await _key(KEY_TAB)
+	var after_tab := root.gui_get_focus_owner()
+	await _key(KEY_TAB)
+	var after_two := root.gui_get_focus_owner()
+	await _key(KEY_TAB)
+	_check(after_tab == retry and after_two == levels and root.gui_get_focus_owner() == next, "Tab cycles Next, Retry and Levels", "%s %s %s" % [after_tab, after_two, root.gui_get_focus_owner()])
+	var gotos := _game.transition_log.size()
+	await _key(KEY_ESCAPE)
+	await process_frame
+	_check(current_scene == results and _game.transition_log.size() == gotos, "Escape on the results screen starts nothing", str(current_scene))
+	await _check_results_fit(results)
+	await _tap(levels)
+	await _game.transition_finished
+	var select := current_scene as LevelSelect
+	_check(select != null and _game.flow_args == {"chapter": "dawn", "level": "dawn_1"} and (select.get_node("Safe/Level1") as Control).has_focus(), "Levels opens the chapter's level select on the level just played (not the last open one, dawn_2)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
+	if select != null:
+		var texts := ["Level1", "Level2", "Level3"].map(func(n: String) -> String: return (select.get_node("Safe/" + n) as Button).text)
+		_check(texts == ["Level 1\n2/3 stars, best 1500", "Level 2\nNew", "Level 3\nLocked"], "the level select shows the new best and the level it opened", str(texts))
+	_game.goto(GameState.Flow.RESULTS, stats)
+	await _game.transition_finished
+	await _tap(current_scene.get_node("Safe/RetryButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	var again := current_scene as Play
+	_check(again != null and again.level == Content.level("dawn_1"), "Retry plays the level again", str(_game.flow_args))
+	again.open_pause("test")
+	await _tap(again.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Play and current_scene != again and (current_scene as Play).level == Content.level("dawn_1") and not paused, "Restart in a level plays the same level again", str(_game.flow_args))
+	_game.goto(GameState.Flow.RESULTS, stats)
+	await _game.transition_finished
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_2"), "Next plays the next level", str(_game.flow_args))
+	_game.progress = {}
+	_game.load_game()
+	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's progress survives a reload", str(_game.progress.keys()))
+	_clear_tool_save()
+
+
+## A finished level whose save fails (the save path is unwritable) sets save_error, emits
+## save_failed, is reported with the path, and its results say the progress could not be
+## saved, with the reason; nothing logs it as saved.
+func _test_campaign_save_failure() -> void:
+	_clear_tool_save()
+	var failed: Array[String] = []
+	var record := func(why: String) -> void: failed.append(why)
+	_game.save_failed.connect(record)
+	var play := await _start_level("dawn_1")
+	play.scoring.score = 900
+	_game.save_path = UNWRITABLE_SAVE_PATH
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 9000:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	_game.quiet_errors = false
+	_game.save_path = GameState.TOOL_SAVE_PATH
+	_game.save_failed.disconnect(record)
+	var results := current_scene as Results
+	var reason: String = _game.flow_args.get("save_error", "")
+	_check(results != null and reason.begins_with("cannot open the save file") and failed == [reason] and _game.save_error == reason, "a failed level save sets save_error and emits save_failed", "%s / %s" % [failed, _game.flow_args])
+	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(UNWRITABLE_SAVE_PATH in reported, "the failed level save is reported with the save path", reported)
+	if results != null:
+		var notice := results.get_node("Safe/SaveError") as Label
+		_check(notice.visible and notice.text == Results.PROGRESS_SAVE_ERROR_TEXT % reason, "the results say the progress could not be saved, with the reason", notice.text)
+	_check_logged(from, "^\\[Play\\] Run end: level dawn_1, .*, 1 stars, level best 900 \\(1 stars\\) \\(new best\\), not saved: cannot open the save file", "the level's end log says it was not saved")
+	_check(not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to")), "nothing logs the failed level save as saved", "a Saved line")
+	_game.save_error = ""
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	_clear_tool_save()
+
+
+## A level that does not exist cannot start: the error is reported (log and error label),
+## nothing runs, and the menu offers only Quit to title.
+func _test_campaign_unknown_level() -> void:
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.goto(GameState.Flow.PLAY, {"level": "dusk_9"})
+	await _game.transition_finished
+	await process_frame
+	_game.quiet_errors = false
+	var play := current_scene as Play
+	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(reported == "Cannot start level 'dusk_9': no such level in levels.json" and (_game.get_node("Fade/ErrorLabel") as Label).visible, "an unknown level is reported", reported)
+	_check(play != null and play.wave == null and play.is_paused() and (play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Button).has_focus(), "nothing runs; only Quit to title is offered", str(root.gui_get_focus_owner()))
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.TITLE and not paused, "Quit leaves the level that could not start", str(_game.state))
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+
+
+## In a level the rival waits linger_time x the chapter's rival_linger_scale (dawn 1.0, noon
+## 0.9, night 0.7) before his cue, which still runs the full aim_time (at least 0.5 s).
+func _test_campaign_rival_linger_scale() -> void:
+	var aim := Content.rival_lines().aim_time
+	for level_id: String in ["dawn_1", "noon_1", "night_1"]:
+		var play := await _start_level(level_id)
+		var scale := Content.chapter(Content.level(level_id).chapter).rival_linger_scale
+		var linger := Content.bird("goose").linger_time * scale
+		var from := _log.size()
+		var bird := await _spawn_flying(play, 180, linger - 0.02)
+		for i in 10:
+			if bird.is_cued():
+				break
+			await process_frame
+		_check(is_equal_approx(play.linger_scale, scale) and bird.is_cued() and bird.cue_age >= linger and bird.cue_age <= linger + FRAME + 0.001, "%s: the cue starts at linger_time x %.1f" % [level_id, scale], "cue_age %.3f, linger %.3f" % [bird.cue_age, linger])
+		_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger %.2f s\\), the rival fires in 1\\.00 s " % [bird.number, linger], "%s: the cue logs the scaled linger" % level_id)
+		var cued := 0.0
+		for i in roundi(aim * 60.0) + 10:
+			if not bird.is_flying():
+				break
+			cued = bird.age - bird.cue_age
+			await process_frame
+		_check(bird.stolen and cued >= aim - FRAME - 0.001 and aim >= Content.AIM_TIME_MIN, "%s: the cue still runs aim_time before the steal" % level_id, "cued %.3f" % cued)
+
+
+## The verdict: a win when the score beats the rival's, a loss below it, a tie when equal;
+## a run without rival steals shows none. Stars read "N of 3 stars" (0: not passed).
+func _test_results_verdict() -> void:
+	_check(Results.verdict_text(500, 300) == "You 500 vs rival 300: you win!" and Results.verdict_text(100, 300) == "You 100 vs rival 300: the rival wins" and Results.verdict_text(200, 200) == "You 200 vs rival 200: a tie",
+		"the verdict is a win, a loss or a tie", Results.verdict_text(200, 200))
+	_check(Results.stars_text(0) == "0 stars: not passed" and Results.stars_text(1) == "1 of 3 stars" and Results.stars_text(3) == "3 of 3 stars", "the stars text", Results.stars_text(0))
+	var stats := {"score": 40, "shots": 2, "hits": 1, "kills": 1, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": false, "best": 100, "new_best": false, "save_error": ""}
+	_game.goto(GameState.Flow.RESULTS, stats)
+	await _game.transition_finished
+	_check(not (current_scene.get_node("Safe/Stats/Verdict") as Control).visible, "a run without rival steals shows no verdict", "shown")
+	stats["rival_steals"] = true
+	_game.goto(GameState.Flow.RESULTS, stats)
+	await _game.transition_finished
+	var verdict := current_scene.get_node("Safe/Stats/Verdict") as Label
+	_check(verdict.visible and verdict.text == "You 40 vs rival 0: you win!", "a run with rival steals shows the verdict", verdict.text)
+	await _open_title()
+
+
+## Chapter select: the four chapters with their stars out of 18; a chapter whose level 1 is
+## locked says Locked and cannot be started by a touch or Enter; the last open chapter is
+## focused; Back goes to the title. Every button is at least 44x44, focusable with a visible
+## focus style and inside the safe area at 16:9, 19.5:9, 4:3 and under a notch.
+func _test_chapter_select() -> void:
+	_clear_tool_save()
+	var from := _log.size()
+	_game.goto(GameState.Flow.CHAPTER_SELECT)
+	await _game.transition_finished
+	await process_frame
+	var screen := current_scene as ChapterSelect
+	var buttons: Array[Button] = []
+	for i in 4:
+		buttons.append(screen.get_node("Safe/Chapter%d" % (i + 1)) as Button)
+	var back := screen.get_node("Safe/BackButton") as Button
+	var texts := buttons.map(func(button: Button) -> String: return button.text)
+	_check(texts == ["Dawn\n0/18 stars", "Noon\nLocked", "Sunset\nLocked", "Night\nLocked"] and buttons.map(func(button: Button) -> bool: return button.disabled) == [false, true, true, true], "at first only dawn is open, with its stars out of 18", str(texts))
+	_check(buttons[0].has_focus() and not buttons[0].has_focus(true), "the last open chapter is focused on arrival, ring hidden", str(root.gui_get_focus_owner()))
+	_check_logged(from, "^\\[ChapterSelect\\] Chapter dawn at \\[P: .*\\] \\(open, 0 stars\\)$", "the chapter buttons' rects are logged")
+	buttons.append(back)
+	await _check_select_layout(screen, buttons)
+	buttons.pop_back()
+	var gotos := _game.transition_log.size()
+	await _tap(buttons[1])
+	buttons[3].grab_focus()
+	await _key(KEY_ENTER)
+	await process_frame
+	_check(_game.transition_log.size() == gotos and current_scene == screen, "a locked chapter cannot be started by a touch or Enter", str(_game.transition_log.slice(gotos)))
+	back.grab_focus()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.TITLE, "Back goes to the title", str(_game.state))
+	for index in range(1, 7):
+		_game.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
+	_game.goto(GameState.Flow.CHAPTER_SELECT)
+	await _game.transition_finished
+	await process_frame
+	screen = current_scene as ChapterSelect
+	var dawn := screen.get_node("Safe/Chapter1") as Button
+	var noon := screen.get_node("Safe/Chapter2") as Button
+	_check(dawn.text == "Dawn\n18/18 stars" and noon.text == "Noon\n0/18 stars" and not noon.disabled and noon.has_focus() and (screen.get_node("Safe/Chapter3") as Button).disabled, "passing dawn_6 opens noon, now focused", "%s / %s" % [dawn.text, noon.text])
+	await _tap(dawn)
+	await _game.transition_finished
+	_check(current_scene is LevelSelect and _game.flow_args == {"chapter": "dawn"}, "a chapter opens its level select", str(_game.flow_args))
+	_clear_tool_save()
+
+
+## Level select: the chapter's six levels with their best stars and score (New when never
+## finished, the boss level marked); a locked level says Locked and cannot be started by a
+## touch or Enter; the last open level is focused; a level starts it; Back goes to the
+## chapter select. Layout as for the chapter select.
+func _test_level_select() -> void:
+	_clear_tool_save()
+	_game.progress["dawn_1"] = Campaign.Record.new(2, 1500)
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.transition_finished
+	await process_frame
+	var screen := current_scene as LevelSelect
+	var buttons: Array[Button] = []
+	for i in 6:
+		buttons.append(screen.get_node("Safe/Level%d" % (i + 1)) as Button)
+	var back := screen.get_node("Safe/BackButton") as Button
+	var texts := buttons.map(func(button: Button) -> String: return button.text)
+	_check(texts == ["Level 1\n2/3 stars, best 1500", "Level 2\nNew", "Level 3\nLocked", "Level 4\nLocked", "Level 5\nLocked", "Level 6 (boss)\nLocked"], "each level shows its best stars and score, New, Locked or boss", str(texts))
+	_check(buttons.map(func(button: Button) -> bool: return button.disabled) == [false, false, true, true, true, true] and buttons[1].has_focus(), "locked levels are disabled; the last open level is focused", str(root.gui_get_focus_owner()))
+	_check((screen.get_node("Safe/Heading") as Label).text == "Dawn: 2/18 stars", "the heading shows the chapter's stars", (screen.get_node("Safe/Heading") as Label).text)
+	buttons.append(back)
+	await _check_select_layout(screen, buttons)
+	buttons.pop_back()
+	var gotos := _game.transition_log.size()
+	await _tap(buttons[2])
+	buttons[5].grab_focus()
+	await _key(KEY_ENTER)
+	await process_frame
+	_check(_game.transition_log.size() == gotos and current_scene == screen, "a locked level cannot be started by a touch or Enter", str(_game.transition_log.slice(gotos)))
+	await _tap(back)
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.CHAPTER_SELECT, "Back goes to the chapter select", str(_game.state))
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.transition_finished
+	await process_frame
+	var from := _log.size()
+	await _tap(current_scene.get_node("Safe/Level1") as Control)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_1") and _game.flow_args == {"level": "dawn_1"}, "a level starts it", str(_game.flow_args))
+	_check_logged(from, "^\\[LevelSelect\\] Level dawn_1 pressed; starting it$", "the level press is logged")
+	_clear_tool_save()
+
+
+## A save whose dropped entries cannot be backed up (every backup name is taken) is not
+## written back: the original stays on disk, the failure is reported on screen with the
+## count, and nothing claims a write-back.
+func _test_save_dropped_backup_failure() -> void:
+	_clear_tool_save()
+	var original := JSON.stringify({"version": 2, "best_endless": 7, "levels": {"dawn_1": {"stars": 2, "score": 300}, "old_level": {"stars": 3, "score": 999}, "dawn_2": {"stars": 9, "score": 5}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(original)
+	file.close()
+	for n in range(1, GameState.DROPPED_BACKUPS_MAX + 1):
+		var taken := FileAccess.open(_game.save_path.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n), FileAccess.WRITE)
+		taken.store_string("earlier backup %d" % n)
+		taken.close()
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.load_game()
+	_game.quiet_errors = false
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(reported.contains("2 campaign entries were dropped") and reported.contains("could not be backed up") and reported.contains("the save is left as it is") and error_label.text == reported, "a failed backup is reported on screen with the count", reported)
+	_check(FileAccess.get_file_as_string(_game.save_path.get_basename() + ".dropped.json") == "earlier backup 1", "no earlier backup is replaced", "")
+	_check(FileAccess.get_file_as_string(_game.save_path) == original, "a failed backup leaves the original save on disk", FileAccess.get_file_as_string(_game.save_path))
+	_check(not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to") or l.begins_with("[Game] Writing the save without")), "nothing is written back without a backup", "a write-back line")
+	_check(_game.progress.keys() == ["dawn_1"] and _game.best_endless == 7, "the rest of the save still loads", str(_game.progress.keys()))
+	error_label.hide()
+	_clear_tool_save()
+
+
+## Returning to a select screen focuses the entry just left when it is open: the level
+## select's Back focuses its chapter on the chapter select, and results' Levels focus the
+## level just played (_test_campaign_pass_next_retry_levels). Otherwise (no entry passed,
+## a locked one) the last open entry is focused, as on arrival from the title.
+func _test_select_focus_returns() -> void:
+	_clear_tool_save()
+	for index in range(1, 7):
+		_game.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
+	_game.progress["noon_1"] = Campaign.Record.new(1, 3000)
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Level6") as Control).has_focus(), "without a level to return to, the last open level is focused", str(root.gui_get_focus_owner()))
+	await _tap(current_scene.get_node("Safe/BackButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	_check(_game.flow_args == {"chapter": "dawn"} and (current_scene.get_node("Safe/Chapter1") as Control).has_focus(), "Back focuses the chapter just left (dawn), not the last open one (noon)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
+	await _open_title()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	_check(_game.flow_args == {} and (current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "from the title the last open chapter is focused", str(root.gui_get_focus_owner()))
+	_game.goto(GameState.Flow.CHAPTER_SELECT, {"chapter": "sunset"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "returning to a locked chapter falls back to the last open one", str(root.gui_get_focus_owner()))
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn", "level": "dawn_3"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Level3") as Control).has_focus(), "returning to an open level focuses it", str(root.gui_get_focus_owner()))
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "noon", "level": "noon_4"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Level2") as Control).has_focus(), "returning to a locked level falls back to the last open one", str(root.gui_get_focus_owner()))
+	_clear_tool_save()
+
+
+## Every control of `controls` (a select screen's buttons): at least 44x44, focusable with a
+## visible focus style, inside the safe area at 16:9, 19.5:9, 4:3 and under a notch, below
+## the top HUD bar and not overlapping another.
+func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
+	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
+	for i in windows.size():
+		_game.safe_area_override = safes[i]
+		root.size = windows[i]
+		await process_frame
+		await process_frame
+		var safe := _game.safe_rect()
+		var problems: Array[String] = []
+		for control in controls:
+			var rect := control.get_global_rect()
+			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Play.HUD_BAR_HEIGHT:
+				problems.append("%s %s" % [control.name, rect])
+			for other in controls:
+				if other != control and rect.intersection(other.get_global_rect()).get_area() > 0.25:
+					problems.append("%s overlaps %s" % [control.name, other.name])
+			var style := control.get_theme_stylebox(&"focus")
+			if control.focus_mode != Control.FOCUS_ALL or style == null or style is StyleBoxEmpty:
+				problems.append("%s has no visible keyboard focus" % control.name)
+		_check(problems.is_empty(), "%s %dx%d, safe %s: every button >= 44x44, focusable, inside the safe area, apart" % [screen.name, windows[i].x, windows[i].y, safe], "; ".join(problems))
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+
+
+## Starts campaign level `level_id` and waits until it is on screen.
+func _start_level(level_id: String) -> Play:
+	_game.start_level(level_id)
+	await _game.transition_finished
+	await process_frame
+	return current_scene as Play
+
+
 ## Problems with `spec`'s rising flight at `speed_scale` for 10 seeds: not entering the
 ## field by half its flee_time, or leaving it (by a frame) once inside before it flees.
 func _field_problems(spec: BirdSpec, speed_scale: float) -> Array[String]:
@@ -2165,10 +2840,14 @@ func _touches(points: Array[Vector2], indices: Array[int]) -> void:
 
 
 func _clear_tool_save() -> void:
-	for path: String in [GameState.TOOL_SAVE_PATH, GameState.TOOL_SAVE_PATH.get_basename() + ".corrupt.json"]:
-		if FileAccess.file_exists(path):
+	var paths: Array[String] = [GameState.TOOL_SAVE_PATH, GameState.TOOL_SAVE_PATH.get_basename() + ".corrupt.json"]
+	for n in range(1, GameState.DROPPED_BACKUPS_MAX + 1):
+		paths.append(GameState.TOOL_SAVE_PATH.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n))
+	for path in paths:
+		if FileAccess.file_exists(path) or DirAccess.dir_exists_absolute(path):
 			DirAccess.remove_absolute(path)
 	_game.best_endless = 0
+	_game.progress = {}
 
 
 ## Goes to a fresh title screen and waits for the transition to finish.
