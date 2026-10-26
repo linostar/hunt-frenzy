@@ -53,6 +53,9 @@ var state := State.FLYING
 var cue_age := Rival.NOT_AIMING
 ## True once the rival has shot it.
 var stolen := false
+## The index of the wave it belongs to (Play sets it; a split child takes the wave it was
+## launched in).
+var wave_index := 0
 
 var _textures: Dictionary[String, Texture2D] = {}
 var _hold := 0.0

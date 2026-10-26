@@ -139,6 +139,7 @@ func _tests() -> Array[Callable]:
 		_test_safe_area_notch,
 		_test_fit_window_rect,
 		_test_title_button_layout,
+		_test_title_shows_mode_bests,
 		_test_title_follows_notched_safe_area,
 		_test_title_button_tap_and_enter,
 		_test_rotate_overlay_shows_and_pauses,
@@ -153,6 +154,7 @@ func _tests() -> Array[Callable]:
 		_test_flight_zigzag_reverses,
 		_test_flight_launch_and_split_headings,
 		_test_wave_schedule,
+		_test_wave_time_attack_schedule,
 		_test_wave_unlocks_by_wave,
 		_test_wave_mix_follows_weights,
 		_test_wave_golden_chance,
@@ -196,10 +198,23 @@ func _tests() -> Array[Callable]:
 		_test_pause_restart_and_quit,
 		_test_run_ends_on_results,
 		_test_run_end_save_failure,
+		_test_time_attack_start_and_hud,
+		_test_time_attack_clock_ends_exactly,
+		_test_time_attack_pause_freezes_clock,
+		_test_time_attack_waves_on_clear,
+		_test_time_attack_lost_wave_starts_next_at_once,
+		_test_time_attack_lost_wave_counts_skipped_as_escaped,
+		_test_time_attack_leftover_overlaps_next_wave,
+		_test_endless_empty_pool_waits_for_the_wave,
+		_test_time_attack_no_steals_no_cue,
+		_test_time_attack_results,
+		_test_time_attack_quit_saves_nothing,
+		_test_time_attack_save_failure,
 		_test_campaign_wave_schedule,
 		_test_campaign_stars_unlocks_and_best,
 		_test_campaign_record_level,
-		_test_save_v1_migrates_to_v2,
+		_test_save_v1_migrates_to_v3,
+		_test_save_v2_migrates_to_v3,
 		_test_save_settings_and_bad_entries,
 		_test_campaign_level_plays_all_waves,
 		_test_campaign_pass_next_retry_levels,
@@ -366,38 +381,61 @@ func _test_fit_window_rect() -> void:
 	_check(full_hd.size == base, "fit_window_rect leaves a roomy 1x screen unchanged", str(full_hd))
 
 
-## The title's Campaign and Endless buttons: side by side, at least 44x44, inside the safe
-## area, with a visible focus style, at 16:9, 19.5:9 and 4:3; Campaign is focused on
-## arrival and Tab moves to Endless.
+## The title's Campaign, Endless and Time Attack buttons: in a row, at least 44x44, their
+## text inside them, inside the safe area, with a visible focus style, at 16:9, 19.5:9 and
+## 4:3; Campaign is focused on arrival (no ring), Tab and right move Campaign -> Endless ->
+## Time Attack -> Campaign, left goes the other way.
 func _test_title_button_layout() -> void:
 	await _open_title()
 	var title := current_scene as Title
-	var campaign := title.get_node("Safe/CampaignButton") as Button
-	var endless := title.get_node("Safe/EndlessButton") as Button
+	var buttons := _title_buttons(title)
+	var campaign := buttons[0]
 	_check(campaign.has_focus(), "title focuses Campaign on arrival", str(root.gui_get_focus_owner()))
-	for button: Button in [campaign, endless]:
+	for button: Button in buttons:
 		var focus_style := button.get_theme_stylebox(&"focus")
-		_check(focus_style != null and not (focus_style is StyleBoxEmpty), "%s has a visible focus style" % button.text, str(focus_style))
-		_check(button.focus_mode == Control.FOCUS_ALL, "%s takes keyboard focus" % button.text, str(button.focus_mode))
-	_check(campaign.text == "Campaign" and endless.text == "Endless", "the title offers Campaign and Endless", "%s, %s" % [campaign.text, endless.text])
+		_check(focus_style != null and not (focus_style is StyleBoxEmpty), "%s has a visible focus style" % button.name, str(focus_style))
+		_check(button.focus_mode == Control.FOCUS_ALL, "%s takes keyboard focus" % button.name, str(button.focus_mode))
+	var names := buttons.map(func(button: Button) -> String: return button.text.get_slice("\n", 0))
+	_check(names == ["Campaign", "Endless", "Time Attack"], "the title offers Campaign, Endless and Time Attack", str(names))
 	_check(not campaign.has_focus(true), "the focus ring is hidden on arrival (no stray ring on phones)", "focus visible")
-	await _key(KEY_TAB)
-	_check(endless.has_focus(true), "Tab moves to Endless and shows its focus ring", str(root.gui_get_focus_owner()))
-	await _key(KEY_TAB)
-	_check(campaign.has_focus(true), "Tab wraps back to Campaign", str(root.gui_get_focus_owner()))
+	for key: Key in [KEY_TAB, KEY_RIGHT, KEY_LEFT]:
+		var order: Array[Button] = []
+		order.assign([buttons[1], buttons[2], buttons[0]] if key != KEY_LEFT else [buttons[2], buttons[1], buttons[0]])
+		var reached: Array[String] = []
+		for i in order.size():
+			await _key(key)
+			reached.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+		_check(reached == order.map(func(button: Button) -> String: return str(button.name)) and campaign.has_focus(true), "%s cycles the focus through the three buttons, the ring shown" % OS.get_keycode_string(key), str(reached))
 	for window in LANDSCAPE_WINDOWS:
 		root.size = window
 		await process_frame
 		await process_frame
-		for button: Button in [campaign, endless]:
-			var label := "%dx%d %s" % [window.x, window.y, button.text]
+		for button: Button in buttons:
+			var label := "%dx%d %s" % [window.x, window.y, button.name]
 			var rect := button.get_global_rect()
-			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET, label + " size", str(rect.size))
+			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and button.get_combined_minimum_size().x <= rect.size.x + 0.5 and button.get_combined_minimum_size().y <= rect.size.y + 0.5, label + " size, its text inside", "%s, text needs %s" % [rect.size, button.get_combined_minimum_size()])
 			_check(_game.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.safe_rect()])
-		_check(is_equal_approx(campaign.get_global_rect().get_center().y, endless.get_global_rect().get_center().y) and campaign.get_global_rect().end.x < endless.get_global_rect().position.x,
-			"%dx%d Campaign sits next to Endless" % [window.x, window.y], "%s, %s" % [campaign.get_global_rect(), endless.get_global_rect()])
+		var rects := buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())
+		_check(is_equal_approx(rects[0].get_center().y, rects[1].get_center().y) and is_equal_approx(rects[1].get_center().y, rects[2].get_center().y) and rects[0].end.x < rects[1].position.x and rects[1].end.x < rects[2].position.x,
+			"%dx%d Campaign, Endless and Time Attack sit in a row" % [window.x, window.y], str(rects))
 	root.size = BASE_WINDOW
 	await process_frame
+
+
+## The Endless and Time Attack buttons show that mode's best score from the save.
+func _test_title_shows_mode_bests() -> void:
+	_clear_tool_save()
+	_game.bests[GameState.ENDLESS_MODE] = 1234
+	_game.bests[GameState.TIME_ATTACK_MODE] = 5678
+	var from := _log.size()
+	await _open_title()
+	var buttons := _title_buttons(current_scene as Title)
+	_check(buttons[1].text == "Endless\nBest 1234" and buttons[2].text == "Time Attack\nBest 5678" and buttons[0].text == "Campaign", "the Endless and Time Attack buttons show their mode's best", "%s | %s" % [buttons[1].text, buttons[2].text])
+	_check_logged(from, "^\\[Title\\] Bests: Endless 1234, Time Attack 5678$", "the bests the title shows are logged")
+	_clear_tool_save()
+	await _open_title()
+	buttons = _title_buttons(current_scene as Title)
+	_check(buttons[1].text == "Endless\nBest 0" and buttons[2].text == "Time Attack\nBest 0", "with no best yet the buttons say Best 0", "%s | %s" % [buttons[1].text, buttons[2].text])
 
 
 ## With a notch narrowing the safe area, the title lays out in the safe rect, not the
@@ -406,22 +444,22 @@ func _test_title_follows_notched_safe_area() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var safe := title.get_node("Safe") as Control
-	var campaign := title.get_node("Safe/CampaignButton") as Button
-	var endless := title.get_node("Safe/EndlessButton") as Button
+	var buttons := _title_buttons(title)
 	_game.safe_area_override = NOTCHED_SAFE_RECT
 	root.size = LANDSCAPE_19_5_9
 	await process_frame
 	await process_frame
 	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
 	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
-	_check(NOTCHED_SAFE_RECT.encloses(campaign.get_global_rect()) and NOTCHED_SAFE_RECT.encloses(endless.get_global_rect()), "Campaign and Endless are clear of the notch", "%s, %s" % [campaign.get_global_rect(), endless.get_global_rect()])
+	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless and Time Attack are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
 
 ## A real touch on Endless starts an Endless run (through goto, with a seed), each with a
-## fresh seed; Enter on the focused Campaign opens the chapter select.
+## fresh seed; a touch on Time Attack starts a Time Attack run; Enter on the focused
+## Campaign opens the chapter select.
 func _test_title_button_tap_and_enter() -> void:
 	await _open_title()
 	var title := current_scene as Title
@@ -437,6 +475,15 @@ func _test_title_button_tap_and_enter() -> void:
 	await _tap(title.get_node("Safe/EndlessButton") as Control)
 	await _game.transition_finished
 	_check(current_scene is Play and _game.flow_args.get("seed") != first_seed, "each run gets a fresh seed", "seeds %d and %s" % [first_seed, _game.flow_args.get("seed")])
+	await _open_title()
+	title = current_scene as Title
+	var from := _log.size()
+	await _tap(title.get_node("Safe/TimeAttackButton") as Control)
+	_check(title.time_attack_presses == 1 and title.endless_presses == 0 and title.campaign_presses == 0, "a tap presses Time Attack", "%d presses" % title.time_attack_presses)
+	_check_logged(from, "^\\[Title\\] Time Attack pressed \\(1\\); starting Time Attack$", "the Time Attack press is logged")
+	if _game.is_transitioning():
+		await _game.transition_finished
+	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow_args.get("seed") is int and _game.flow_args.get("seed") != first_seed, "Time Attack starts a timed run with a fresh seed", str(_game.flow_args))
 	await _open_title()
 	title = current_scene as Title
 	await _key(KEY_ENTER)
@@ -512,18 +559,17 @@ func _test_title_content_error_banner() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var banner := title.get_node("Safe/ContentErrorBanner") as Label
-	var campaign := title.get_node("Safe/CampaignButton") as Button
-	var endless := title.get_node("Safe/EndlessButton") as Button
+	var buttons := _title_buttons(title)
 	_check(banner.visible and banner.text == Title.CONTENT_ERROR_MESSAGE % problems, "content errors show the banner", "%s '%s'" % [banner.visible, banner.text])
-	_check(campaign.disabled and endless.disabled, "content errors disable Campaign and Endless", "enabled")
-	await _tap(campaign)
-	await _tap(endless)
-	_check(title.campaign_presses == 0 and title.endless_presses == 0 and not _game.is_transitioning(), "a disabled Campaign or Endless starts nothing", "%d, %d presses" % [title.campaign_presses, title.endless_presses])
+	_check(buttons.all(func(button: Button) -> bool: return button.disabled), "content errors disable Campaign, Endless and Time Attack", "enabled")
+	for button in buttons:
+		await _tap(button)
+	_check(title.campaign_presses == 0 and title.endless_presses == 0 and title.time_attack_presses == 0 and not _game.is_transitioning(), "a disabled Campaign, Endless or Time Attack starts nothing", "%d, %d, %d presses" % [title.campaign_presses, title.endless_presses, title.time_attack_presses])
 	Content.quiet_errors = false
 	Content.reload()
 	await _open_title()
 	title = current_scene as Title
-	_check(not (title.get_node("Safe/ContentErrorBanner") as Label).visible and not (title.get_node("Safe/CampaignButton") as Button).disabled and not (title.get_node("Safe/EndlessButton") as Button).disabled, "clean content: no banner, Campaign and Endless enabled", "banner or disabled")
+	_check(not (title.get_node("Safe/ContentErrorBanner") as Label).visible and not _title_buttons(title).any(func(button: Button) -> bool: return button.disabled), "clean content: no banner, Campaign, Endless and Time Attack enabled", "banner or disabled")
 
 
 func _test_flight_determinism() -> void:
@@ -619,24 +665,59 @@ func _test_flight_hitbox() -> void:
 
 func _test_wave_schedule() -> void:
 	var endless := Content.mode(GameState.ENDLESS_MODE)
-	var a := Wave.endless(endless, 3, 42)
-	var b := Wave.endless(endless, 3, 42)
+	var a := Wave.for_mode(endless, 3, 42)
+	var b := Wave.for_mode(endless, 3, 42)
 	var same := a.shells == b.shells and a.spawns.size() == b.spawns.size() and is_equal_approx(a.speed_scale, b.speed_scale)
 	for i in mini(a.spawns.size(), b.spawns.size()):
 		same = same and a.spawns[i].bird_id == b.spawns[i].bird_id and a.spawns[i].time == b.spawns[i].time and a.spawns[i].bird_seed == b.spawns[i].bird_seed
 	_check(same, "a wave is a pure function of mode, index and run seed", "differs")
-	var other := Wave.endless(endless, 3, 43)
+	var other := Wave.for_mode(endless, 3, 43)
 	_check(other.spawns[0].bird_seed != a.spawns[0].bird_seed, "another run seed gives other bird seeds", str(other.spawns[0].bird_seed))
 	var counts := []
 	for index: int in [1, 2, 3, 5, 20]:
-		counts.append(Wave.endless(endless, index, 42).spawns.size())
-	_check(counts == [2, 3, 4, 6, 6], "birds start at start_birds and grow by bird_growth up to max_birds", str(counts))
-	_check(is_equal_approx(Wave.endless(endless, 1, 42).speed_scale, 1.0) and is_equal_approx(Wave.endless(endless, 2, 42).speed_scale, 1.0 + endless.speed_growth), "the speed scale grows per wave", "%.2f" % Wave.endless(endless, 2, 42).speed_scale)
-	_check(is_equal_approx(Wave.endless(endless, 50, 42).speed_scale, endless.speed_cap), "the speed scale stops at its cap", "%.2f" % Wave.endless(endless, 50, 42).speed_scale)
+		counts.append(Wave.for_mode(endless, index, 42).spawns.size())
+	_check(counts == [2, 3, 4, 6, 8], "birds start at start_birds and grow by bird_growth up to max_birds", str(counts))
+	_check(is_equal_approx(Wave.for_mode(endless, 1, 42).speed_scale, 1.0) and is_equal_approx(Wave.for_mode(endless, 2, 42).speed_scale, 1.0 + endless.speed_growth), "the speed scale grows per wave", "%.2f" % Wave.for_mode(endless, 2, 42).speed_scale)
+	_check(is_equal_approx(Wave.for_mode(endless, 50, 42).speed_scale, endless.speed_cap), "the speed scale stops at its cap", "%.2f" % Wave.for_mode(endless, 50, 42).speed_scale)
 	var timed := true
 	for i in a.spawns.size():
 		timed = timed and is_equal_approx(a.spawns[i].time, i * endless.spawn_interval)
 	_check(timed, "spawns come every spawn_interval from 0", str(a.spawns.map(func(spawn: Wave.Spawn) -> float: return spawn.time)))
+
+
+## Time Attack's waves (Wave.for_mode with its own modes.json numbers): a pure function of
+## the mode, the wave index and the run seed (every wave a fresh full pool of shells for
+## its birds' hits), growing from start_birds by bird_growth up to max_birds, its speed up
+## to speed_cap, a spawn every spawn_interval; not Endless's schedule for the same seed.
+func _test_wave_time_attack_schedule() -> void:
+	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
+	var same := true
+	for index in range(1, 13):
+		same = same and _same_plan(Wave.for_mode(time_attack, index, 42), Wave.for_mode(time_attack, index, 42))
+	_check(same, "Time Attack: the same mode, wave and seed give the same spawns, shells and speed", "differs")
+	_check(Wave.for_mode(time_attack, 3, 43).spawns[0].bird_seed != Wave.for_mode(time_attack, 3, 42).spawns[0].bird_seed, "Time Attack: another run seed gives other bird seeds", "same")
+	var counts := []
+	for index: int in [1, 2, 3, 6, 20]:
+		counts.append(Wave.for_mode(time_attack, index, 42).spawns.size())
+	_check(counts == [3, 4, 5, 8, 8], "Time Attack: 3 birds in wave 1, one more per wave up to 8", str(counts))
+	var speeds := [1, 2, 50].map(func(index: int) -> float: return Wave.for_mode(time_attack, index, 42).speed_scale)
+	_check(is_equal_approx(speeds[0], 1.0) and is_equal_approx(speeds[1], 1.06) and is_equal_approx(speeds[2], 1.5), "Time Attack: speed x1, then +0.06 per wave up to x1.5", str(speeds))
+	var plan := Wave.for_mode(time_attack, 5, 42)
+	var hits := 0
+	var timed := true
+	for i in plan.spawns.size():
+		hits += Wave.hits_needed(Content.bird(plan.spawns[i].bird_id))
+		timed = timed and is_equal_approx(plan.spawns[i].time, i * 0.9)
+	_check(plan.shells == Ammo.pool_size(hits, 2) and timed, "Time Attack: a full pool of 2 shells per hit needed, a spawn every 0.9 s", "%d shells for %d hits" % [plan.shells, hits])
+	_check(not _same_plan(plan, Wave.for_mode(Content.mode(GameState.ENDLESS_MODE), 5, 42)), "Time Attack's waves are its own, not Endless's", "same plan")
+
+
+## Whether two wave plans are the same: index, shells, speed and every spawn.
+func _same_plan(a: Wave.Plan, b: Wave.Plan) -> bool:
+	var same := a.index == b.index and a.shells == b.shells and a.spawns.size() == b.spawns.size() and a.speed_scale == b.speed_scale
+	for i in mini(a.spawns.size(), b.spawns.size()):
+		same = same and a.spawns[i].bird_id == b.spawns[i].bird_id and a.spawns[i].time == b.spawns[i].time and a.spawns[i].bird_seed == b.spawns[i].bird_seed
+	return same
 
 
 func _test_ammo_pool() -> void:
@@ -659,18 +740,24 @@ func _test_scoring_combo() -> void:
 ## A best score is written to the save and survives a reload; a new best saves at once.
 func _test_save_and_reload() -> void:
 	_check(_game.save_path == GameState.TOOL_SAVE_PATH, "tool runs use the tool save", _game.save_path)
-	_game.best_endless = 1234
+	_game.bests[GameState.ENDLESS_MODE] = 1234
+	_game.bests[GameState.TIME_ATTACK_MODE] = 5678
 	_game.save_game()
-	_game.best_endless = 0
+	_game.bests[GameState.ENDLESS_MODE] = 0
+	_game.bests[GameState.TIME_ATTACK_MODE] = 0
 	_game.load_game()
-	_check(_game.best_endless == 1234, "the best score survives a save and reload", str(_game.best_endless))
+	_check(_game.best(GameState.ENDLESS_MODE) == 1234 and _game.best(GameState.TIME_ATTACK_MODE) == 5678, "each mode's best survives a save and reload", str(_game.bests))
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == GameState.SAVE_VERSION, "the save is versioned", str(saved))
-	_check(not _game.record_endless(1000) and _game.best_endless == 1234, "a lower score is not a best", str(_game.best_endless))
-	_check(_game.record_endless(2000), "a higher score is a new best", str(_game.best_endless))
-	_game.best_endless = 0
+	_check(saved is Dictionary and saved.get("version") == 3.0 and GameState.SAVE_VERSION == 3 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless"), "the save is version 3 with a best per mode", str(saved))
+	var endless := Content.mode(GameState.ENDLESS_MODE)
+	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
+	_check(not _game.record_best(endless, 1000) and _game.best(GameState.ENDLESS_MODE) == 1234, "a lower score is not a best", str(_game.bests))
+	_check(_game.record_best(endless, 2000) and _game.best(GameState.TIME_ATTACK_MODE) == 5678, "a higher score is a new best of its own mode only", str(_game.bests))
+	_check(not _game.record_best(time_attack, 5678) and _game.record_best(time_attack, 6000) and _game.best(GameState.ENDLESS_MODE) == 2000, "Time Attack keeps its own best (a tie is no new best)", str(_game.bests))
+	_game.bests[GameState.ENDLESS_MODE] = 0
+	_game.bests[GameState.TIME_ATTACK_MODE] = 0
 	_game.load_game()
-	_check(_game.best_endless == 2000, "a new best is saved at once", str(_game.best_endless))
+	_check(_game.best(GameState.ENDLESS_MODE) == 2000 and _game.best(GameState.TIME_ATTACK_MODE) == 6000, "a new best is saved at once", str(_game.bests))
 	_clear_tool_save()
 
 
@@ -679,18 +766,23 @@ func _test_save_and_reload() -> void:
 func _test_save_corrupt_and_unknown_version() -> void:
 	var cases := {
 		"{not json": "corrupt (line",
-		JSON.stringify({"version": 3, "best_endless": 5}): "version 3 is newer than this game's 2",
+		JSON.stringify({"version": 4, "best_endless": 5}): "version 4 is newer than this game's 3",
 		JSON.stringify({"version": 0, "best_endless": 5}): "'version' is not a whole number >= 1",
-		JSON.stringify({"version": 1, "best_endless": "lots"}): "'best_endless' is not a whole number",
+		JSON.stringify({"version": 1, "best_endless": "lots"}): "bests.endless lots is not a whole number 0..999999999",
 		JSON.stringify({"version": 1, "best_endless": 5, "coins": 3}): "unknown key 'coins'",
-		JSON.stringify({"version": 1}): "missing key 'best_endless'",
+		JSON.stringify({"version": 1}): "missing key 'bests'",
+		JSON.stringify({"version": 3, "bests": {"endless": 5}, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "bests must be exactly [\"endless\", \"time_attack\"]",
+		JSON.stringify({"version": 3, "bests": {"endless": 5, "time_attack": 0, "campaign": 9}, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "bests must be exactly [\"endless\", \"time_attack\"] (got [\"campaign\", \"endless\", \"time_attack\"])",
+		JSON.stringify({"version": 3, "bests": {"endless": 5, "time_attack": -1}, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "bests.time_attack -1 is not a whole number 0..999999999",
+		JSON.stringify({"version": 3, "best_endless": 5, "bests": {"endless": 5, "time_attack": 0}, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "unknown key 'best_endless'",
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for text: String in cases:
 		var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
 		file.store_string(text)
 		file.close()
-		_game.best_endless = 77
+		_game.bests[GameState.ENDLESS_MODE] = 77
+		_game.bests[GameState.TIME_ATTACK_MODE] = 88
 		_game.quiet_errors = true
 		var errors := _game.reported_errors.size()
 		_game.load_game()
@@ -701,7 +793,7 @@ func _test_save_corrupt_and_unknown_version() -> void:
 		_check(error_label.visible and error_label.text == reported, label + " shows on the error label", error_label.text)
 		_check(FileAccess.get_file_as_string(_game.backup_path()) == text, label + " is backed up", FileAccess.get_file_as_string(_game.backup_path()))
 		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-		_check(_game.best_endless == 0 and fresh is Dictionary and fresh.get("best_endless") == 0.0, label + ": the game starts fresh", "best %d, save %s" % [_game.best_endless, fresh])
+		_check(_game.bests == {"endless": 0, "time_attack": 0} and fresh is Dictionary and fresh.get("bests") == {"endless": 0.0, "time_attack": 0.0}, label + ": the game starts fresh", "bests %s, save %s" % [_game.bests, fresh])
 	error_label.hide()
 	_clear_tool_save()
 
@@ -755,7 +847,7 @@ func _test_play_hud_layout() -> void:
 ## The HUD bar never overflows. A pool of up to Play.SHELL_ICONS_MAX shells shows one icon
 ## per shell; a bigger one shows one icon and the shells left ("x11"). The largest pool
 ## modes.json can produce is max_birds x the most hits a bird the mode can spawn needs x
-## shells_per_hit (Endless: 6 x 3 (a splitter and its 2 goslings) x 3 = 54). The rival's
+## shells_per_hit (Endless: 8 x 3 (a splitter and its 2 goslings) x 3 = 72). The rival's
 ## score is at most escape_limit x the most points a bird he can steal is worth (every
 ## steal counts as an escape; Endless: 10 x 500 = 5000). At that pool
 ## and at the largest icon row, with the widest texts (a 9-digit score, wave 999, the empty
@@ -769,7 +861,7 @@ func _test_play_hud_fits_any_pool() -> void:
 		for entry in each.birds:
 			most = maxi(most, Wave.hits_needed(Content.bird(entry.bird)))
 		max_pool = maxi(max_pool, Ammo.pool_size(each.max_birds * most, each.shells_per_hit))
-	_check(max_pool == 54, "the largest pool modes.json can produce is 54 shells", str(max_pool))
+	_check(max_pool == 72, "the largest pool modes.json can produce is 72 shells", str(max_pool))
 	var max_rival := 0
 	for each in Content.modes():
 		var ids: Array[String] = [each.golden_bird]
@@ -919,7 +1011,7 @@ func _test_play_empty_pool_refuses() -> void:
 	_check(play.escaped == 4 and not is_instance_valid(bird), "every bird of the emptied wave fled and escaped", "%d escaped" % play.escaped)
 	_check_logged(from, "^\\[Play\\] Spawned goose #\\d+ \\(wave 1, seed -?\\d+\\) at t [\\d.]+, fleeing \\(no shells\\)$", "a spawn is logged with its wave and seed")
 	_check_logged(from, "^\\[Play\\] Escaped goose #\\d+ \\(4/10, wave 1 at t [\\d.]+\\)$", "an escape is logged with the escaped total")
-	_check_logged(from, "^\\[Play\\] Wave 2 start: 3 birds \\((goose|golden), (goose|golden), (goose|golden)\\), 9 shells, speed x1\\.08$", "the next wave start is logged")
+	_check_logged(from, "^\\[Play\\] Wave 2 start: 3 birds \\((goose|golden), (goose|golden), (goose|golden)\\), 9 shells, speed x1\\.06$", "the next wave start is logged")
 
 
 ## Each pause cause opens the menu with the tree paused and Resume focused; the run is
@@ -1080,7 +1172,7 @@ func _test_run_ends_on_results() -> void:
 	var stats := _game.flow_args
 	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 2, Endless best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 100, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
 	var stolen: int = stats.get("stolen", -1)
 	var rival_score: int = stats.get("rival_score", -1)
 	var steal_line := RegEx.create_from_string("^\\[Play\\] Stolen \\w+ #\\d+ by the rival after a [\\d.]+ s cue: (\\d+) points to the rival")
@@ -1107,9 +1199,9 @@ func _test_run_ends_on_results() -> void:
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
 	_check(again.has_focus() and again.get_global_rect().size.y >= MIN_TARGET and _game.safe_rect().encloses(again.get_global_rect()), "Play again is focused, >= 44 high, in the safe area", str(root.gui_get_focus_owner()))
-	_game.best_endless = 0
+	_game.bests[GameState.ENDLESS_MODE] = 0
 	_game.load_game()
-	_check(_game.best_endless == 100, "the new best survives a save and reload", str(_game.best_endless))
+	_check(_game.best(GameState.ENDLESS_MODE) == 100, "the new best survives a save and reload", str(_game.bests))
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == results.get_node("Safe/TitleButton"), "Tab reaches Title", str(root.gui_get_focus_owner()))
 	var gotos := _game.transition_log.size()
@@ -1120,7 +1212,7 @@ func _test_run_ends_on_results() -> void:
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
-	_game.goto(GameState.Flow.RESULTS, {"score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 100, "new_best": false, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"mode": "endless", "score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 100, "new_best": false, "save_error": ""})
 	await _game.transition_finished
 	_check(not (current_scene.get_node("Safe/NewBest") as Label).visible and (current_scene.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy " + Results.NO_VALUE, "a run below the best shows no New best!, and a dash for no shots", "shown")
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
@@ -1137,11 +1229,12 @@ func _check_results_fit(results: Results) -> void:
 	var save_error := results.get_node("Safe/SaveError") as Label
 	save_error.text = Results.SAVE_ERROR_TEXT % "the file could not be written because the disk is full, so the new best will be lost when the game is closed"
 	save_error.show()
-	var names: Array[String] = ["Heading", "Stats/Score", "Stats/Accuracy", "Stats/Hits", "Stats/Escaped", "Stats/Verdict", "Stats/Pigeons", "Stats/Best", "NewBest", "SaveError", "RivalLine"]
-	if (results.get_node("Safe/Stats/Stars") as Control).visible:
-		names.append_array(["Stats/Stars", "NextButton", "RetryButton", "LevelsButton"])
-	else:
-		names.append_array(["PlayAgainButton", "TitleButton"])
+	var names: Array[String] = ["Heading", "Stats/Score", "Stats/Accuracy", "Stats/Hits", "Stats/Escaped", "Stats/Pigeons", "Stats/Best", "NewBest", "SaveError", "RivalLine"]
+	# The verdict and the stars show only in some runs (a run with steals, a level); the
+	# buttons are the variant's.
+	for optional: String in ["Stats/Verdict", "Stats/Stars", "NextButton", "RetryButton", "LevelsButton", "PlayAgainButton", "TitleButton"]:
+		if (results.get_node("Safe/" + optional) as Control).visible:
+			names.append(optional)
 	var cases: Array[String] = ["16:9", "4:3", "19.5:9 notched, home indicator", "16:9, safe height %d" % RESULTS_MIN_SAFE_HEIGHT]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
 	var safes: Array[Rect2] = [Rect2(), Rect2(), RESULTS_INSET_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
@@ -1196,7 +1289,7 @@ func _test_save_web_persist_reporting() -> void:
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(not _game.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
 	_game.check_storage(true)
-	_game.goto(GameState.Flow.RESULTS, {"score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 500, "new_best": true, "save_error": ""})
+	_game.goto(GameState.Flow.RESULTS, {"mode": "endless", "score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 500, "new_best": true, "save_error": ""})
 	await _game.transition_finished
 	var results := current_scene as Results
 	var notice := results.get_node("Safe/SaveError") as Label
@@ -1354,7 +1447,454 @@ func _test_run_end_save_failure() -> void:
 	_check_logged(from, "^\\[Play\\] Run end: .* best 100 \\(new best, not saved: cannot open the save file", "the run end log says the new best was not saved")
 	_check(_log.since(from).find("[Game] Saved to %s" % UNWRITABLE_SAVE_PATH) == -1 and not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to")), "nothing logs the failed save as saved", "a Saved line")
 	_game.load_game()
-	_check(_game.best_endless == 0, "the unsaved best is not in the save", str(_game.best_endless))
+	_check(_game.best(GameState.ENDLESS_MODE) == 0, "the unsaved best is not in the save", str(_game.bests))
+	_game.save_error = ""
+	_clear_tool_save()
+
+
+## Time Attack starts with its mode, seed and time limit logged (no escape limit, steals
+## off); the HUD bar shows the time left as text ("Time 60") instead of the rival's tally,
+## escapes without a limit, and the pause button is still its only interactive Control;
+## the widest Time Attack bar (a 9-digit score, wave 999, the largest pool its data can
+## give, the empty cue, its combo cap, 999 escaped, the time) stays inside the safe bar
+## and clear of the pause button at 16:9, 19.5:9, 4:3 and under a notch.
+func _test_time_attack_start_and_hud() -> void:
+	var from := _log.size()
+	var play := await _start_run(51, GameState.TIME_ATTACK_MODE)
+	_check_logged(from, "^\\[Play\\] Run start: mode time_attack, seed 51 \\(time limit 60\\.00 s, no escape limit, combo cap 8, 2 shells per hit, rival steals off, aim 1\\.00 s, heckle cooldown 4\\.00 s\\)$", "the Time Attack start is logged with its mode, seed and time limit")
+	_check_logged(from, "^\\[Play\\] Wave 1 start: 3 birds \\(goose, goose, goose\\), 6 shells, speed x1\\.00, 60\\.00 s left$", "the first wave is logged with the time left")
+	var time := play.get_node("Hud/Bar/Stats/Time") as Label
+	var rival := play.get_node("Hud/Bar/Stats/Rival") as Label
+	_check(play.is_timed() and time.visible and time.text == "Time %d" % ceili(play.time_left()) and play.time_left() < 60.0 and play.time_left() > 59.0, "the HUD shows the seconds left", "%s '%s', %.3f left" % [time.visible, time.text, play.time_left()])
+	_check(not rival.visible and _text(play, "Escaped") == "Escaped 0", "no rival tally and no escape limit on the Time Attack HUD", "rival %s, '%s'" % [rival.visible, _text(play, "Escaped")])
+	var bar := play.get_node("Hud/Bar") as Control
+	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
+	_check(_interactive_controls(bar) == [pause_button], "the pause button is still the HUD bar's only interactive Control", str(_interactive_controls(bar)))
+	var most := Wave.hits_needed(Content.bird(play.mode.golden_bird))
+	for entry in play.mode.birds:
+		most = maxi(most, Wave.hits_needed(Content.bird(entry.bird)))
+	var max_pool := Ammo.pool_size(play.mode.max_birds * most, play.mode.shells_per_hit)
+	_check(max_pool == 48, "Time Attack's largest pool is 48 shells (8 splitters x 3 hits x 2)", str(max_pool))
+	var stats := play.get_node("Hud/Bar/Stats") as Control
+	(play.get_node("Hud/Bar/Stats/Empty") as Control).show()
+	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
+	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
+		play.set_shell_pool(pool)
+		play.scoring.score = GameState.SAVE_SCORE_MAX
+		play.scoring.multiplier = play.mode.combo_cap
+		play.wave.index = 999
+		play.escaped = 999
+		play.set_shell_pool(pool)
+		for i in cases.size():
+			_game.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
+			root.size = windows[i]
+			await process_frame
+			await process_frame
+			var safe := _game.safe_rect()
+			var limit := pause_button.get_global_rect().position.x
+			var stray: Array[String] = []
+			for child in stats.get_children():
+				var shown := child as Control
+				var rect := shown.get_global_rect()
+				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Play.HUD_BAR_HEIGHT + 0.5):
+					stray.append("%s %s" % [shown.name, rect])
+			_check(time.visible and stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest Time Attack HUD (with the time) stays inside the safe bar, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+
+
+## A Time Attack run lasts exactly its time limit of play time: the clock runs one frame of
+## game time per frame and stops at the limit on the first frame that reaches it (never a
+## frame early or late, even when the summed frame times land a hair short of it), the run
+## ends there and the results open; the end is logged with the time used.
+func _test_time_attack_clock_ends_exactly() -> void:
+	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
+	time_attack.time_limit = 3.0
+	var play := await _start_run(52, GameState.TIME_ATTACK_MODE)
+	var from := _log.size()
+	var clocks: Array[float] = []
+	var shown: Array[String] = []
+	for i in 400:
+		if _game.is_transitioning():
+			break
+		clocks.append(play.run_clock)
+		shown.append(_text(play, "Time"))
+		await process_frame
+	_check(_game.is_transitioning() and play.run_clock == 3.0 and play.time_left() == 0.0, "the clock stops exactly at the time limit and the run ends", "clock %.6f, transitioning %s" % [play.run_clock, _game.is_transitioning()])
+	time_attack.time_limit = 60.0
+	# 180 frames of 1/60 s sum to a hair under 3 s in floats: the run must still end on that
+	# frame, not one later, and the clock runs at game speed (one frame per frame).
+	var steady := clocks.size() > 2
+	for i in range(1, clocks.size()):
+		steady = steady and is_equal_approx(clocks[i] - clocks[i - 1], FRAME)
+	_check(steady, "the Time Attack clock runs one frame of game time per frame", str(clocks.slice(-4)))
+	_check(not clocks.is_empty() and is_equal_approx(clocks.back(), 3.0 - FRAME), "the run ends on the first frame that reaches the time limit", "last clock before the end %.15f" % (clocks.back() if not clocks.is_empty() else -1.0))
+	_check(shown.has("Time 3") and shown.has("Time 2") and shown.has("Time 1") and _text(play, "Time") == "Time 0", "the HUD counts the seconds down to 0", "%s ... %s" % [shown.slice(0, 2), _text(play, "Time")])
+	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 52, wave \\d+, time used 3\\.00 of 3\\.00 s, score 0, ", "the run end is logged with the waves and the time used")
+	await _game.transition_finished
+	_check(current_scene is Results and (current_scene.get_node("Safe/Heading") as Label).text == Results.TIMED_HEADING, "the results open when the time is up", str(current_scene))
+	_clear_tool_save()
+
+
+## Every pause (the pause button, Escape, the window losing focus, the page hidden, the
+## rotate overlay) freezes the Time Attack clock and the HUD time; resuming continues from
+## the same time left.
+func _test_time_attack_pause_freezes_clock() -> void:
+	var play := await _start_run(53, GameState.TIME_ATTACK_MODE)
+	for i in 30:
+		await process_frame
+	for cause: String in ["pause button", "Escape", "window lost focus", "page hidden", "rotate overlay"]:
+		var from := _log.size()
+		match cause:
+			"pause button":
+				await _tap(play.get_node("Hud/Bar/PauseButton") as Control)
+			"Escape":
+				await _key(KEY_ESCAPE)
+			"window lost focus":
+				play.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
+			"page hidden":
+				_game.page_hidden.emit()
+			"rotate overlay":
+				root.size = PORTRAIT_9_19_5
+		await process_frame
+		var left := play.time_left()
+		var hud := _text(play, "Time")
+		for i in 20:
+			await process_frame
+		_check(paused and play.time_left() == left and _text(play, "Time") == hud and left < 60.0 and left > 50.0, "%s: the Time Attack clock is frozen" % cause, "paused %s, %.4f -> %.4f" % [paused, left, play.time_left()])
+		if cause == "rotate overlay":
+			root.size = BASE_WINDOW
+			await process_frame
+			await process_frame
+			_check(play.is_paused() and paused and play.time_left() == left, "rotate overlay: back in landscape the menu is open and the clock still frozen", "menu %s, %.4f -> %.4f" % [play.is_paused(), left, play.time_left()])
+		_check_logged(from, "^\\[Play\\] Paused \\(%s\\): wave \\d+ at t -?[\\d.]+, score 0, [\\d.]+ s left$" % cause, "%s: the pause is logged with the time left" % cause)
+		play.resume()
+		await process_frame
+		_check(not paused and play.time_left() < left and is_equal_approx(play.time_left(), left - FRAME), "%s: resuming continues from the same time left" % cause, "%.4f -> %.4f" % [left, play.time_left()])
+
+
+## In Time Attack the next wave starts as soon as the current one is cleared (every bird
+## hit) or lost (the shells run out and the birds flee), each with a full pool of its own
+## shells; escapes have no limit and cost no points.
+func _test_time_attack_waves_on_clear() -> void:
+	var play := await _start_run(54, GameState.TIME_ATTACK_MODE)
+	for i in 400:
+		if play.wave.spawns.size() == play.flying_birds().size():
+			break
+		await process_frame
+	_check(play.wave.index == 1 and play.flying_birds().size() == 3, "wave 1's three geese are up", "%d flying" % play.flying_birds().size())
+	for bird in play.flying_birds():
+		bird.age = maxf(bird.age, IN_FIELD_AGE)
+	await process_frame
+	var from := _log.size()
+	for bird in play.flying_birds():
+		await _touch(_global(play, bird.transform * LOCAL_BODY))
+	var frames := 0
+	while play.wave.index == 1 and frames < 5:
+		await process_frame
+		frames += 1
+	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1, "the next wave starts as soon as the last one is cleared", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
+	_check(play.ammo.shells == play.wave.shells and play.wave.shells == Wave.for_mode(play.mode, 2, 54).shells and play.wave.shells > 0, "the new wave has a full pool of its own shells", "%d of %d" % [play.ammo.shells, play.wave.shells])
+	_check_logged(from, "^\\[Play\\] Wave 2 start: 4 birds \\([a-z, ]+\\), %d shells, speed x1\\.06, [\\d.]+ s left$" % play.wave.shells, "the wave start is logged with its shells and the time left")
+	var score := play.scoring.score
+	play.escaped = 99
+	for i in 200:
+		if not play.flying_birds().is_empty():
+			break
+		await process_frame
+	var fled := play.flying_birds()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	# The bird of wave 2 that was up flees; its escape is past any escape limit.
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if fled.all(func(bird: Variant) -> bool: return not is_instance_valid(bird)) or _game.is_transitioning():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	_check(play.wave.index >= 3 and play.ammo.shells == play.wave.shells and play.wave.shells > 0, "a lost wave is followed by the next with a full pool", "wave %d, %d of %d shells" % [play.wave.index, play.ammo.shells, play.wave.shells])
+	_check(not fled.is_empty() and play.escaped > 100 and not _game.is_transitioning() and current_scene == play and play.scoring.score == score, "escapes have no limit and cost no points in Time Attack", "%d escaped, transitioning %s, score %d -> %d" % [play.escaped, _game.is_transitioning(), score, play.scoring.score])
+
+
+## A Time Attack wave is lost the moment its pool runs out: on the frame of the last shot
+## the wave is lost (logged with its skipped birds) and the next one starts, with no dead
+## time (the out-of-shells line and the next wave's start carry the same time left) and a
+## full pool; the lost wave's birds still to spawn never spawn.
+func _test_time_attack_lost_wave_starts_next_at_once() -> void:
+	var play := await _start_run(59, GameState.TIME_ATTACK_MODE)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	_check(play.wave.index == 1 and play.flying_birds().size() == 1 and play.wave.spawns.size() == 3, "wave 1's first goose is up, two still to spawn", "%d flying" % play.flying_birds().size())
+	var from := _log.size()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.wave.shells > 0 and play.wave_clock <= -Play.WAVE_LEAD + 2.0 * FRAME + 0.0001, "the next wave starts with a full pool as soon as the pool runs out", "wave %d, %d of %d shells, wave clock %.4f" % [play.wave.index, play.ammo.shells, play.wave.shells, play.wave_clock])
+	var out := RegEx.create_from_string("^\\[Play\\] Out of shells: 1 flying birds flee, 2 still to spawn are skipped \\(wave 1, ([\\d.]+) s left\\)$")
+	var lost := RegEx.create_from_string("^\\[Play\\] Wave 1 lost \\(no shells\\): 2 birds still to spawn skipped, 2 of them counted as escaped \\(2 escaped\\), 1 flying flee, ([\\d.]+) s left$")
+	var started := RegEx.create_from_string("^\\[Play\\] Wave 2 start: .*, ([\\d.]+) s left$")
+	var times: Array[String] = ["", "", ""]
+	for line in _log.since(from):
+		for k in 3:
+			var found := ([out, lost, started][k] as RegEx).search(line)
+			if found != null and times[k] == "":
+				times[k] = found.get_string(1)
+	_check(times[0] != "" and times[0] == times[1] and times[1] == times[2], "the wave is lost and the next starts at the same moment the pool runs out (no dead time)", "out %s, lost %s, next %s" % times)
+	_check(_text(play, "Wave") == "Wave 2" and _shell_icons(play) == mini(play.wave.shells, Play.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
+	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) (#\\d+: |skipped: cooldown)", "the lost wave draws a wave_end heckle (cooldown permitting)")
+	# Past every spawn time of wave 1 (0.9 and 1.8 s), only its first goose was ever up.
+	var most_wave_1 := 0
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 60:
+		most_wave_1 = maxi(most_wave_1, play.flying_birds().filter(func(bird: Bird) -> bool: return bird.wave_index == 1).size())
+		await process_frame
+	Engine.time_scale = 1.0
+	var spawned_wave_1 := Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Play] Spawned") and line.contains("(wave 1,")).size()
+	_check(spawned_wave_1 == 0 and most_wave_1 <= 1, "the lost wave's birds still to spawn never spawn", "%d wave 1 spawns logged after the loss, %d wave 1 birds up at once" % [spawned_wave_1, most_wave_1])
+
+
+## The lost wave's skipped birds count as escaped at once, except a decoy (its escape never
+## counts); its birds in the air are counted when they escape.
+func _test_time_attack_lost_wave_counts_skipped_as_escaped() -> void:
+	var play := await _start_run(60, GameState.TIME_ATTACK_MODE)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	var leftover := play.flying_birds()[0]
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 2 and play.escaped == 2, "wave 1's two skipped geese count as escaped at once", "wave %d, %d escaped" % [play.wave.index, play.escaped])
+	# Wave 2 (still in its lead-in, nothing spawned): its last two birds made decoys, its
+	# pool spent at once, so all four are skipped and two count.
+	var count := play.wave.spawns.size()
+	for i in range(2, count):
+		play.wave.spawns[i].bird_id = "decoy"
+	var from := _log.size()
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(count == 4 and play.wave.index == 3 and play.escaped == 4, "skipped decoys do not count as escaped", "%d birds, wave %d, %d escaped" % [count, play.wave.index, play.escaped])
+	_check_logged(from, "^\\[Play\\] Wave 2 lost \\(no shells\\): 4 birds still to spawn skipped, 2 of them counted as escaped \\(4 escaped\\), 0 flying flee, [\\d.]+ s left$", "the skipped and counted birds are logged")
+	from = _log.size()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if not is_instance_valid(leftover):
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	_check(not is_instance_valid(leftover) and play.escaped == 5, "the lost wave's goose in the air is counted when it escapes", "%d escaped" % play.escaped)
+	_check_logged(from, "^\\[Play\\] Escaped goose #1 \\(5, wave 3 at t ", "the leftover goose's escape is logged")
+
+
+## After a lost Time Attack wave its birds still in the air are targets for the next
+## wave's shells (a hit scores), and they never hold up the next wave's end: once all of
+## its own birds are hit, the wave after starts though a leftover is still flying.
+func _test_time_attack_leftover_overlaps_next_wave() -> void:
+	var play := await _start_run(61, GameState.TIME_ATTACK_MODE)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	var leftover := play.flying_birds()[0]
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 2 and leftover.is_flying() and leftover.wave_index == 1, "a lost wave's goose is still in the air during the next wave", "wave %d" % play.wave.index)
+	leftover.age = IN_FIELD_AGE
+	leftover.set_process(false)
+	for i in 400:
+		if play.flying_birds().size() == play.wave.spawns.size() + 1:
+			break
+		await process_frame
+	for bird in play.flying_birds():
+		if bird != leftover:
+			bird.age = maxf(bird.age, IN_FIELD_AGE)
+	await process_frame
+	for bird in play.flying_birds():
+		if bird == leftover:
+			continue
+		for shot in bird.spec.hp:
+			if bird.is_flying():
+				await _touch(_global(play, bird.transform * LOCAL_BODY))
+	var frames := 0
+	while play.wave.index == 2 and frames < 5:
+		await process_frame
+		frames += 1
+	_check(play.wave.index == 3 and frames <= 1 and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
+	var score := play.scoring.score
+	var from := _log.size()
+	leftover.set_process(true)
+	leftover.age = IN_FIELD_AGE
+	await process_frame
+	await _touch(_global(play, leftover.transform * LOCAL_BODY))
+	_check(not leftover.is_flying() and play.scoring.score > score, "a leftover hit with the next wave's shells scores", "score %d -> %d" % [score, play.scoring.score])
+	_check_logged(from, "^\\[Play\\] Hit goose #1 \\(hit 1/1, killed\\)", "the leftover's hit is logged")
+	# A lost wave's splitter (one of wave 2, now that wave 3 runs) killed with wave 3's
+	# shells: its goslings belong to wave 2 and flee, so wave 3 does not wait for them.
+	var splitter := await _spawn_flying(play, 31, IN_FIELD_AGE, "splitter")
+	splitter.wave_index = play.wave.index - 1
+	splitter.flee()
+	await _touch(_global(play, splitter.transform * LOCAL_BODY))
+	var goslings := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling")
+	_check(not splitter.is_flying() and goslings.size() == 2 and goslings.all(func(bird: Bird) -> bool: return bird.wave_index == play.wave.index - 1 and bird.is_fleeing()), "a lost wave's splitter launches goslings of its own wave, fleeing", str(goslings.map(func(bird: Bird) -> String: return "wave %d fleeing %s" % [bird.wave_index, bird.is_fleeing()])))
+
+
+## Endless keeps its rule: when the pool runs out the wave's birds still to spawn spawn
+## fleeing, and the next wave starts only once every one of them is gone; no bird counts
+## as escaped before it escapes.
+func _test_endless_empty_pool_waits_for_the_wave() -> void:
+	var play := await _start_run(62)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	var from := _log.size()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 1 and play.escaped == 0, "Endless: an empty pool does not end the wave or count the birds still to spawn", "wave %d, %d escaped" % [play.wave.index, play.escaped])
+	# The frame before wave 2 starts, every bird of wave 1 has spawned and none is flying.
+	var done_before := false
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 900:
+		if play.wave.index == 2 or _game.is_transitioning():
+			break
+		done_before = play.flying_birds().is_empty() and play.wave_clock >= play.wave.spawns.back().time
+		await process_frame
+	Engine.time_scale = 1.0
+	var waited := done_before
+	_check(play.wave.index == 2 and waited and play.escaped == 2, "Endless: the next wave starts only after every bird of the wave has spawned and escaped", "wave %d, waited %s, %d escaped" % [play.wave.index, waited, play.escaped])
+	_check_logged(from, "^\\[Play\\] Spawned goose #2 \\(wave 1, .*, fleeing \\(no shells\\)$", "Endless: the bird still to spawn spawns fleeing")
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Wave 1 lost")), "Endless never loses a wave early", "a lost line")
+
+
+## In Time Attack the rival never aims at or steals a bird left flying past its linger
+## time, but he still heckles.
+func _test_time_attack_no_steals_no_cue() -> void:
+	var play := await _start_run(55, GameState.TIME_ATTACK_MODE)
+	var from := _log.size()
+	_check(not play.steals_on() and not play.mode.rival_steals, "Time Attack's rival does not steal", str(play.steals_on()))
+	var goose := await _spawn_flying(play, 160, Content.bird("goose").linger_time - 0.02)
+	var ever_cued := false
+	for i in roundi(Content.rival_lines().aim_time * 60.0) + 30:
+		ever_cued = ever_cued or goose.is_cued() or play.is_rival_aiming() or (goose.get_node("Reticle") as CanvasItem).visible
+		await process_frame
+	_check(not ever_cued and goose.is_flying() and play.stolen == 0 and play.rival_score == 0, "no aim cue and no steal in Time Attack", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	await _touch(_global(play, Vector2(480, Play.GRASS_Y + 40.0)))
+	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()), "the Time Attack rival still heckles", "'%s'" % play.heckle_shown())
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
+
+
+## A Time Attack run that beats the best ends on its results: "Time up", score, accuracy,
+## birds hit, birds escaped (no stolen count), pigeons, "Time Attack best", New best!, no
+## verdict, Retry (focused) and Title; the best is saved at once (the Endless best left
+## alone) and survives a reload; the layout fits down to a safe height of 470; Retry starts
+## a new Time Attack run; the title then shows the new best.
+func _test_time_attack_results() -> void:
+	_clear_tool_save()
+	var play := await _start_run(56, GameState.TIME_ATTACK_MODE)
+	var bird := await _spawn_flying(play, 12)
+	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	_check(play.scoring.score == 100, "the Time Attack run scores one hit", str(play.scoring.score))
+	var from := _log.size()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 3000:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	var results := current_scene as Results
+	_check(results != null, "the time limit ends the run on the results screen", str(current_scene))
+	if results == null:
+		return
+	var stats := _game.flow_args
+	_check(stats.get("mode") == GameState.TIME_ATTACK_MODE and stats.get("score") == 100 and stats.get("best") == 100 and stats.get("new_best") == true and stats.get("rival_steals") == false and stats.get("stolen") == 0 and stats.get("save_error") == "", "the results get the Time Attack run's stats", str(stats))
+	_check_logged(from, "^\\[Game\\] New Time Attack best: 100 \\(was 0\\)$", "the new Time Attack best is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
+	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 56, wave \\d+, time used 60\\.00 of 60\\.00 s, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, %d escaped \\(0 stolen\\), rival score 0, best 100 \\(new best\\)$" % stats.get("escaped", -1), "the run end is logged with the waves, the time used and the score")
+	_check_logged(from, "^\\[Results\\] Mode time_attack: best 100, new best$", "the results log the mode and its best")
+	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
+	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped %d" % stats.get("escaped", -1), "Pigeons hit 0", "Time Attack best 100"], "the results show score, accuracy, birds hit, birds escaped (no stolen count), pigeons and the Time Attack best", str(shown))
+	_check((results.get_node("Safe/Heading") as Label).text == Results.TIMED_HEADING and not (results.get_node("Safe/Stats/Verdict") as Control).visible and not (results.get_node("Safe/Stats/Stars") as Control).visible and (results.get_node("Safe/NewBest") as Control).visible, "Time up, New best!, no verdict, no stars", "heading or verdict")
+	var retry := results.get_node("Safe/RetryButton") as Button
+	var title_button := results.get_node("Safe/TitleButton") as Button
+	_check(retry.visible and retry.has_focus() and title_button.visible and not (results.get_node("Safe/PlayAgainButton") as Control).visible and not (results.get_node("Safe/NextButton") as Control).visible and not (results.get_node("Safe/LevelsButton") as Control).visible, "Time Attack results offer Retry (focused) and Title", str(root.gui_get_focus_owner()))
+	await _check_results_fit(results)
+	_game.bests[GameState.TIME_ATTACK_MODE] = 0
+	_game.load_game()
+	_check(_game.best(GameState.TIME_ATTACK_MODE) == 100 and _game.best(GameState.ENDLESS_MODE) == 0, "the Time Attack best survives a reload, the Endless best untouched", str(_game.bests))
+	await _key(KEY_TAB)
+	_check(title_button.has_focus(), "Tab reaches Title", str(root.gui_get_focus_owner()))
+	await _key(KEY_TAB)
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow_args.get("seed") != 56, "Retry starts a new Time Attack run", str(_game.flow_args))
+	await _open_title()
+	_check((current_scene.get_node("Safe/TimeAttackButton") as Button).text == "Time Attack\nBest 100", "the title shows the new Time Attack best", (current_scene.get_node("Safe/TimeAttackButton") as Button).text)
+	_clear_tool_save()
+
+
+## Restart starts a new Time Attack run; quitting a Time Attack run to the title records and
+## saves nothing (no best, no save written), logged.
+func _test_time_attack_quit_saves_nothing() -> void:
+	_clear_tool_save()
+	var play := await _start_run(57, GameState.TIME_ATTACK_MODE)
+	play.open_pause("pause button")
+	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	play = current_scene as Play
+	_check(play != null and play.is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and not paused, "Restart starts a new Time Attack run", str(_game.flow_args))
+	var bird := await _spawn_flying(play, 12)
+	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	_check(play.scoring.score == 100, "the run has a score to lose", str(play.scoring.score))
+	var from := _log.size()
+	play.open_pause("pause button")
+	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Control)
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.TITLE and _game.best(GameState.TIME_ATTACK_MODE) == 0 and not FileAccess.file_exists(_game.save_path), "quitting to the title records and saves nothing", "%s, bests %s, save %s" % [_game.state, _game.bests, FileAccess.file_exists(_game.save_path)])
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved") or line.contains("best:")), "nothing logs a best or a save", "a save line")
+	_check_logged(from, "^\\[Play\\] Left the run \\(Quit to title\\): mode time_attack, seed \\d+, wave 1, score 100, 0 escaped, [\\d.]+ s left; nothing recorded$", "leaving the run is logged with the time left")
+	_clear_tool_save()
+
+
+## A new Time Attack best that cannot be saved sets save_error, emits save_failed, and the
+## results say New best! and that it could not be saved, with the reason.
+func _test_time_attack_save_failure() -> void:
+	_clear_tool_save()
+	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
+	time_attack.time_limit = 3.0
+	var play := await _start_run(58, GameState.TIME_ATTACK_MODE)
+	var bird := await _spawn_flying(play, 12)
+	await _touch(_global(play, bird.transform * LOCAL_BODY))
+	var failed: Array[String] = []
+	var record := func(why: String) -> void: failed.append(why)
+	_game.save_failed.connect(record)
+	_game.save_path = UNWRITABLE_SAVE_PATH
+	_game.quiet_errors = true
+	for i in 400:
+		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			break
+		await process_frame
+	_game.quiet_errors = false
+	_game.save_path = GameState.TOOL_SAVE_PATH
+	_game.save_failed.disconnect(record)
+	time_attack.time_limit = 60.0
+	var results := current_scene as Results
+	var reason: String = _game.flow_args.get("save_error", "")
+	_check(results != null and _game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file") and _game.save_error == reason and failed == [reason], "an unsaved Time Attack best sets save_error and emits save_failed", "%s / %s" % [_game.flow_args, failed])
+	if results != null:
+		var notice := results.get_node("Safe/SaveError") as Label
+		_check((results.get_node("Safe/NewBest") as Label).visible and notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the Time Attack results say New best! and that it could not be saved", notice.text)
+	_game.load_game()
+	_check(_game.best(GameState.TIME_ATTACK_MODE) == 0, "the unsaved Time Attack best is not in the save", str(_game.bests))
 	_game.save_error = ""
 	_clear_tool_save()
 
@@ -1479,7 +2019,7 @@ func _test_wave_unlocks_by_wave() -> void:
 	var first := {}
 	for run_seed in 100:
 		for index in range(1, 9):
-			for spawn in Wave.endless(endless, index, run_seed).spawns:
+			for spawn in Wave.for_mode(endless, index, run_seed).spawns:
 				first[spawn.bird_id] = mini(first.get(spawn.bird_id, index), index)
 	_check(first == {"goose": 1, "golden": 2, "armored": 3, "splitter": 5, "decoy": 5, "zigzag": 7}, "Endless unlocks golden at wave 2, armored 3, splitter and decoy 5, zigzag 7", str(first))
 	var unlocked := Wave.unlocked(endless, 4).map(func(entry: ModeSpec.Entry) -> String: return entry.bird)
@@ -1498,7 +2038,7 @@ func _test_wave_mix_follows_weights() -> void:
 	var picks := 0
 	for run_seed in 2000:
 		for index in range(7, 11):
-			for spawn in Wave.endless(endless, index, run_seed).spawns:
+			for spawn in Wave.for_mode(endless, index, run_seed).spawns:
 				if spawn.bird_id == endless.golden_bird:
 					continue
 				counts[spawn.bird_id] = counts.get(spawn.bird_id, 0) + 1
@@ -1528,11 +2068,11 @@ func _test_wave_golden_chance() -> void:
 	var slots := 0
 	var same := true
 	for run_seed in 500:
-		for spawn in Wave.endless(endless, 1, run_seed).spawns:
+		for spawn in Wave.for_mode(endless, 1, run_seed).spawns:
 			in_wave_1 += int(spawn.bird_id == endless.golden_bird)
 		for index in range(2, 9):
-			var plan := Wave.endless(endless, index, run_seed)
-			var again := Wave.endless(endless, index, run_seed)
+			var plan := Wave.for_mode(endless, index, run_seed)
+			var again := Wave.for_mode(endless, index, run_seed)
 			for i in plan.spawns.size():
 				same = same and plan.spawns[i].bird_id == again.spawns[i].bird_id and plan.spawns[i].bird_seed == again.spawns[i].bird_seed
 				golden += int(plan.spawns[i].bird_id == endless.golden_bird)
@@ -1556,7 +2096,7 @@ func _test_wave_shells_cover_every_hit() -> void:
 	var other_pool := 0
 	for run_seed in 200:
 		for index in range(1, 11):
-			var plan := Wave.endless(endless, index, run_seed)
+			var plan := Wave.for_mode(endless, index, run_seed)
 			var hits := 0
 			for spawn in plan.spawns:
 				var spec := Content.bird(spawn.bird_id)
@@ -2176,7 +2716,7 @@ func _test_campaign_record_level() -> void:
 	_check(_game.record_level(dawn_1, 1500), "a first finish with points is a new best", "")
 	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's stars and score are recorded", str(_game.progress.keys()))
 	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 1500, 2 stars \\(passed\\); best 2 stars, score 1500 \\(was never finished\\); dawn_2 unlocked$", "the finished level is logged with its stars, score and unlock")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 2, Endless best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 0, Time Attack best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
 	_check(saved is Dictionary and saved.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}}, "the save holds the level's best", str(saved))
 	from = _log.size()
@@ -2191,10 +2731,11 @@ func _test_campaign_record_level() -> void:
 	_clear_tool_save()
 
 
-## A version 1 save (the Endless best only) is upgraded to version 2: the best is kept, no
-## level is finished, the settings take their defaults, each step is logged, nothing is
-## reported or backed up, and the upgraded save is written back at once.
-func _test_save_v1_migrates_to_v2() -> void:
+## A version 1 save (the Endless best only) is upgraded through version 2 to version 3: the
+## best is kept as the Endless best (Time Attack 0), no level is finished, the settings take
+## their defaults, each step is logged, nothing is reported or backed up, and the upgraded
+## save is written back at once.
+func _test_save_v1_migrates_to_v3() -> void:
 	_clear_tool_save()
 	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 1, "best_endless": 777}))
@@ -2203,15 +2744,41 @@ func _test_save_v1_migrates_to_v2() -> void:
 	var from := _log.size()
 	_game.music_volume = 5
 	_game.load_game()
-	_check(_game.best_endless == 777 and _game.progress.is_empty() and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and not _game.music_muted and not _game.sfx_muted,
-		"a v1 save migrates keeping the Endless best, no levels, default settings", "best %d, %d levels, music %d" % [_game.best_endless, _game.progress.size(), _game.music_volume])
+	_check(_game.bests == {"endless": 777, "time_attack": 0} and _game.progress.is_empty() and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and not _game.music_muted and not _game.sfx_muted,
+		"a v1 save migrates keeping the Endless best, no levels, default settings", "bests %s, %d levels, music %d" % [_game.bests, _game.progress.size(), _game.music_volume])
 	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated save is not reported or backed up", str(_game.reported_errors.slice(errors)))
 	_check_logged(from, "^\\[Game\\] Save upgrade 1 -> 2: Endless best 777 kept, no campaign levels finished yet, default settings$", "the migration step is logged")
-	_check_logged(from, "^\\[Game\\] Upgraded the save to version 2$", "the new version is logged")
-	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 2, Endless best 777, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
-	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 2$", "writing the upgraded save is logged")
+	_check_logged(from, "^\\[Game\\] Upgraded the save to version 2$", "the step to version 2 is logged")
+	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 777 kept as bests\\.endless, Time Attack best 0$", "the step 2 -> 3 is logged")
+	_check_logged(from, "^\\[Game\\] Upgraded the save to version 3$", "the step to version 3 is logged")
+	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 3, Endless best 777, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 3$", "writing the upgraded save is logged")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 2.0 and saved.get("best_endless") == 777.0 and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false}, "the upgraded save is written as version 2", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 3.0 and saved.get("bests") == {"endless": 777.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false}, "the upgraded save is written as version 3", str(saved))
+	_clear_tool_save()
+
+
+## A version 2 save (the Endless best, campaign progress and settings) is upgraded to
+## version 3: its Endless best becomes bests.endless (Time Attack 0), its progress and
+## settings are kept, the step is logged, nothing is reported or backed up, and it is
+## written back at once.
+func _test_save_v2_migrates_to_v3() -> void:
+	_clear_tool_save()
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"version": 2, "best_endless": 4321, "levels": {"dawn_1": {"stars": 3, "score": 2100}}, "settings": {"music": 30, "sfx": 0, "music_muted": true, "sfx_muted": false}}))
+	file.close()
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.load_game()
+	_check(_game.bests == {"endless": 4321, "time_attack": 0} and _game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 3 and _game.progress["dawn_1"].score == 2100 and _game.music_volume == 30 and _game.sfx_volume == 0 and _game.music_muted and not _game.sfx_muted,
+		"a v2 save migrates keeping the Endless best, the campaign progress and the settings", "bests %s, %s, music %d" % [_game.bests, _game.progress.keys(), _game.music_volume])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v2 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2")), "a v2 save takes only the step 2 -> 3", "a 1 -> 2 line")
+	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 4321 kept as bests\\.endless, Time Attack best 0$", "the v2 -> v3 step is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 2 as version 3$", "writing the v2 save as v3 is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 4321, Time Attack best 0, 1 levels finished \\(3 stars\\), music 30 muted, sfx 0$", "the upgraded v2 save is written back at once")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("version") == 3.0 and saved.get("bests") == {"endless": 4321.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {"dawn_1": {"stars": 3.0, "score": 2100.0}}, "the upgraded v2 save is written as version 3", str(saved))
 	_clear_tool_save()
 
 
@@ -2258,7 +2825,7 @@ func _test_save_settings_and_bad_entries() -> void:
 	_game.quiet_errors = false
 	var reported := _game.reported_errors.slice(errors)
 	var backup := _game.save_path.get_basename() + ".dropped.json"
-	_check(_game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 2 and _game.best_endless == 42, "bad campaign entries are dropped and the rest of the save loads", "%s, best %d" % [_game.progress.keys(), _game.best_endless])
+	_check(_game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 2 and _game.best(GameState.ENDLESS_MODE) == 42, "bad campaign entries are dropped and the rest of the save loads", "%s, bests %s" % [_game.progress.keys(), _game.bests])
 	for id: String in expected:
 		var line := "dropped the campaign entry levels.%s = %s" % [id, expected[id]]
 		_check(reported.any(func(message: String) -> bool: return message.contains(line) and message.contains(_game.save_path)), "a bad entry is reported with its key and stored value: " + id, "\n".join(reported))
@@ -2267,7 +2834,7 @@ func _test_save_settings_and_bad_entries() -> void:
 	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
 	_check_logged(from, "^\\[Game\\] Backed up the save with 6 dropped campaign entries to user://tool_save\\.dropped\\.json$", "the backup path is logged")
 	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("best_endless") == 42.0, "the save is written back without the dropped entries", str(rewritten))
+	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("version") == 3.0 and rewritten.get("bests") == {"endless": 42.0, "time_attack": 0.0}, "the v2 save is written back as v3 without the dropped entries", str(rewritten))
 	# A second save with a bad entry: its backup takes the next free name.
 	var second := JSON.stringify({"version": 2, "best_endless": 42, "levels": {"old_level": {"stars": 3, "score": 999}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
 	file = FileAccess.open(_game.save_path, FileAccess.WRITE)
@@ -2509,7 +3076,7 @@ func _test_results_verdict() -> void:
 	_check(Results.verdict_text(500, 300) == "You 500 vs rival 300: you win!" and Results.verdict_text(100, 300) == "You 100 vs rival 300: the rival wins" and Results.verdict_text(200, 200) == "You 200 vs rival 200: a tie",
 		"the verdict is a win, a loss or a tie", Results.verdict_text(200, 200))
 	_check(Results.stars_text(0) == "0 stars: not passed" and Results.stars_text(1) == "1 of 3 stars" and Results.stars_text(3) == "3 of 3 stars", "the stars text", Results.stars_text(0))
-	var stats := {"score": 40, "shots": 2, "hits": 1, "kills": 1, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": false, "best": 100, "new_best": false, "save_error": ""}
+	var stats := {"mode": "endless", "score": 40, "shots": 2, "hits": 1, "kills": 1, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": false, "best": 100, "new_best": false, "save_error": ""}
 	_game.goto(GameState.Flow.RESULTS, stats)
 	await _game.transition_finished
 	_check(not (current_scene.get_node("Safe/Stats/Verdict") as Control).visible, "a run without rival steals shows no verdict", "shown")
@@ -2635,7 +3202,7 @@ func _test_save_dropped_backup_failure() -> void:
 	_check(FileAccess.get_file_as_string(_game.save_path.get_basename() + ".dropped.json") == "earlier backup 1", "no earlier backup is replaced", "")
 	_check(FileAccess.get_file_as_string(_game.save_path) == original, "a failed backup leaves the original save on disk", FileAccess.get_file_as_string(_game.save_path))
 	_check(not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to") or l.begins_with("[Game] Writing the save without")), "nothing is written back without a backup", "a write-back line")
-	_check(_game.progress.keys() == ["dawn_1"] and _game.best_endless == 7, "the rest of the save still loads", str(_game.progress.keys()))
+	_check(_game.progress.keys() == ["dawn_1"] and _game.best(GameState.ENDLESS_MODE) == 7, "the rest of the save still loads", str(_game.progress.keys()))
 	error_label.hide()
 	_clear_tool_save()
 
@@ -2765,9 +3332,10 @@ func _cued_bird(play: Play, bird_seed: int, bird_id: String) -> Bird:
 	return bird
 
 
-## Starts an Endless run with `run_seed` and waits until it is on screen.
-func _start_run(run_seed: int) -> Play:
-	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": run_seed})
+## Starts a run of `mode_id` (Endless unless it says otherwise) with `run_seed` and waits
+## until it is on screen.
+func _start_run(run_seed: int, mode_id := GameState.ENDLESS_MODE) -> Play:
+	_game.goto(GameState.Flow.PLAY, {"mode": mode_id, "seed": run_seed})
 	await _game.transition_finished
 	await process_frame
 	return current_scene as Play
@@ -2846,8 +3414,17 @@ func _clear_tool_save() -> void:
 	for path in paths:
 		if FileAccess.file_exists(path) or DirAccess.dir_exists_absolute(path):
 			DirAccess.remove_absolute(path)
-	_game.best_endless = 0
+	for mode_id in GameState.BEST_MODES:
+		_game.bests[mode_id] = 0
 	_game.progress = {}
+
+
+## The title's Campaign, Endless and Time Attack buttons, in that order.
+func _title_buttons(title: Title) -> Array[Button]:
+	var buttons: Array[Button] = []
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton"]:
+		buttons.append(title.get_node("Safe/" + button_name) as Button)
+	return buttons
 
 
 ## Goes to a fresh title screen and waits for the transition to finish.

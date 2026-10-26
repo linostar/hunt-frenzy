@@ -38,7 +38,8 @@ them so they match. Do not leave the code working around the difference.
   bird with `splits_into` launches `split_count` children of that type from the hit point; the killed bird falls and
   can no longer escape. A hit on a bird with a `penalty` (the decoy) deducts the penalty (the score never goes below 0)
   and resets the multiplier to 1.
-- **Escapes**: a bird that gets away counts toward the mode's `escape_limit` unless its `escape_counts` is false.
+- **Escapes**: a bird that gets away counts toward the mode's `escape_limit` unless its `escape_counts` is false (a
+  timed mode has no escape limit: an escape only loses the bird's points).
 - **Rival** (`scripts/logic/rival.gd`, Play): in a mode with `rival_steals`, once a bird other than the decoy has flown
   its `linger_time` (and has not started fleeing) the rival aims at it (a visible cue) for `aim_time`, counted from the
   cue's start, then shoots it and never misses: it falls as stolen, its `points` (no combo multiplier) go to the
@@ -58,7 +59,7 @@ them so they match. Do not leave the code working around the difference.
   reaches (0 stars: not passed). Order: the chapters in data order, each chapter's levels by `index`; the first level
   is always open, every other opens once the one before it is passed (a chapter's level 1 after the previous
   chapter's level 6); a chapter opens with its level 1. The save keeps each level's best stars and best score.
-- **Waves** (`scripts/logic/wave.gd`, Endless): wave n holds `min(start_birds + (n - 1) x bird_growth, max_birds)`
+- **Waves** (`scripts/logic/wave.gd`, `Wave.for_mode`: Endless and Time Attack, each with its own numbers): wave n holds `min(start_birds + (n - 1) x bird_growth, max_birds)`
   birds, one every `spawn_interval` from 0. Each spawn slot is the mode's `golden_bird` with chance `golden_chance`
   from wave `golden_from_wave` on; otherwise it is a pick, weighted by `weight`, among the `birds` entries whose
   `from_wave <= n`. The speed scale is `min(1 + (n - 1) x speed_growth, speed_cap)`.
@@ -105,7 +106,7 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 ## modes.json
 | field | type | range / enum | notes |
 |---|---|---|---|
-| `id` | string | snake_case | `endless` is the only mode so far (`GameState.ENDLESS_MODE`). |
+| `id` | string | snake_case | `endless` (`GameState.ENDLESS_MODE`) and `time_attack` (`GameState.TIME_ATTACK_MODE`): the title starts each, and the save keeps a best per mode. |
 | `name` | string | 1..26 chars | Display name. |
 | `birds` | array of object | non-empty | The wave mix, each bird at most once, at least one with `from_wave` 1. |
 | `birds[].bird` | string | bird id | |
@@ -122,8 +123,29 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `spawn_interval` | float | 0.1..10 | Seconds between two spawns of a wave. |
 | `shells_per_hit` | int | 1..10 | Shells per hit the wave needs (the shell rule above). |
 | `combo_cap` | int | 1..20 | The highest combo multiplier. |
-| `escape_limit` | int | 1..100 | Counted escapes that end a run (stolen birds count). |
+| `escape_limit` | int | 1..100 | *Exactly one of `escape_limit` and `time_limit`* (below). Counted escapes that end a run (stolen birds count). |
+| `time_limit` | float | 10..600 | *Exactly one of `escape_limit` and `time_limit`* (below). Seconds a run lasts. |
 | `rival_steals` | bool | | Whether the rival steals birds left flying past their `linger_time` (Endless, Campaign); false: he only heckles (Time Attack). No default. |
+
+**How a run ends** (the one per-mode field rule): a mode has exactly one of `escape_limit` and `time_limit`. Both
+is an error (`data/modes.json [<id>] time_limit: not allowed with escape_limit (...)`), and so is neither
+(`[<id>] escape_limit: missing key (a mode needs escape_limit or time_limit: how its run ends)`). The field the mode
+leaves out does not apply to it (`ModeSpec` holds 0 for it; code reads either field only after
+`ModeSpec.is_timed()` says which one the mode has):
+- **Escape limit** (Endless): the run ends once `escape_limit` birds are lost (counted escapes and stolen birds).
+- **Time limit** (Time Attack): there is no escape limit (an escape costs only the bird's lost points) and the run
+  ends after `time_limit` seconds of play. The clock is the run's game time from its start: it stops while the
+  game is paused (the pause menu, the rotate overlay) and runs through each wave's 1 s lead-in (`Play.WAVE_LEAD`),
+  so the lead-ins are part of the time limit (the first lead-in also covers the 0.15 s fade into the run, while
+  shots are ignored and no bird has spawned yet). A wave ends when every bird of it has spawned and none of them is
+  flying (all hit or escaped), or, in a timed mode only, the moment its pool runs out: the wave is lost (logged), its
+  birds still to spawn never spawn and each of them with `escape_counts` is counted as escaped at once, and the next
+  wave starts on the same frame (with a `wave_end` heckle, cooldown permitting, and the HUD showing the new wave's
+  number and pool). The lost wave's birds already in the air flee and are counted when they escape; until then they
+  are still targets for the next wave's shells (a hit scores as any hit; a lost wave's splitter launches goslings of
+  that wave, fleeing), and a wave's end waits only for its own birds, never a lost wave's. With an escape limit, an empty pool ends nothing: the birds still to spawn
+  spawn fleeing and the wave ends once they have all escaped. Either way the next wave comes with a full pool of its
+  own shells, and `rival_steals` decides whether the rival steals.
 
 ## levels.json
 Exactly `Content.LEVELS_PER_CHAPTER` (6) levels per chapter, indexes 1..6, the last one the boss level (I15).
@@ -163,9 +185,10 @@ A single object (not an array):
 
 ## Invariants (`tools/test_content.gd` must check all of these)
 I1-I4 and I13-I15 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
-(no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I19 are checked only by
+(no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I20 are checked only by
 `test_content.gd`, against the real data and on a malformed copy each (with the loader quiet, so the invariant's own
-check is what catches it; I17 on a stand-in schedule, since `shells_per_hit >= 1` always covers the hits). A loader
+check is what catches it; I17 and I20's growth and shell parts on a stand-in schedule, since the formulas and
+`shells_per_hit >= 1` always hold them). A loader
 check that depends on a field that already has an error is skipped (I4's inside the sprite check when `size` failed,
 I13 when `flee_time`, `linger_time`, `aim_time` or a chapter's `rival_linger_scale` did, the scale order when the scale
 did, the boss and index rules when `index` did), so each problem is reported once, against the field it is in, never
@@ -225,6 +248,16 @@ against a fallback value.
 - **I19** No level uses a bird a later chapter introduces (in its mixes, as its golden bird or as a split child of
   one); every bird a chapter introduces spawns in at least one of its levels' fixed-seed waves (a split child counts
   when its parent spawns); a golden bird spawns in every chapter.
+- **I20** Endless and Time Attack are fair, by a simulation of the real data that uses `Wave.for_mode`, `Ammo` and
+  `Flight` as play does, over 60 run seeds and the waves a run can reach: Endless's waves 1-10, and every wave of a
+  timed mode that starts before its `time_limit` even if each wave ended the moment its last bird spawned (each
+  wave's lead-in counted: 11 waves for Time Attack). In each: (a) a wave never has fewer birds or a lower speed scale
+  than the one before; (b) its shells cover every hit its birds need (an `Ammo` of the wave's shells never refuses
+  the perfect player's shots); (c) a perfect player kills every bird but the decoy before its deadline: the rival's
+  cue (`linger_time x 1`, in a mode with `rival_steals`) and `flee_time`, both counted from the bird's spawn (a split
+  child's from its parent's kill). The perfect player shoots one shot every 0.35 s, each bird the moment its whole
+  hitbox is above the grass line (to the frame), in the order the birds come into the field (a split child comes
+  in where its parent was killed), every hit a hit, never the decoy.
 
 ## Current content
 | bird | chapter | pattern | speed | flee | linger | points | hp | special | Endless |
@@ -251,8 +284,15 @@ zigzag swift.
 Golden chance 0.08 per slot everywhere but dawn_1 (0: its first wave is three plain geese). Star thresholds are about
 35%, 60% and 85% of each level's highest sure score (rounded to 50).
 
-Endless: 2 birds in wave 1, one more per wave up to 6, speed x1.08 per wave up to x1.6, a spawn every 1.4 s,
-3 shells per hit needed, combo cap 5, the run ends at 10 counted escapes (stolen birds included), rival steals on.
+Endless: 2 birds in wave 1, one more per wave up to 8 (wave 7), speed +0.06 per wave up to x1.6 (wave 11), a spawn
+every 1.2 s, 3 shells per hit needed, combo cap 5, the run ends at 10 counted escapes (stolen birds included), rival
+steals on (retuned in step 6 from 6 birds at most (wave 5), +0.08 speed to x1.6 (wave 9) and a spawn every 1.4 s, so
+the ramp keeps growing through wave 11; I20's perfect player still kills every bird at least 0.8 s before its
+deadline, the gosling's linger the tightest).
+
+Time Attack: 60 s, 3 birds in wave 1, one more per wave up to 8 (wave 6), speed +0.06 per wave up to x1.5, a spawn
+every 0.9 s, 2 shells per hit needed (a full pool every wave), combo cap 8; goose from wave 1, armored from 2, zigzag
+and decoy from 3, splitter from 4, golden 10% of slots from wave 2; no escape limit, rival steals off (he heckles).
 
 Rival: aim 1.0 s (so every cue ends at least 0.5 s before the bird flees: the gosling's 1.5 + 1.0 against its 3.0),
 heckle cooldown 4.0 s; 5 miss, 4 combo, 4 wave_end, 5 steal and 4 results lines, the longest 40 characters.
