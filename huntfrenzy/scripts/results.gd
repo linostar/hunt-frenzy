@@ -1,31 +1,44 @@
 class_name Results
 extends Control
 ## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
-## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, best, new_best):
-## score, accuracy (hits / shots, a
-## dash with no shots; a hit on the decoy pigeon is a shot but not a hit; an armored bird's
-## two hits are two), birds hit (kills: an armored bird counts once), birds
-## escaped (stolen ones included), birds stolen by the rival, the rival's score, pigeons hit
-## (the decoy) and the Endless best, the rival's parting line at the bottom, with "New best!" when the run
-## beat it, and SaveError ("Your best could not be saved: <reason>") when saving that
-## best failed (the run's save_error, or a later Game.save_failed: a web save that browser
-## storage did not keep). Play again (focused on arrival, ring hidden until keyboard navigation)
-## starts a new Endless run; Title goes to the title. Laid out in the safe area.
+## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, rival_steals,
+## best, new_best, save_error; a campaign level adds level, stars, best_stars and
+## next_level): score, accuracy (hits / shots, a dash with no shots; a hit on the decoy
+## pigeon is a shot but not a hit; an armored bird's two hits are two), birds hit (kills:
+## an armored bird counts once), birds escaped (stolen ones included, their number in
+## brackets), the "you vs rival" verdict (score against the rival's score: win, lose or
+## tie) in every run with rival steals, pigeons hit (the decoy) and the best (Endless
+## best, or the level's best score and stars), the rival's parting line at the bottom,
+## with "New best!" when the run beat it, and SaveError when saving failed (the run's
+## save_error, or a later Game.save_failed: a web save that browser storage did not keep).
+## A campaign level also shows the stars earned (0: not passed).
+## Endless: Play again (focused on arrival, ring hidden until keyboard navigation) starts
+## a new Endless run; Title goes to the title. A campaign level: Next (only when the next
+## level exists and is unlocked; focused when shown) starts it, Retry plays the level
+## again, Levels opens its chapter's level select (Retry is focused without Next).
+## Laid out in the safe area.
 
 const NO_VALUE := "—"
-const STAT_KEYS: Array[String] = ["score", "shots", "hits", "kills", "pigeons", "escaped", "stolen", "rival_score", "rival_line", "best", "new_best", "save_error"]
+const STAT_KEYS: Array[String] = ["score", "shots", "hits", "kills", "pigeons", "escaped", "stolen", "rival_score", "rival_line", "rival_steals", "best", "new_best", "save_error"]
+## The keys a campaign level's stats add.
+const LEVEL_KEYS: Array[String] = ["level", "stars", "best_stars", "next_level"]
 const RIVAL_LINE_TEXT := "Rival: \"%s\""
 const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for details."
+const PROGRESS_SAVE_ERROR_TEXT := "Your progress could not be saved: %s. See the log for details."
+const ENDLESS_HEADING := "Run over"
 
 var _game: GameState
+## The campaign level of these results, or null (Endless).
+var _level: LevelSpec
 
 @onready var _safe: Control = $Safe
+@onready var _heading: Label = $Safe/Heading
 @onready var _score: Label = $Safe/Stats/Score
+@onready var _stars: Label = $Safe/Stats/Stars
 @onready var _accuracy: Label = $Safe/Stats/Accuracy
 @onready var _hits: Label = $Safe/Stats/Hits
 @onready var _escaped: Label = $Safe/Stats/Escaped
-@onready var _stolen: Label = $Safe/Stats/Stolen
-@onready var _rival_score: Label = $Safe/Stats/RivalScore
+@onready var _verdict: Label = $Safe/Stats/Verdict
 @onready var _pigeons: Label = $Safe/Stats/Pigeons
 @onready var _best: Label = $Safe/Stats/Best
 @onready var _new_best: Label = $Safe/NewBest
@@ -33,6 +46,9 @@ var _game: GameState
 @onready var _rival_line: Label = $Safe/RivalLine
 @onready var _play_again_button: Button = $Safe/PlayAgainButton
 @onready var _title_button: Button = $Safe/TitleButton
+@onready var _next_button: Button = $Safe/NextButton
+@onready var _retry_button: Button = $Safe/RetryButton
+@onready var _levels_button: Button = $Safe/LevelsButton
 
 
 func _ready() -> void:
@@ -41,9 +57,11 @@ func _ready() -> void:
 	_fit()
 	_play_again_button.pressed.connect(_on_play_again_pressed)
 	_title_button.pressed.connect(_on_title_pressed)
+	_next_button.pressed.connect(_on_next_pressed)
+	_retry_button.pressed.connect(_on_retry_pressed)
+	_levels_button.pressed.connect(_on_levels_pressed)
 	_game.save_failed.connect(_show_save_error)
 	_show_stats(_game.flow_args)
-	_play_again_button.grab_focus(true)
 
 
 ## "75%" for 3 hits in 4 shots; NO_VALUE with no shots.
@@ -53,39 +71,92 @@ static func accuracy_text(hits: int, shots: int) -> String:
 	return "%d%%" % roundi(100.0 * hits / shots)
 
 
+## The "you vs rival" verdict of a run: a win when `score` beats `rival_score`, a loss
+## when it is below, a tie when they are equal.
+static func verdict_text(score: int, rival_score: int) -> String:
+	var outcome := "you win!" if score > rival_score else ("the rival wins" if score < rival_score else "a tie")
+	return "You %d vs rival %d: %s" % [score, rival_score, outcome]
+
+
+## "2 of 3 stars" (or "0 stars: not passed") for a level's results.
+static func stars_text(earned: int) -> String:
+	if not Campaign.is_passed(earned):
+		return "0 stars: not passed"
+	return "%d of %d stars" % [earned, Campaign.MAX_STARS]
+
+
 func _show_stats(stats: Dictionary) -> void:
-	for key in STAT_KEYS:
+	var keys: Array[String] = STAT_KEYS.duplicate()
+	if stats.has("level"):
+		keys.append_array(LEVEL_KEYS)
+	for key in keys:
 		if not stats.has(key):
 			# Opened without a finished run (the project check, the editor's Run Current Scene).
 			print("[Results] Opened without run stats (missing '%s')" % key)
-			for label: Label in [_score, _accuracy, _hits, _escaped, _stolen, _rival_score, _pigeons]:
+			for label: Label in [_score, _accuracy, _hits, _escaped, _pigeons]:
 				label.text += " " + NO_VALUE
-			_best.text += " %d" % _game.best_endless
+			_best.text = "Endless best %d" % _game.best_endless
 			_new_best.hide()
+			_show_buttons([_play_again_button, _title_button])
 			return
+	_level = Content.level(str(stats["level"])) if stats.has("level") and Content.has_level(str(stats["level"])) else null
+	if stats.has("level") and _level == null:
+		_game.report_error("Results of an unknown level '%s'" % stats["level"])
 	_score.text += " %d" % stats["score"]
 	_accuracy.text += " " + accuracy_text(stats["hits"], stats["shots"])
 	_hits.text += " %d" % stats["kills"]
-	_escaped.text += " %d" % stats["escaped"]
-	_stolen.text += " %d" % stats["stolen"]
-	_rival_score.text += " %d" % stats["rival_score"]
+	_escaped.text += " %d (%d stolen)" % [stats["escaped"], stats["stolen"]]
+	_verdict.visible = stats["rival_steals"]
+	_verdict.text = verdict_text(stats["score"], stats["rival_score"])
 	_rival_line.text = RIVAL_LINE_TEXT % stats["rival_line"]
 	_rival_line.show()
 	_pigeons.text += " %d" % stats["pigeons"]
-	_best.text += " %d" % stats["best"]
 	_new_best.visible = stats["new_best"]
+	if _level != null:
+		var chapter_spec := Content.chapter(_level.chapter)
+		_heading.text = "%s %d: %s" % [chapter_spec.name, _level.index, "passed" if Campaign.is_passed(stats["stars"]) else "not passed"]
+		_stars.text = stars_text(stats["stars"])
+		_stars.show()
+		_best.text = "Level best %d (%d of %d stars)" % [stats["best"], stats["best_stars"], Campaign.MAX_STARS]
+		var buttons: Array[Button] = [_retry_button, _levels_button]
+		if stats["next_level"] != "":
+			buttons.push_front(_next_button)
+		_show_buttons(buttons)
+	else:
+		_heading.text = ENDLESS_HEADING
+		_best.text = "Endless best %d" % stats["best"]
+		_show_buttons([_play_again_button, _title_button])
 	# A web save can fail during the fade here, before save_failed is connected.
-	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] else "")
+	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] or _level != null else "")
 	if save_error != "":
 		_show_save_error(save_error)
 	print("[Results] Score %d, accuracy %s (%d of %d shots), %d birds hit, %d escaped, %d stolen, rival score %d, %d pigeons hit, best %d%s; rival: \"%s\"" % [
 		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["kills"], stats["escaped"], stats["stolen"], stats["rival_score"], stats["pigeons"], stats["best"], ", new best" if stats["new_best"] else "", stats["rival_line"]])
+	if stats["rival_steals"]:
+		print("[Results] Verdict: %s" % _verdict.text)
+	if _level != null:
+		print("[Results] Level %s: %d stars, best %d (%d stars), next %s" % [_level.id, stats["stars"], stats["best"], stats["best_stars"], stats["next_level"] if stats["next_level"] != "" else "none open"])
+
+
+## Shows `buttons` (hiding the other mode's), chains their focus (left/right and Tab wrap
+## around) and focuses the first without showing its ring.
+func _show_buttons(buttons: Array[Button]) -> void:
+	for button: Button in [_play_again_button, _title_button, _next_button, _retry_button, _levels_button]:
+		button.visible = button in buttons
+	for i in buttons.size():
+		var after := buttons[(i + 1) % buttons.size()]
+		var before := buttons[(i - 1 + buttons.size()) % buttons.size()]
+		buttons[i].focus_neighbor_right = buttons[i].get_path_to(after)
+		buttons[i].focus_next = buttons[i].get_path_to(after)
+		buttons[i].focus_neighbor_left = buttons[i].get_path_to(before)
+		buttons[i].focus_previous = buttons[i].get_path_to(before)
+	buttons[0].grab_focus(true)
 
 
 func _show_save_error(reason: String) -> void:
-	_save_error.text = SAVE_ERROR_TEXT % reason
+	_save_error.text = (PROGRESS_SAVE_ERROR_TEXT if _level != null else SAVE_ERROR_TEXT) % reason
 	_save_error.show()
-	print("[Results] Showing that the best was not saved: %s" % reason)
+	print("[Results] Showing that the %s was not saved: %s" % ["progress" if _level != null else "best", reason])
 
 
 func _fit() -> void:
@@ -102,3 +173,22 @@ func _on_play_again_pressed() -> void:
 func _on_title_pressed() -> void:
 	print("[Results] Title pressed")
 	_game.goto(GameState.Flow.TITLE)
+
+
+func _on_next_pressed() -> void:
+	var next := Campaign.next_level(_level)
+	if next == null or not Campaign.is_unlocked(next, _game.progress):
+		_game.report_error("Next pressed after %s, but no next level is open" % _level.id)
+		return
+	print("[Results] Next pressed: starting %s" % next.id)
+	_game.start_level(next.id)
+
+
+func _on_retry_pressed() -> void:
+	print("[Results] Retry pressed: starting %s again" % _level.id)
+	_game.start_level(_level.id)
+
+
+func _on_levels_pressed() -> void:
+	print("[Results] Levels pressed: opening chapter %s" % _level.chapter)
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": _level.chapter})

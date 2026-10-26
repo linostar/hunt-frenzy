@@ -1,8 +1,8 @@
 class_name Play
 extends Node2D
-## The play scene: one run of a mode (only Endless so far), from Game.flow_args
-## ({"mode": id, "seed": run seed}).
-## Waves follow one another (Wave.endless): each starts WAVE_LEAD seconds before its
+## The play scene: one run of a mode (Endless: Game.flow_args {"mode": id, "seed": run
+## seed}) or of a campaign level ({"level": id}: the level's fixed seed).
+## Waves follow one another (Wave.endless, Wave.campaign): each starts WAVE_LEAD seconds before its
 ## first spawn with a fresh shell pool (Ammo). Every pressed touch on the ShotInput
 ## (below the HUD bar) is a shot: it uses a shell and hits the frontmost flying bird
 ## whose hitbox polygon holds the point, else it is a miss (combo reset); with no shells
@@ -15,8 +15,12 @@ extends Node2D
 ## When the shells run out, the wave's flying birds (and any still to spawn, goslings
 ## included) flee at once; the next wave starts when every bird of the wave has spawned
 ## and none is flying. An escape counts toward escape_limit unless the bird's
-## escape_counts is false (the decoy). The run ends once escape_limit birds have escaped:
-## the score is recorded (a new best is saved at once) and the results screen opens.
+## escape_counts is false (the decoy). An Endless run ends once escape_limit birds have
+## escaped: the score is recorded (a new best is saved at once) and the results screen
+## opens. A campaign level has no escape limit: it plays all its waves (the boss level's
+## last one is the boss flock) and then ends on the results screen, the level's stars and
+## best recorded and saved at once (Game.record_level). In a level the sky takes the
+## chapter's tint and the rival waits linger_time x the chapter's rival_linger_scale.
 ## The rival hunter (Rival, data/rival_lines.json) stands in the grass band (at or below
 ## GRASS_Y, so he never covers the field; he and his speech bubble ignore touches, so a
 ## shot anywhere hits as before). In a mode with rival_steals, every frame Play asks
@@ -38,7 +42,8 @@ extends Node2D
 ## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate
 ## overlay hiding after it showed during the run (or while the menu is open) open the
 ## pause menu with the tree paused; Resume (or Escape on the open menu) continues the run
-## unchanged, Restart starts a new Endless run, Quit goes to the title. The grass hides
+## unchanged, Restart starts the run again (a new Endless run, or the same level), Quit
+## goes to the title. The grass hides
 ## what is behind it: a shot on it (at or below GRASS_Y) hits no bird. Everything is logged with enough context
 ## (the run seed, wave times, shot positions) to replay the run.
 
@@ -77,7 +82,13 @@ const COMBO_HECKLE_MIN := 3
 ## Seconds a heckle stays in the rival's bubble.
 const HECKLE_TIME := 2.5
 
+## The Endless mode, or null in a campaign level.
 var mode: ModeSpec
+## The campaign level and its chapter, or null in Endless.
+var level: LevelSpec
+var chapter: ChapterSpec
+## The rival waits linger_time x this before aiming (the chapter's rival_linger_scale; 1 in Endless).
+var linger_scale := 1.0
 var run_seed := 0
 var wave: Wave.Plan
 var ammo: Ammo
@@ -182,6 +193,9 @@ func _process(delta: float) -> void:
 	if _over:
 		return
 	if _next_spawn == wave.spawns.size() and flying_birds().is_empty():
+		if level != null and wave.index >= level.waves:
+			_end_run()
+			return
 		_heckle("wave_end")
 		_start_wave(wave.index + 1)
 
@@ -271,36 +285,59 @@ func heckle_shown() -> String:
 
 func _start_run() -> void:
 	var args := _game.flow_args
-	if not args.has("mode"):
+	if not args.has("mode") and not args.has("level"):
 		# Opened without a goto (the project check, the editor's Run Current Scene).
 		args = {"mode": GameState.ENDLESS_MODE, "seed": randi()}
 		print("[Play] Opened without run args; starting %s with a fresh seed" % args["mode"])
-	mode = Content.mode(str(args["mode"]))
-	if mode == null or not Content.errors().is_empty() or not args.get("seed") is int:
-		_game.report_error("Cannot start a run of mode '%s' (seed %s): %d content problem(s), see the log" % [args["mode"], args.get("seed"), Content.errors().size()])
-		# Nothing runs; the menu offers only the way back to the title.
-		_over = true
-		_resume_button.disabled = true
-		_restart_button.disabled = true
-		_pause_menu.show()
-		_quit_button.grab_focus(true)
-		return
-	run_seed = args["seed"]
-	scoring = Scoring.new(mode.combo_cap)
+	var problems := Content.errors().size()
+	if args.has("level"):
+		level = Content.level(str(args["level"])) if problems == 0 and Content.has_level(str(args["level"])) else null
+		if level == null:
+			_cannot_start("Cannot start level '%s': %s" % [args["level"], "%d content problem(s), see the log" % problems if problems > 0 else "no such level in levels.json"])
+			return
+		chapter = Content.chapter(level.chapter)
+		linger_scale = chapter.rival_linger_scale
+		run_seed = level.level_seed
+		scoring = Scoring.new(level.combo_cap)
+		_sky.modulate = chapter.sky_tint
+	else:
+		mode = Content.mode(str(args["mode"]))
+		if mode == null or problems > 0 or not args.get("seed") is int:
+			_cannot_start("Cannot start a run of mode '%s' (seed %s): %d content problem(s), see the log" % [args["mode"], args.get("seed"), problems])
+			return
+		run_seed = args["seed"]
+		scoring = Scoring.new(mode.combo_cap)
 	rival_lines = Content.rival_lines()
-	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
-		mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
+	if level != null:
+		print("[Play] Run start: level %s (%s %d of %d), seed %d (%d waves%s, no escape limit, combo cap %d, %d shells per hit, rival steals on, linger x%.2f, aim %.2f s, heckle cooldown %.2f s, sky #%s, weather %s)" % [
+			level.id, chapter.name, level.index, Content.LEVELS_PER_CHAPTER, run_seed, level.waves, ", the last a boss flock" if level.is_boss() else "", level.combo_cap, level.shells_per_hit,
+			linger_scale, rival_lines.aim_time, rival_lines.cooldown, chapter.sky_tint.to_html(false), chapter.weather])
+	else:
+		print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
+			mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
 	_start_wave(1)
 
 
+## A run that cannot start: `message` is reported, nothing runs, and the menu offers only
+## the way back to the title.
+func _cannot_start(message: String) -> void:
+	_game.report_error(message)
+	_over = true
+	_resume_button.disabled = true
+	_restart_button.disabled = true
+	_pause_menu.show()
+	_quit_button.grab_focus(true)
+
+
 func _start_wave(index: int) -> void:
-	wave = Wave.endless(mode, index, run_seed)
+	wave = Wave.campaign(level, index) if level != null else Wave.endless(mode, index, run_seed)
 	wave_clock = -WAVE_LEAD
 	_next_spawn = 0
 	var ids := PackedStringArray()
 	for spawn in wave.spawns:
 		ids.append(spawn.bird_id)
-	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale])
+	var of_level := " (wave %d of %d%s, level %s)" % [index, level.waves, ", boss flock" if wave.boss else "", level.id] if level != null else ""
+	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f%s" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale, of_level])
 	set_shell_pool(wave.shells)
 
 
@@ -394,7 +431,7 @@ func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 ## started fleeing, or steals were turned off), or steal it once the cue has run.
 func _update_steals() -> void:
 	for bird in flying_birds():
-		match Rival.steal_state(bird.age, bird.spec.linger_time, rival_lines.aim_time, bird.cue_age, bird.spec.penalty > 0, bird.is_fleeing(), mode.rival_steals):
+		match Rival.steal_state(bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, bird.cue_age, bird.spec.penalty > 0, bird.is_fleeing(), steals_on()):
 			Rival.Steal.NONE:
 				if bird.is_cued():
 					_cancel_cue(bird, "fled" if bird.is_fleeing() else "rival steals off")
@@ -411,7 +448,7 @@ func _start_cue(bird: Bird) -> void:
 	bird.set_cue(true)
 	_update_rival_pose()
 	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (wave %d at t %.2f, rival score %d, %d stolen)" % [
-		bird.spec.id, bird.number, bird.age, bird.spec.linger_time, rival_lines.aim_time, wave.index, wave_clock, rival_score, stolen])
+		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, wave.index, wave_clock, rival_score, stolen])
 
 
 func _cancel_cue(bird: Bird, cause: String) -> void:
@@ -430,12 +467,28 @@ func _steal(bird: Bird) -> void:
 	stolen += 1
 	rival_score += bird.spec.points
 	escaped += 1
-	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %d/%d escaped, combo x%d kept (wave %d at t %.2f)" % [
-		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, escaped, mode.escape_limit, scoring.multiplier, wave.index, wave_clock])
+	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %s escaped, combo x%d kept (wave %d at t %.2f)" % [
+		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, _escapes(), scoring.multiplier, wave.index, wave_clock])
 	_heckle(Rival.STEAL)
 	_update_hud()
-	if escaped >= mode.escape_limit:
+	if _escape_limit_reached():
 		_end_run()
+
+
+## Whether the rival steals in this run: always in a campaign level, per mode in Endless.
+func steals_on() -> bool:
+	return level != null or mode.rival_steals
+
+
+## The birds lost so far for the logs and the HUD: "E/limit" in Endless, "E" in a level
+## (no limit).
+func _escapes() -> String:
+	return "%d/%d" % [escaped, mode.escape_limit] if mode != null else str(escaped)
+
+
+## True once an Endless run has lost escape_limit birds; a level never ends early.
+func _escape_limit_reached() -> bool:
+	return mode != null and escaped >= mode.escape_limit
 
 
 ## The rival raises his gun while any flying bird has an aim cue.
@@ -469,32 +522,45 @@ func _on_bird_escaped(bird: Bird) -> void:
 	if _over:
 		return
 	if not bird.spec.escape_counts:
-		print("[Play] Escaped %s #%d (not counted, %d/%d, wave %d at t %.2f)" % [bird.spec.id, bird.number, escaped, mode.escape_limit, wave.index, wave_clock])
+		print("[Play] Escaped %s #%d (not counted, %s, wave %d at t %.2f)" % [bird.spec.id, bird.number, _escapes(), wave.index, wave_clock])
 		return
 	escaped += 1
-	print("[Play] Escaped %s #%d (%d/%d, wave %d at t %.2f)" % [bird.spec.id, bird.number, escaped, mode.escape_limit, wave.index, wave_clock])
+	print("[Play] Escaped %s #%d (%s, wave %d at t %.2f)" % [bird.spec.id, bird.number, _escapes(), wave.index, wave_clock])
 	_update_hud()
-	if escaped >= mode.escape_limit:
+	if _escape_limit_reached():
 		_end_run()
 
 
 func _end_run() -> void:
 	_stop()
-	var new_best := _game.record_endless(scoring.score)
-	var save_error := _game.save_error if new_best else ""
 	var rival_line := Rival.pick_line(rival_lines.lines["results"], run_seed, heckles)
 	heckles += 1
 	print("[Play] Heckle (results) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [heckles, rival_line, wave.index, wave_clock, rival_score, stolen])
 	var stats := {
-		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits, "kills": scoring.kills,
+		"seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits, "kills": scoring.kills,
 		"pigeons": scoring.penalties, "escaped": escaped, "stolen": stolen, "rival_score": rival_score, "rival_line": rival_line,
-		"best": _game.best_endless, "new_best": new_best, "save_error": save_error,
+		"rival_steals": steals_on(),
 	}
-	var best_note := ""
-	if new_best:
-		best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
-	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d, best %d%s" % [
-		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, stolen, rival_score, _game.best_endless, best_note])
+	var shots := "score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d" % [
+		scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, stolen, rival_score]
+	if level != null:
+		var new_best := _game.record_level(level, scoring.score)
+		var record: Campaign.Record = _game.progress[level.id]
+		var next := Campaign.next_level(level)
+		var open_next := next.id if next != null and Campaign.is_unlocked(next, _game.progress) else ""
+		stats.merge({"level": level.id, "stars": Campaign.stars(level, scoring.score), "best": record.score, "best_stars": record.stars,
+			"new_best": new_best, "save_error": _game.save_error, "next_level": open_next})
+		print("[Play] Run end: level %s, seed %d, wave %d of %d, %s, %d stars, level best %d (%d stars)%s%s" % [
+			level.id, run_seed, wave.index, level.waves, shots, stats["stars"], record.score, record.stars, " (new best)" if new_best else "",
+			", not saved: %s" % _game.save_error if _game.save_error != "" else ""])
+	else:
+		var new_best := _game.record_endless(scoring.score)
+		var save_error := _game.save_error if new_best else ""
+		stats.merge({"mode": mode.id, "best": _game.best_endless, "new_best": new_best, "save_error": save_error})
+		var best_note := ""
+		if new_best:
+			best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
+		print("[Play] Run end: mode %s, seed %d, wave %d, %s, best %d%s" % [mode.id, run_seed, wave.index, shots, _game.best_endless, best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -509,7 +575,10 @@ func _stop() -> void:
 
 func _restart() -> void:
 	_leave("Restart")
-	_game.start_endless()
+	if level != null:
+		_game.start_level(level.id)
+	else:
+		_game.start_endless()
 
 
 func _quit() -> void:
@@ -522,7 +591,7 @@ func _leave(cause: String) -> void:
 	if wave == null:
 		print("[Play] Left (%s): the run never started" % cause)
 		return
-	print("[Play] Left the run (%s): mode %s, seed %d, wave %d, score %d, %d escaped" % [cause, mode.id, run_seed, wave.index, scoring.score, escaped])
+	print("[Play] Left the run (%s): %s, seed %d, wave %d, score %d, %d escaped" % [cause, "level " + level.id if level != null else "mode " + mode.id, run_seed, wave.index, scoring.score, escaped])
 
 
 ## Escape (CancelKey, which runs while paused too) opens the pause menu, or resumes the
@@ -577,7 +646,7 @@ func _popup(point: Vector2, text: String, color := POPUP_COLOR) -> void:
 
 func _update_hud() -> void:
 	_score_label.text = "Score %d" % scoring.score
-	_wave_label.text = "Wave %d" % wave.index
+	_wave_label.text = "Wave %d/%d" % [wave.index, level.waves] if level != null else "Wave %d" % wave.index
 	if _shell_count.visible:
 		_shell_count.text = "x%d" % ammo.shells
 	else:
@@ -586,7 +655,7 @@ func _update_hud() -> void:
 				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
 	_combo_label.text = "x%d" % scoring.multiplier
 	_rival_label.text = "Rival %d" % rival_score
-	_escaped_label.text = "Escaped %d/%d" % [escaped, mode.escape_limit]
+	_escaped_label.text = "Escaped " + _escapes()
 
 
 ## Lays the scene out in the visible area: the base playfield centred horizontally, the

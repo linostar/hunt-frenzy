@@ -1,0 +1,2 @@
+res://scenes/menu.tscn: interactive Control 'OffScreen' at [P: (900.0, 240.0), S: (100.0, 60.0)] leaves the 960x540 screen
+res://scenes/menu.tscn: interactive Control 'BelowScreen' at [P: (380.0, 520.0), S: (200.0, 60.0)] leaves the 960x540 screen

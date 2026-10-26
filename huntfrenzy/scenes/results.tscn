@@ -63,6 +63,14 @@ theme_override_font_sizes/font_size = 30
 text = "Score"
 horizontal_alignment = 1
 
+[node name="Stars" type="Label" parent="Safe/Stats"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
+theme_override_font_sizes/font_size = 20
+text = "Stars"
+horizontal_alignment = 1
+
 [node name="Accuracy" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
@@ -84,18 +92,12 @@ theme_override_font_sizes/font_size = 20
 text = "Birds escaped"
 horizontal_alignment = 1
 
-[node name="Stolen" type="Label" parent="Safe/Stats"]
+[node name="Verdict" type="Label" parent="Safe/Stats"]
+visible = false
 layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
 theme_override_font_sizes/font_size = 20
-text = "Birds stolen"
-horizontal_alignment = 1
-
-[node name="RivalScore" type="Label" parent="Safe/Stats"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 20
-text = "Rival score"
+text = "You vs rival"
 horizontal_alignment = 1
 
 [node name="Pigeons" type="Label" parent="Safe/Stats"]
@@ -187,6 +189,57 @@ focus_next = NodePath("../PlayAgainButton")
 focus_previous = NodePath("../PlayAgainButton")
 theme_override_font_sizes/font_size = 30
 text = "Title"
+
+[node name="NextButton" type="Button" parent="Safe"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -310.0
+offset_top = -82.0
+offset_right = -110.0
+offset_bottom = -34.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "Next"
+
+[node name="RetryButton" type="Button" parent="Safe"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -100.0
+offset_top = -82.0
+offset_right = 100.0
+offset_bottom = -34.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "Retry"
+
+[node name="LevelsButton" type="Button" parent="Safe"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = 110.0
+offset_top = -82.0
+offset_right = 310.0
+offset_bottom = -34.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_font_sizes/font_size = 30
+text = "Levels"
 
 [node name="RivalLine" type="Label" parent="Safe"]
 visible = false

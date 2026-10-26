@@ -14,7 +14,9 @@ extends SceneTree
 ## - in screen scenes (a root Control that fills the screen, or a root that is not a
 ##   Control: a CanvasLayer HUD, a Node2D game scene), the top HUD bar (the top
 ##   HUD_BAR_HEIGHT base units of the screen) holds no interactive Control except one
-##   named HUD_BAR_NAME (PauseButton).
+##   named HUD_BAR_NAME (PauseButton), and every interactive Control lies inside the
+##   screen (the 960x540 base, which is the whole safe area there: one that leaves it
+##   leaves the safe area of every screen).
 ## Also compiles every script: project.godot raises GDScript warnings to errors,
 ## so any warning fails here.
 ## Usage (from repo root): "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/check_project.gd"
@@ -61,6 +63,8 @@ const MIN_TARGET := 44.0
 const HUD_BAR_HEIGHT := 56.0
 ## The only interactive Control allowed in the top HUD bar.
 const HUD_BAR_NAME := &"PauseButton"
+## How far (base units) a Control's rect may round past the screen's edge.
+const SCREEN_TOLERANCE := 0.5
 
 var _violations: Array[String] = []
 var _index_zero := RegEx.create_from_string(INDEX_ZERO_PATTERN)
@@ -159,6 +163,8 @@ func _check_node(path: String, node: Node, full_screen: bool) -> void:
 			_violations.append("%s is %s, smaller than %dx%d" % [which, rect.size, int(MIN_TARGET), int(MIN_TARGET)])
 		if full_screen and rect.position.y < HUD_BAR_HEIGHT and control.name != HUD_BAR_NAME:
 			_violations.append("%s starts at y=%.0f, inside the top HUD bar (%d units; only %s may be interactive there)" % [which, rect.position.y, int(HUD_BAR_HEIGHT), HUD_BAR_NAME])
+		if full_screen and not Rect2(Vector2.ZERO, Vector2(BASE_SIZE)).grow(SCREEN_TOLERANCE).encloses(rect):
+			_violations.append("%s at %s leaves the %dx%d screen (every interactive Control lies inside the safe area)" % [which, rect, BASE_SIZE.x, BASE_SIZE.y])
 		if control is BaseButton and control.focus_mode == Control.FOCUS_NONE:
 			_violations.append("%s cannot take keyboard focus (focus_mode none)" % which)
 		var icon_only := control is TextureButton or (control is Button and (control as Button).text.strip_edges().is_empty())

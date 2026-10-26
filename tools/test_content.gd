@@ -1,8 +1,8 @@
 extends SceneTree
 ## Headless content tests: loads huntfrenzy/data/*.json through Content and checks every
-## invariant of huntfrenzy/data/SCHEMA.md (I1..I13) against the real data, then proves
-## each one fires on a malformed copy of it (the loader's I1-I4 and I13 with the exact
-## error lines; I5-I12 with the exact problems their checks report).
+## invariant of huntfrenzy/data/SCHEMA.md (I1..I19) against the real data, then proves
+## each one fires on a malformed copy of it (the loader's I1-I4, I13, I14 and I15 with the
+## exact error lines; I5-I12 and I16-I19 with the exact problems their checks report).
 ##   "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func that reports through _check(), and append it to
@@ -70,6 +70,12 @@ func _tests() -> Array[Callable]:
 		_test_i11_fits_field,
 		_test_i12_hitbox_touch_size,
 		_test_i13_cue_ends_before_fleeing,
+		_test_i14_chapters,
+		_test_i15_levels,
+		_test_i16_three_stars_reachable,
+		_test_i17_shells_fit_hits,
+		_test_i18_boss_last_and_shaped,
+		_test_i19_chapters_introduce_birds,
 	]
 
 
@@ -88,11 +94,11 @@ func _run() -> void:
 		quit(1)
 
 
-## I1-I4 and I13 hold for the real data: the loader checks them, so clean real data means
-## no loader errors.
+## I1-I4 and I13-I15 hold for the real data: the loader checks them, so clean real data
+## means no loader errors.
 func _test_real_data_loads_clean() -> void:
 	Content.reload()
-	_check(Content.errors().is_empty(), "I1-I4 and I13 the real data loads without errors", "\n".join(Content.errors()))
+	_check(Content.errors().is_empty(), "I1-I4 and I13-I15 the real data loads without errors", "\n".join(Content.errors()))
 
 
 ## The lookups return the typed data: the six types plus the gosling, in data order, and
@@ -120,7 +126,22 @@ func _test_lookup_api() -> void:
 	var rival := Content.rival_lines()
 	var counts := RivalLines.CATEGORIES.map(func(category: String) -> int: return rival.lines[category].size() if rival.lines.has(category) else 0)
 	_check(is_equal_approx(rival.aim_time, 1.0) and is_equal_approx(rival.cooldown, 4.0) and counts == [5, 4, 4, 5, 4], "rival_lines() returns the aim time, the cooldown and every category's lines", "aim %.2f, cooldown %.2f, %s" % [rival.aim_time, rival.cooldown, counts])
-
+	var chapter_ids := Content.chapters().map(func(spec: ChapterSpec) -> String: return spec.id)
+	_check(chapter_ids == ["dawn", "noon", "sunset", "night"], "chapters() lists the four chapters in campaign order", str(chapter_ids))
+	var scales := Content.chapters().map(func(spec: ChapterSpec) -> float: return spec.rival_linger_scale)
+	var weathers := Content.chapters().map(func(spec: ChapterSpec) -> String: return spec.weather)
+	_check(scales == [1.0, 0.9, 0.8, 0.7] and weathers == ["mist", "wind", "rain", "snow"], "every chapter has its rival linger scale and weather", "%s %s" % [scales, weathers])
+	var dawn := Content.chapter("dawn")
+	_check(dawn.name == "Dawn" and dawn.sky_tint == Color.html("#ffe2c4"), "chapter() returns the chapter's name and sky tint", "%s %s" % [dawn.name, dawn.sky_tint])
+	_check(Content.levels().size() == 24 and Content.has_level("night_6") and not Content.has_level("night_7"), "levels() lists the 24 levels; has_level() knows them", str(Content.levels().size()))
+	var first := Content.level("dawn_1")
+	var first_mix := first.mix.map(func(e: ModeSpec.Entry) -> String: return "%s:%d" % [e.bird, e.weight])
+	_check(first.chapter == "dawn" and first.index == 1 and first.level_seed == 101 and first.waves == 3 and first.wave_birds == 3 and first_mix == ["goose:10"] and first.golden_bird == "golden"
+		and first.golden_chance == 0.0 and first.speed_scale == 1.0 and is_equal_approx(first.spawn_interval, 1.4) and first.shells_per_hit == 3 and first.combo_cap == 3
+		and first.stars == [850, 1450, 2050] and not first.is_boss(), "level() returns dawn_1's fields", "%s %d seed %d, %d x %d, %s, stars %s" % [first.chapter, first.index, first.level_seed, first.waves, first.wave_birds, first_mix, first.stars])
+	var boss := Content.level("night_6").boss
+	var boss_mix := boss.mix.map(func(e: ModeSpec.Entry) -> String: return "%s:%d" % [e.bird, e.weight]) if boss != null else []
+	_check(boss != null and boss.birds == 12 and is_equal_approx(boss.spawn_interval, 0.55) and is_equal_approx(boss.speed_scale, 1.6) and boss_mix == ["zigzag:8", "goose:2", "decoy:2"], "night_6 has its boss flock", str(boss_mix))
 
 ## I1: each file parses, is a non-empty array of objects, ids are snake_case and unique,
 ## no key is missing or unknown (mix entries included), and a split field comes with its pair.
@@ -171,6 +192,30 @@ func _test_i1_files_ids_and_keys() -> void:
 	texts = _real_texts()
 	texts.erase("rival_lines.json")
 	_expect_load_errors("I1 rival lines file missing", _load_quietly(texts), ["data/rival_lines.json [-] (file): missing"])
+	_expect_load_errors("I1 chapter missing a key", _mutated("chapters.json", func(data: Array) -> void: (data[1] as Dictionary).erase("weather")),
+		["data/chapters.json [noon] weather: missing key"])
+	_expect_load_errors("I1 chapter with an unknown key", _mutated("chapters.json", func(data: Array) -> void: data[0]["music"] = "banjo"),
+		["data/chapters.json [dawn] music: unknown key"])
+	_expect_load_errors("I1 level missing a key", _mutated("levels.json", func(data: Array) -> void: (data[0] as Dictionary).erase("stars")),
+		["data/levels.json [dawn_1] stars: missing key"])
+	_expect_load_errors("I1 level with an unknown key", _mutated("levels.json", func(data: Array) -> void: data[0]["music"] = "banjo"),
+		["data/levels.json [dawn_1] music: unknown key"])
+	_expect_load_errors("I1 level mix entry with from_wave", _mutated("levels.json", func(data: Array) -> void: data[0]["mix"][0]["from_wave"] = 1),
+		["data/levels.json [dawn_1] mix[0].from_wave: unknown key"])
+	_expect_load_errors("I1 level mix empty", _mutated("levels.json", func(data: Array) -> void: data[0]["mix"] = []),
+		["data/levels.json [dawn_1] mix: is empty"])
+	_expect_load_errors("I1 boss flock missing a key", _mutated("levels.json", func(data: Array) -> void: (data[5]["boss"] as Dictionary).erase("speed_scale")),
+		["data/levels.json [dawn_6] boss.speed_scale: missing key"])
+	_expect_load_errors("I1 boss flock with an unknown key", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"]["roar"] = true),
+		["data/levels.json [dawn_6] boss.roar: unknown key"])
+	_expect_load_errors("I1 boss flock not an object", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"] = 10),
+		["data/levels.json [dawn_6] boss: expected Dictionary, got float"])
+	_expect_load_errors("I1 duplicate level id", _mutated("levels.json", func(data: Array) -> void: data[1]["id"] = "dawn_1"),
+		["data/levels.json [dawn_1] id: duplicate id 'dawn_1'"])
+	texts = _real_texts()
+	texts.erase("levels.json")
+	_expect_load_errors("I1 levels file missing", _load_quietly(texts), ["data/levels.json [-] (file): missing"])
+	_expect_load_errors("I1 levels file empty", _with_text("levels.json", "[]"), ["data/levels.json [-] (file): has no entries"])
 
 
 ## I2: every field has its type and lies in its range or enum.
@@ -179,8 +224,8 @@ func _test_i2_types_and_ranges() -> void:
 		["data/birds.json [goose] speed: expected float, got String"])
 	_expect_load_errors("I2 non-integer int", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 1.5),
 		["data/birds.json [goose] hp: expected int, got 1.5"])
-	_expect_load_errors("I2 unknown chapter id", _mutated("birds.json", func(data: Array) -> void: data[0]["chapter"] = "dusk"),
-		["data/birds.json [goose] chapter: 'dusk' is not one of [\"dawn\", \"noon\", \"sunset\", \"night\"]"])
+	_expect_load_errors("I3 unknown chapter id", _mutated("birds.json", func(data: Array) -> void: data[0]["chapter"] = "dusk"),
+		["data/birds.json [goose] chapter: unknown chapter id 'dusk'"])
 	_expect_load_errors("I2 chapter as a number", _mutated("birds.json", func(data: Array) -> void: data[0]["chapter"] = 1),
 		["data/birds.json [goose] chapter: expected String, got float"])
 	_expect_load_errors("I2 unknown pattern", _mutated("birds.json", func(data: Array) -> void: data[0]["pattern"] = "loop"),
@@ -227,6 +272,48 @@ func _test_i2_types_and_ranges() -> void:
 		["data/rival_lines.json [wave_end] lines: is empty"])
 	_expect_load_errors("I2 rival lines not an object", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"] = ["Hi."]),
 		["data/rival_lines.json [-] lines: expected Dictionary, got Array"])
+	_expect_load_errors("I2 sky tint not a colour", _mutated("chapters.json", func(data: Array) -> void: data[0]["sky_tint"] = "#FFF"),
+		["data/chapters.json [dawn] sky_tint: '#FFF' is not a colour \"#rrggbb\" (lowercase hex)"])
+	_expect_load_errors("I2 sky tint not a string", _mutated("chapters.json", func(data: Array) -> void: data[0]["sky_tint"] = [1, 1, 1]),
+		["data/chapters.json [dawn] sky_tint: expected String, got Array"])
+	_expect_load_errors("I2 unknown weather", _mutated("chapters.json", func(data: Array) -> void: data[0]["weather"] = "fog"),
+		["data/chapters.json [dawn] weather: 'fog' is not one of [\"mist\", \"wind\", \"rain\", \"snow\"]"])
+	_expect_load_errors("I2 chapter name too long", _mutated("chapters.json", func(data: Array) -> void: data[0]["name"] = "The Very Early Morning Dawn"),
+		["data/chapters.json [dawn] name: length 27 is outside 1..26"])
+	_expect_load_errors("I2 level index out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["index"] = 7),
+		["data/levels.json [dawn_1] index: 7 is outside 1..6", "data/levels.json [-] chapter: dawn has no level 1 (each chapter has levels 1..6)"])
+	_expect_load_errors("I2 level seed negative", _mutated("levels.json", func(data: Array) -> void: data[0]["seed"] = -1),
+		["data/levels.json [dawn_1] seed: -1 is outside 0..2147483647"])
+	_expect_load_errors("I2 level seed not an int", _mutated("levels.json", func(data: Array) -> void: data[0]["seed"] = 1.5),
+		["data/levels.json [dawn_1] seed: expected int, got 1.5"])
+	_expect_load_errors("I2 level with no waves", _mutated("levels.json", func(data: Array) -> void: data[0]["waves"] = 0),
+		["data/levels.json [dawn_1] waves: 0 is outside 1..20"])
+	_expect_load_errors("I2 level wave_birds out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["wave_birds"] = 31),
+		["data/levels.json [dawn_1] wave_birds: 31 is outside 1..30"])
+	_expect_load_errors("I2 level golden_chance out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["golden_chance"] = -0.1),
+		["data/levels.json [dawn_1] golden_chance: -0.1 is outside 0.0..1.0"])
+	_expect_load_errors("I2 level speed_scale out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["speed_scale"] = 0.2),
+		["data/levels.json [dawn_1] speed_scale: 0.2 is outside 0.5..5.0"])
+	_expect_load_errors("I2 level spawn_interval not a number", _mutated("levels.json", func(data: Array) -> void: data[0]["spawn_interval"] = "slow"),
+		["data/levels.json [dawn_1] spawn_interval: expected float, got String"])
+	_expect_load_errors("I2 level shells_per_hit out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["shells_per_hit"] = 0),
+		["data/levels.json [dawn_1] shells_per_hit: 0 is outside 1..10"])
+	_expect_load_errors("I2 level combo_cap out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["combo_cap"] = 21),
+		["data/levels.json [dawn_1] combo_cap: 21 is outside 1..20"])
+	_expect_load_errors("I2 level mix weight out of range", _mutated("levels.json", func(data: Array) -> void: data[0]["mix"][0]["weight"] = 0),
+		["data/levels.json [dawn_1] mix[0].weight: 0 is outside 1..100"])
+	_expect_load_errors("I2 boss birds out of range", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"]["birds"] = 0),
+		["data/levels.json [dawn_6] boss.birds: 0 is outside 1..30"])
+	_expect_load_errors("I2 boss spawn_interval out of range", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"]["spawn_interval"] = 0.05),
+		["data/levels.json [dawn_6] boss.spawn_interval: 0.05 is outside 0.1..10.0"])
+	_expect_load_errors("I2 boss mix weight out of range", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"]["mix"][0]["weight"] = 101),
+		["data/levels.json [dawn_6] boss.mix[0].weight: 101 is outside 1..100"])
+	_expect_load_errors("I2 stars not three scores", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [100, 200]),
+		["data/levels.json [dawn_1] stars: expected an array of 3 scores (1, 2 and 3 stars), got [100.0, 200.0]"])
+	_expect_load_errors("I2 a star threshold of 0", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [0, 200, 300]),
+		["data/levels.json [dawn_1] stars[0]: 0 is outside 1..10000000"])
+	_expect_load_errors("I2 a star threshold not an int", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [100, 200.5, 300]),
+		["data/levels.json [dawn_1] stars[1]: expected int, got 200.5"])
 
 
 ## I3: every reference resolves (mix birds, golden_bird, splits_into) and every sprite has
@@ -245,6 +332,16 @@ func _test_i3_references() -> void:
 	_expect_load_errors("I3 hp 2 without damaged frames", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 2),
 		["data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_1.svg)",
 		"data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_2.svg)"])
+	_expect_load_errors("I3 a level of an unknown chapter", _mutated("levels.json", func(data: Array) -> void: data[0]["chapter"] = "dusk"),
+		["data/levels.json [dawn_1] chapter: unknown chapter id 'dusk'", "data/levels.json [-] chapter: dawn has no level 1 (each chapter has levels 1..6)"])
+	_expect_load_errors("I3 an unknown level mix bird", _mutated("levels.json", func(data: Array) -> void: data[0]["mix"][0]["bird"] = "swan"),
+		["data/levels.json [dawn_1] mix[0].bird: unknown bird id 'swan'"])
+	_expect_load_errors("I3 an unknown boss mix bird", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"]["mix"][0]["bird"] = "swan"),
+		["data/levels.json [dawn_6] boss.mix[0].bird: unknown bird id 'swan'"])
+	_expect_load_errors("I3 an unknown level golden bird", _mutated("levels.json", func(data: Array) -> void: data[0]["golden_bird"] = "phoenix"),
+		["data/levels.json [dawn_1] golden_bird: unknown bird id 'phoenix'"])
+	_expect_load_errors("I3 a bird twice in a level mix", _mutated("levels.json", func(data: Array) -> void: data[6]["mix"][1]["bird"] = "goose"),
+		["data/levels.json [noon_1] mix[1].bird: 'goose' is already in the mix (mix[0])"])
 
 
 ## I4: every hitbox has at least 3 points, all inside the sprite, and is a simple polygon.
@@ -319,22 +416,29 @@ func _test_i7_split() -> void:
 		["gosling: a split child is smaller than splitter (size (104.0, 80.0) vs (104.0, 80.0))"])
 	_expect_problems("I7 a child in a wave mix", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"].append({"bird": "gosling", "from_wave": 9, "weight": 1})), _i7_problems,
 		["gosling: a split child never spawns from waves (endless)"])
+	_expect_problems("I7 a child in a level's mix", _mutated("levels.json", func(data: Array) -> void: data[12]["mix"].append({"bird": "gosling", "weight": 1})), _i7_problems,
+		["gosling: a split child never spawns from waves (sunset_1)"])
+	_expect_problems("I7 a child in a boss flock", _mutated("levels.json", func(data: Array) -> void: data[17]["boss"]["mix"].append({"bird": "gosling", "weight": 1})), _i7_problems,
+		["gosling: a split child never spawns from waves (sunset_6)"])
 
 
 ## I8: a mode's golden bird is not in its mix, has hp 1, does not split, is not a decoy,
 ## and is faster and worth more points than every bird of the mix.
 func _test_i8_golden_and_mix() -> void:
 	_check(_i8_problems().is_empty(), "I8 the golden bird rules hold", "\n".join(_i8_problems()))
+	# Endless and every night level (the ones with zigzags) share the golden bird.
 	_expect_problems("I8 a slow golden bird", _mutated("birds.json", func(data: Array) -> void: data[5]["speed"] = 150), _i8_problems,
-		["endless: golden bird golden (speed 150.0) is not faster than zigzag (speed 175.0)"])
+		_per_owner(["endless", "night_1", "night_2", "night_3", "night_4", "night_5", "night_6"], "golden bird golden (speed 150.0) is not faster than zigzag (speed 175.0)"))
 	_expect_problems("I8 a cheap golden bird", _mutated("birds.json", func(data: Array) -> void: data[5]["points"] = 180), _i8_problems,
-		["endless: golden bird golden (180 points) is not worth more than zigzag (200 points)"])
+		_per_owner(["endless", "night_1", "night_2", "night_3", "night_4", "night_5", "night_6"], "golden bird golden (180 points) is not worth more than zigzag (200 points)"))
 	_expect_problems("I8 the golden bird in the mix", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"].append({"bird": "golden", "from_wave": 9, "weight": 1})), _i8_problems,
 		["endless: golden bird golden is also in the mix"])
 	_expect_problems("I8 a golden decoy", _mutated("birds.json", func(data: Array) -> void:
 		data[5]["penalty"] = 10
 		data[5]["escape_counts"] = false), _i8_problems,
-		["endless: golden bird golden must have hp 1, no split and no penalty"])
+		_per_owner(["endless"] + Campaign.levels().map(func(level: LevelSpec) -> String: return level.id), "golden bird golden must have hp 1, no split and no penalty"))
+	_expect_problems("I8 a level's golden bird in its mix", _mutated("levels.json", func(data: Array) -> void: data[1]["mix"].append({"bird": "golden", "weight": 1})), _i8_problems,
+		["dawn_2: golden bird golden is also in the mix"])
 
 
 ## I9: wave 1 is plain geese only (every mix bird from wave 1 rises, has hp 1, does not
@@ -348,11 +452,16 @@ func _test_i9_first_wave_plain() -> void:
 		["endless: armored is in wave 1 but is not a plain rising bird (rise, hp 1, no split, no penalty)"])
 	_expect_problems("I9 a zigzag in wave 1", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][4]["from_wave"] = 1), _i9_problems,
 		["endless: zigzag is in wave 1 but is not a plain rising bird (rise, hp 1, no split, no penalty)"])
+	# The campaign's first level: its wave 1 (fixed seed) is three plain geese.
+	_expect_problems("I9 a golden bird in the campaign's first wave", _mutated("levels.json", func(data: Array) -> void: data[0]["golden_chance"] = 1.0), _i9_problems,
+		["dawn_1: wave 1 spawns golden, golden, golden, not plain birds only (the campaign's first wave is plain)"])
+	_expect_problems("I9 an armored bird in the campaign's first wave", _mutated("levels.json", func(data: Array) -> void: data[0]["mix"] = [{"bird": "armored", "weight": 1}]), _i9_problems,
+		["dawn_1: wave 1 spawns armored, armored, armored, not plain birds only (the campaign's first wave is plain)"])
 
 
 ## I10: the roster holds every kind (plain, armored, splitter, zigzag, golden, decoy),
-## each chapter of Content.CHAPTERS introduces at least one bird, and every bird can appear (in a
-## mix, as a golden bird or as a split child).
+## each chapter of chapters.json introduces at least one bird, and every bird can appear (in
+## a mode's or a level's mix, as a golden bird or as a split child).
 func _test_i10_roster_and_chapters() -> void:
 	_check(_i10_problems().is_empty(), "I10 every kind, chapter and bird is covered", "\n".join(_i10_problems()))
 	_expect_problems("I10 no zigzag", _mutated("birds.json", func(data: Array) -> void: data[4]["pattern"] = "rise"), _i10_problems,
@@ -362,7 +471,15 @@ func _test_i10_roster_and_chapters() -> void:
 		["no armored bird (hp 2 or more)"])
 	_expect_problems("I10 a chapter introducing nothing", _mutated("birds.json", func(data: Array) -> void: data[4]["chapter"] = "sunset"), _i10_problems,
 		["chapter night introduces no bird"])
-	_expect_problems("I10 a bird that never appears", _mutated("modes.json", func(data: Array) -> void: (data[0]["birds"] as Array).pop_back()), _i10_problems,
+	# Out of Endless's mix and every level's: the zigzag can no longer appear anywhere.
+	_expect_problems("I10 a bird that never appears", _mutated_files({
+		"modes.json": func(data: Array) -> void: (data[0]["birds"] as Array).pop_back(),
+		"levels.json": func(data: Array) -> void:
+			for level: Dictionary in data:
+				level["mix"] = (level["mix"] as Array).filter(func(e: Dictionary) -> bool: return e["bird"] != "zigzag")
+				if level.has("boss"):
+					level["boss"]["mix"] = (level["boss"]["mix"] as Array).filter(func(e: Dictionary) -> bool: return e["bird"] != "zigzag"),
+		}), _i10_problems,
 		["no zigzag bird (pattern zigzag)", "chapter night introduces no bird", "zigzag never appears (not in a mix, not a golden bird, not a split child)"])
 
 
@@ -385,16 +502,34 @@ func _test_i12_hitbox_touch_size() -> void:
 		["gosling: hitbox bounding box (38.0, 27.0) is under 44 base units on a side (the smallest touch target)"])
 
 
-## I13 (the loader's): every bird but the decoy has linger_time + the rival's aim_time
-## under its flee_time, so every aim cue can finish before the bird flees on its own.
+## I13 (the loader's): every bird but the decoy has every linger the rival uses (linger_time
+## in a mode with rival_steals, linger_time x rival_linger_scale in each chapter) + the
+## rival's aim_time under its flee_time, so every aim cue can finish before the bird flees
+## on its own.
 func _test_i13_cue_ends_before_fleeing() -> void:
 	_expect_load_errors("I13 a goose lingering into its flight off", _mutated("birds.json", func(data: Array) -> void: data[0]["linger_time"] = 5.5),
-		["data/birds.json [goose] linger_time: 5.5 + aim_time 1.0 is not under flee_time 6.0 (I13: the rival's cue must end before the bird flees)"])
+		["data/birds.json [goose] linger_time: 5.5 x 1.0 (endless, dawn) + aim_time 1.0 is not under flee_time 6.0 (I13: the rival's cue must end before the bird flees)"])
 	_expect_load_errors("I13 a cue ending exactly at flee_time", _mutated("birds.json", func(data: Array) -> void: data[3]["linger_time"] = 2.0),
-		["data/birds.json [gosling] linger_time: 2.0 + aim_time 1.0 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)"])
+		["data/birds.json [gosling] linger_time: 2.0 x 1.0 (endless, dawn) + aim_time 1.0 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)"])
 	_expect_load_errors("I13 an aim too long for the fast birds", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["aim_time"] = 1.6),
-		["data/birds.json [gosling] linger_time: 1.5 + aim_time 1.6 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)",
-		"data/birds.json [golden] linger_time: 2.5 + aim_time 1.6 is not under flee_time 4.0 (I13: the rival's cue must end before the bird flees)"])
+		["data/birds.json [gosling] linger_time: 1.5 x 1.0 (endless, dawn) + aim_time 1.6 is not under flee_time 3.0 (I13: the rival's cue must end before the bird flees)",
+		"data/birds.json [golden] linger_time: 2.5 x 1.0 (endless, dawn) + aim_time 1.6 is not under flee_time 4.0 (I13: the rival's cue must end before the bird flees)"])
+	# With Endless's steals off only the chapters' scaled lingers count: 5.8 x 0.9 + 1.0
+	# fails noon (and dawn's 5.8 x 1.0), 5.8 x 0.8 + 1.0 = 5.64 passes sunset.
+	_expect_load_errors("I13 holds with each chapter's scaled linger", _mutated_files({
+		"modes.json": func(data: Array) -> void: data[0]["rival_steals"] = false,
+		"birds.json": func(data: Array) -> void: data[0]["linger_time"] = 5.8,
+		}), ["data/birds.json [goose] linger_time: 5.8 x 1.0 (dawn, noon) + aim_time 1.0 is not under flee_time 6.0 (I13: the rival's cue must end before the bird flees)"])
+	_expect_load_errors("I13 the scaled linger of a quicker chapter passes", _mutated_files({
+		"modes.json": func(data: Array) -> void: data[0]["rival_steals"] = false,
+		"chapters.json": func(data: Array) -> void: data[0]["rival_linger_scale"] = 0.9,
+		"birds.json": func(data: Array) -> void: data[0]["linger_time"] = 5.5,
+		}), [])
+	_expect_load_errors("I13 skips a chapter whose scale failed", _mutated_files({
+		"modes.json": func(data: Array) -> void: data[0]["rival_steals"] = false,
+		"chapters.json": func(data: Array) -> void: data[0]["rival_linger_scale"] = 0,
+		"birds.json": func(data: Array) -> void: data[0]["linger_time"] = 5.5,
+		}), ["data/chapters.json [dawn] rival_linger_scale: 0.0 is outside (0.0, 1.0]"])
 	_expect_load_errors("I13 the decoy is exempt (never stolen)", _mutated("birds.json", func(data: Array) -> void: data[6]["linger_time"] = 9.0), [])
 	# A bad flee_time falls back to its minimum (0.1); I13 must not blame linger_time for it.
 	_expect_load_errors("I13 skips a missing flee_time", _mutated("birds.json", func(data: Array) -> void: (data[0] as Dictionary).erase("flee_time")),
@@ -403,6 +538,204 @@ func _test_i13_cue_ends_before_fleeing() -> void:
 		["data/birds.json [goose] flee_time: 0.0 is outside 0.1..60.0"])
 	_expect_load_errors("I13 skips a flee_time that is not a number", _mutated("birds.json", func(data: Array) -> void: data[0]["flee_time"] = "soon"),
 		["data/birds.json [goose] flee_time: expected float, got String"])
+
+
+## I14 (the loader's): chapters.json holds exactly Content.CHAPTER_COUNT chapters, each
+## rival_linger_scale in (0, 1] and at most the chapter before's.
+func _test_i14_chapters() -> void:
+	var dusk_levels: Array[String] = ["data/chapters.json [-] (file): has 5 chapters, needs exactly 4"]
+	for index in range(1, 7):
+		dusk_levels.append("data/levels.json [-] chapter: dusk has no level %d (each chapter has levels 1..6)" % index)
+	_expect_load_errors("I14 a fifth chapter", _mutated("chapters.json", func(data: Array) -> void:
+		data.append({"id": "dusk", "name": "Dusk", "sky_tint": "#888888", "weather": "rain", "rival_linger_scale": 0.6})), dusk_levels)
+	_expect_load_errors("I14 a rival_linger_scale of 0", _mutated("chapters.json", func(data: Array) -> void: data[1]["rival_linger_scale"] = 0),
+		["data/chapters.json [noon] rival_linger_scale: 0.0 is outside (0.0, 1.0]"])
+	_expect_load_errors("I14 a rival_linger_scale above 1", _mutated("chapters.json", func(data: Array) -> void: data[0]["rival_linger_scale"] = 1.2),
+		["data/chapters.json [dawn] rival_linger_scale: 1.2 is outside (0.0, 1.0]"])
+	_expect_load_errors("I14 a rival_linger_scale that is not a number", _mutated("chapters.json", func(data: Array) -> void: data[0]["rival_linger_scale"] = "soon"),
+		["data/chapters.json [dawn] rival_linger_scale: expected float, got String"])
+	_expect_load_errors("I14 a rival who gets slower", _mutated("chapters.json", func(data: Array) -> void: data[2]["rival_linger_scale"] = 0.95),
+		["data/chapters.json [sunset] rival_linger_scale: 0.95 is above noon's 0.9 (the rival never gets slower: a chapter's scale is at most the one before's)"])
+	_expect_load_errors("I14 a rival as quick as the chapter before", _mutated("chapters.json", func(data: Array) -> void: data[2]["rival_linger_scale"] = 0.9), [])
+
+
+## I15 (the loader's): every chapter has exactly its levels 1..Content.LEVELS_PER_CHAPTER,
+## the last (and only it) with a boss flock, and every level's star thresholds rise strictly.
+func _test_i15_levels() -> void:
+	_expect_load_errors("I15 two levels at one index", _mutated("levels.json", func(data: Array) -> void: data[7]["index"] = 1),
+		["data/levels.json [noon_2] index: 1 of chapter noon is already level noon_1", "data/levels.json [-] chapter: noon has no level 2 (each chapter has levels 1..6)"])
+	_expect_load_errors("I15 a missing level", _mutated("levels.json", func(data: Array) -> void: data.remove_at(20)),
+		["data/levels.json [-] chapter: night has no level 3 (each chapter has levels 1..6)"])
+	_expect_load_errors("I15 a boss before level 6", _mutated("levels.json", func(data: Array) -> void: data[4]["boss"] = (data[5]["boss"] as Dictionary).duplicate(true)),
+		["data/levels.json [dawn_5] boss: level 5 is no boss level (only level 6 is)"])
+	_expect_load_errors("I15 level 6 without its boss", _mutated("levels.json", func(data: Array) -> void: (data[5] as Dictionary).erase("boss")),
+		["data/levels.json [dawn_6] boss: missing key (level 6 is its chapter's boss level)"])
+	_expect_load_errors("I15 star thresholds that do not rise", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [100, 100, 300]),
+		["data/levels.json [dawn_1] stars[1]: 100 is not above stars[0] 100 (the thresholds rise strictly)"])
+	_expect_load_errors("I15 star thresholds that fall", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [100, 300, 200]),
+		["data/levels.json [dawn_1] stars[2]: 200 is not above stars[1] 300 (the thresholds rise strictly)"])
+
+
+## I16: each level's 3-star threshold is at most its highest sure score (Campaign.max_score:
+## every bird but the decoy killed with the shells its waves get, the combo rising to
+## combo_cap and never broken), so three stars can be reached.
+func _test_i16_three_stars_reachable() -> void:
+	_check(_i16_problems().is_empty(), "I16 every level's three stars can be reached", "\n".join(_i16_problems()))
+	_check(Campaign.max_score(Content.level("dawn_1")) == 2400, "dawn_1's highest score is its 9 geese at x1, x2 and then x3", str(Campaign.max_score(Content.level("dawn_1"))))
+	_expect_problems("I16 a 3-star threshold above the highest score", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [850, 1450, 2401]), _i16_problems,
+		["dawn_1: 3 stars at 2401 is above the most it can score, 2400 (every bird but the decoy killed, the combo rising to x3)"])
+	_expect_problems("I16 a combo cap too low for the thresholds", _mutated("levels.json", func(data: Array) -> void: data[0]["combo_cap"] = 1), _i16_problems,
+		["dawn_1: 3 stars at 2050 is above the most it can score, 900 (every bird but the decoy killed, the combo rising to x1)"])
+
+
+## I17: every wave of every level has the shells for every hit its birds need (Wave.hits_needed).
+func _test_i17_shells_fit_hits() -> void:
+	_check(_i17_problems(Wave.campaign).is_empty(), "I17 every level's waves have the shells for every hit", "\n".join(_i17_problems(Wave.campaign)))
+	# A schedule that hands dawn_1's first wave (3 geese: 3 hits) one shell too few.
+	var short := func(level: LevelSpec, wave_index: int) -> Wave.Plan:
+		var plan := Wave.campaign(level, wave_index)
+		if level.id == "dawn_1" and wave_index == 1:
+			plan.shells = 2
+		return plan
+	var problems := _i17_problems(short)
+	_check(_matches(problems, ["dawn_1 wave 1: 2 shells for the 3 hits its birds need"]), "I17 a wave short of shells fires", "\n".join(problems))
+
+
+## I18: each chapter's last level is its one boss level, and its boss flock has more birds,
+## a shorter spawn interval and a higher speed than every other wave of the chapter, and is
+## weighted toward a bird the chapter introduces (its heaviest bird, no decoy, no golden bird).
+func _test_i18_boss_last_and_shaped() -> void:
+	_check(_i18_problems().is_empty(), "I18 every chapter ends on its boss flock", "\n".join(_i18_problems()))
+	_expect_problems("I18 a boss flock no bigger than a wave", _mutated("levels.json", func(data: Array) -> void: data[5]["boss"]["birds"] = 5), _i18_problems,
+		["dawn_6: the boss flock's 5 birds are not more than dawn_4's 5 per wave"])
+	_expect_problems("I18 a boss flock no denser than a wave", _mutated("levels.json", func(data: Array) -> void: data[11]["boss"]["spawn_interval"] = 1.3), _i18_problems,
+		["noon_6: the boss flock's spawn interval 1.3 s is not shorter than noon_1's 1.3 s"])
+	_expect_problems("I18 a boss flock no faster than a wave", _mutated("levels.json", func(data: Array) -> void: data[17]["boss"]["speed_scale"] = 1.3), _i18_problems,
+		["sunset_6: the boss flock's speed x1.3 is not higher than sunset_5's x1.3"])
+	_expect_problems("I18 a boss flock weighted toward an older bird", _mutated("levels.json", func(data: Array) -> void: data[11]["boss"]["mix"] = [{"bird": "armored", "weight": 2}, {"bird": "goose", "weight": 8}]), _i18_problems,
+		["noon_6: the boss flock is weighted toward goose (introduced in dawn), not a bird noon introduces"])
+	_expect_problems("I18 a boss flock weighted toward the decoy", _mutated("levels.json", func(data: Array) -> void: data[17]["boss"]["mix"] = [{"bird": "splitter", "weight": 2}, {"bird": "decoy", "weight": 8}]), _i18_problems,
+		["sunset_6: the boss flock is weighted toward decoy (a decoy), not a bird sunset introduces"])
+	_expect_problems("I18 the boss on a level before the last", _mutated("levels.json", func(data: Array) -> void:
+		data[4]["boss"] = data[5]["boss"]
+		(data[5] as Dictionary).erase("boss")), _i18_problems,
+		["chapter dawn: its boss level is dawn_5, not its last level dawn_6"],
+		["data/levels.json [dawn_5] boss: level 5 is no boss level (only level 6 is)", "data/levels.json [dawn_6] boss: missing key (level 6 is its chapter's boss level)"])
+
+
+## I19: no level uses a bird a later chapter introduces (in its mixes, as its golden bird or
+## as a split child), every bird a chapter introduces spawns in at least one of its levels'
+## (fixed-seed) waves, and a golden bird spawns in every chapter.
+func _test_i19_chapters_introduce_birds() -> void:
+	_check(_i19_problems().is_empty(), "I19 every chapter introduces its birds, golden birds in every chapter", "\n".join(_i19_problems()))
+	_expect_problems("I19 a level using a later chapter's bird", _mutated("levels.json", func(data: Array) -> void: data[1]["mix"].append({"bird": "zigzag", "weight": 1})), _i19_problems,
+		["dawn_2 uses zigzag (introduced in night, after dawn)"])
+	_expect_problems("I19 a later chapter's bird as a split child", _mutated("levels.json", func(data: Array) -> void: data[1]["mix"].append({"bird": "splitter", "weight": 1})), _i19_problems,
+		["dawn_2 uses splitter (introduced in sunset, after dawn)", "dawn_2 uses gosling (introduced in sunset, after dawn)"])
+	_expect_problems("I19 a chapter whose bird never spawns", _mutated("levels.json", func(data: Array) -> void:
+		for level: Dictionary in data:
+			if level["chapter"] == "sunset":
+				level["mix"] = (level["mix"] as Array).filter(func(e: Dictionary) -> bool: return e["bird"] != "decoy")
+				if level.has("boss"):
+					level["boss"]["mix"] = (level["boss"]["mix"] as Array).filter(func(e: Dictionary) -> bool: return e["bird"] != "decoy")), _i19_problems,
+		["chapter sunset introduces decoy, but none of its levels spawns it"])
+	_expect_problems("I19 a chapter without a golden bird", _mutated("levels.json", func(data: Array) -> void:
+		for level: Dictionary in data:
+			if level["chapter"] == "noon":
+				level["golden_chance"] = 0), _i19_problems,
+		["chapter noon: none of its levels spawns a golden bird"])
+
+
+func _i16_problems() -> Array[String]:
+	var problems: Array[String] = []
+	for level in Content.levels():
+		var most := Campaign.max_score(level)
+		if level.stars.size() == Content.STAR_COUNT and level.stars[2] > most:
+			problems.append("%s: 3 stars at %d is above the most it can score, %d (every bird but the decoy killed, the combo rising to x%d)" % [level.id, level.stars[2], most, level.combo_cap])
+	return problems
+
+
+## `plan_of` (Wave.campaign, or a stand-in) gives each level's waves.
+func _i17_problems(plan_of: Callable) -> Array[String]:
+	var problems: Array[String] = []
+	for level in Content.levels():
+		for wave_index in range(1, level.waves + 1):
+			var plan: Wave.Plan = plan_of.call(level, wave_index)
+			var hits := 0
+			for spawn in plan.spawns:
+				hits += Wave.hits_needed(Content.bird(spawn.bird_id))
+			if plan.shells < hits:
+				problems.append("%s wave %d: %d shells for the %d hits its birds need" % [level.id, wave_index, plan.shells, hits])
+	return problems
+
+
+func _i18_problems() -> Array[String]:
+	var problems: Array[String] = []
+	for chapter_spec in Content.chapters():
+		var levels := Campaign.chapter_levels(chapter_spec.id)
+		if levels.is_empty():
+			continue
+		var last: LevelSpec = levels.back()
+		var bosses := levels.filter(func(level: LevelSpec) -> bool: return level.is_boss())
+		if bosses.size() != 1 or bosses[0] != last:
+			problems.append("chapter %s: its boss level is %s, not its last level %s" % [chapter_spec.id, ", ".join(bosses.map(func(level: LevelSpec) -> String: return level.id)) if not bosses.is_empty() else "none", last.id])
+		for boss_level: LevelSpec in bosses:
+			var boss := boss_level.boss
+			# Every other wave of the chapter: each level's plain waves (its own too).
+			var most_birds: LevelSpec = levels.reduce(func(a: LevelSpec, b: LevelSpec) -> LevelSpec: return b if b.wave_birds > a.wave_birds else a)
+			var densest: LevelSpec = levels.reduce(func(a: LevelSpec, b: LevelSpec) -> LevelSpec: return b if b.spawn_interval < a.spawn_interval else a)
+			var fastest: LevelSpec = levels.reduce(func(a: LevelSpec, b: LevelSpec) -> LevelSpec: return b if b.speed_scale > a.speed_scale else a)
+			if boss.birds <= most_birds.wave_birds:
+				problems.append("%s: the boss flock's %d birds are not more than %s's %d per wave" % [boss_level.id, boss.birds, most_birds.id, most_birds.wave_birds])
+			if boss.spawn_interval >= densest.spawn_interval:
+				problems.append("%s: the boss flock's spawn interval %s s is not shorter than %s's %s s" % [boss_level.id, boss.spawn_interval, densest.id, densest.spawn_interval])
+			if boss.speed_scale <= fastest.speed_scale:
+				problems.append("%s: the boss flock's speed x%s is not higher than %s's x%s" % [boss_level.id, boss.speed_scale, fastest.id, fastest.speed_scale])
+			var heaviest: ModeSpec.Entry = boss.mix.reduce(func(a: ModeSpec.Entry, b: ModeSpec.Entry) -> ModeSpec.Entry: return b if b.weight > a.weight else a)
+			var spec := Content.bird(heaviest.bird)
+			if spec.penalty > 0 or spec.id == boss_level.golden_bird or spec.chapter != chapter_spec.id:
+				var what := "a decoy" if spec.penalty > 0 else ("the golden bird" if spec.id == boss_level.golden_bird else "introduced in %s" % spec.chapter)
+				problems.append("%s: the boss flock is weighted toward %s (%s), not a bird %s introduces" % [boss_level.id, spec.id, what, chapter_spec.id])
+	return problems
+
+
+func _i19_problems() -> Array[String]:
+	var problems: Array[String] = []
+	var place: Dictionary[String, int] = {}
+	for chapter_spec in Content.chapters():
+		place[chapter_spec.id] = place.size()
+	for level in Content.levels():
+		var named: Array[String] = [level.golden_bird]
+		for owner in _mixes():
+			if owner[0] == level.id:
+				for entry: ModeSpec.Entry in owner[2]:
+					if not entry.bird in named:
+						named.append(entry.bird)
+		for id: String in named.duplicate():
+			var spec := Content.bird(id)
+			if spec.split_count > 0 and not spec.splits_into in named:
+				named.append(spec.splits_into)
+		for id in named:
+			var spec := Content.bird(id)
+			if place[spec.chapter] > place[level.chapter]:
+				problems.append("%s uses %s (introduced in %s, after %s)" % [level.id, id, spec.chapter, level.chapter])
+	for chapter_spec in Content.chapters():
+		var spawned: Dictionary[String, bool] = {}
+		var golden := false
+		for level in Campaign.chapter_levels(chapter_spec.id):
+			for wave_index in range(1, level.waves + 1):
+				for spawn in Wave.campaign(level, wave_index).spawns:
+					spawned[spawn.bird_id] = true
+					golden = golden or spawn.bird_id == level.golden_bird
+					var spec := Content.bird(spawn.bird_id)
+					if spec.split_count > 0:
+						spawned[spec.splits_into] = true
+		for spec in Content.birds():
+			if spec.chapter == chapter_spec.id and not spawned.has(spec.id):
+				problems.append("chapter %s introduces %s, but none of its levels spawns it" % [chapter_spec.id, spec.id])
+		if not golden:
+			problems.append("chapter %s: none of its levels spawns a golden bird" % chapter_spec.id)
+	return problems
 
 
 func _i5_problems() -> Array[String]:
@@ -470,32 +803,59 @@ func _i7_problems() -> Array[String]:
 			problems.append("%s: a split child is faster than %s (speed %s vs %s)" % [child.id, parent.id, child.speed, parent.speed])
 		if child.size.x >= parent.size.x or child.size.y >= parent.size.y:
 			problems.append("%s: a split child is smaller than %s (size %s vs %s)" % [child.id, parent.id, child.size, parent.size])
-		for mode in Content.modes():
-			if mode.golden_bird == child.id or mode.birds.any(func(e: ModeSpec.Entry) -> bool: return e.bird == child.id):
-				problems.append("%s: a split child never spawns from waves (%s)" % [child.id, mode.id])
+		for owner in _mixes():
+			if owner[1] == child.id or (owner[2] as Array).any(func(e: ModeSpec.Entry) -> bool: return e.bird == child.id):
+				problems.append("%s: a split child never spawns from waves (%s)" % [child.id, owner[0]])
 	return problems
 
 
 func _i8_problems() -> Array[String]:
 	var problems: Array[String] = []
-	for mode in Content.modes():
-		var golden := Content.bird(mode.golden_bird)
+	for owner in _mixes():
+		var golden := Content.bird(owner[1])
 		if golden.hp != 1 or golden.split_count > 0 or golden.penalty > 0:
-			problems.append("%s: golden bird %s must have hp 1, no split and no penalty" % [mode.id, golden.id])
-		for entry in mode.birds:
+			problems.append("%s: golden bird %s must have hp 1, no split and no penalty" % [owner[0], golden.id])
+		var seen: Dictionary[String, bool] = {}
+		for entry: ModeSpec.Entry in owner[2]:
 			var spec := Content.bird(entry.bird)
+			if seen.has(spec.id):
+				continue
+			seen[spec.id] = true
 			if spec == golden:
-				problems.append("%s: golden bird %s is also in the mix" % [mode.id, golden.id])
+				problems.append("%s: golden bird %s is also in the mix" % [owner[0], golden.id])
 				continue
 			if golden.speed <= spec.speed:
-				problems.append("%s: golden bird %s (speed %s) is not faster than %s (speed %s)" % [mode.id, golden.id, golden.speed, spec.id, spec.speed])
+				problems.append("%s: golden bird %s (speed %s) is not faster than %s (speed %s)" % [owner[0], golden.id, golden.speed, spec.id, spec.speed])
 			if golden.points <= spec.points:
-				problems.append("%s: golden bird %s (%d points) is not worth more than %s (%d points)" % [mode.id, golden.id, golden.points, spec.id, spec.points])
+				problems.append("%s: golden bird %s (%d points) is not worth more than %s (%d points)" % [owner[0], golden.id, golden.points, spec.id, spec.points])
 	return problems
+
+
+## Every wave mix with its golden bird: [owner id, golden_bird, the mix entries] for each
+## mode and each level (a level's mix and its boss flock's mix together).
+func _mixes() -> Array[Array]:
+	var found: Array[Array] = []
+	for mode in Content.modes():
+		found.append([mode.id, mode.golden_bird, mode.birds])
+	for level in Content.levels():
+		var entries: Array[ModeSpec.Entry] = level.mix.duplicate()
+		if level.is_boss():
+			entries.append_array(level.boss.mix)
+		found.append([level.id, level.golden_bird, entries])
+	return found
 
 
 func _i9_problems() -> Array[String]:
 	var problems: Array[String] = []
+	var order := Campaign.levels()
+	if not order.is_empty():
+		var first := order[0]
+		var odd := PackedStringArray()
+		for spawn in Wave.campaign(first, 1).spawns:
+			if spawn.bird_id == first.golden_bird or not _is_plain(Content.bird(spawn.bird_id)):
+				odd.append(spawn.bird_id)
+		if not odd.is_empty():
+			problems.append("%s: wave 1 spawns %s, not plain birds only (the campaign's first wave is plain)" % [first.id, ", ".join(odd)])
 	for mode in Content.modes():
 		if mode.golden_from_wave < 2:
 			problems.append("%s: golden_from_wave %d (golden birds start at wave 2 or later)" % [mode.id, mode.golden_from_wave])
@@ -508,11 +868,11 @@ func _i9_problems() -> Array[String]:
 
 func _i10_problems() -> Array[String]:
 	var problems: Array[String] = []
-	var golden_ids := Content.modes().map(func(mode: ModeSpec) -> String: return mode.golden_bird)
+	var golden_ids := _mixes().map(func(owner: Array) -> String: return owner[1])
 	var appears: Dictionary[String, bool] = {}
-	for mode in Content.modes():
-		appears[mode.golden_bird] = true
-		for entry in mode.birds:
+	for owner in _mixes():
+		appears[owner[1]] = true
+		for entry: ModeSpec.Entry in owner[2]:
 			appears[entry.bird] = true
 	for spec in Content.birds():
 		if spec.split_count > 0:
@@ -529,9 +889,9 @@ func _i10_problems() -> Array[String]:
 	for kind: String in kinds:
 		if not birds.any(func(spec: BirdSpec) -> bool: return appears.has(spec.id) and kinds[kind].call(spec)):
 			problems.append("no %s" % kind)
-	for chapter in Content.CHAPTERS:
-		if not birds.any(func(spec: BirdSpec) -> bool: return spec.chapter == chapter and appears.has(spec.id)):
-			problems.append("chapter %s introduces no bird" % chapter)
+	for chapter_spec in Content.chapters():
+		if not birds.any(func(spec: BirdSpec) -> bool: return spec.chapter == chapter_spec.id and appears.has(spec.id)):
+			problems.append("chapter %s introduces no bird" % chapter_spec.id)
 	for spec in birds:
 		if not appears.has(spec.id):
 			problems.append("%s never appears (not in a mix, not a golden bird, not a split child)" % spec.id)
@@ -599,11 +959,25 @@ func _real_texts() -> Dictionary[String, String]:
 
 ## Loads the real data with `file` changed by `mutate` (a Callable on the parsed array, or
 ## object for rival_lines.json); returns the loader's errors. Content then holds the mutated data.
+## "<owner>: <problem>" for each of `owners`, in order.
+func _per_owner(owners: Array, problem: String) -> Array[String]:
+	var lines: Array[String] = []
+	for owner: String in owners:
+		lines.append("%s: %s" % [owner, problem])
+	return lines
+
+
 func _mutated(file: String, mutate: Callable) -> Array[String]:
+	return _mutated_files({file: mutate})
+
+
+## _mutated for several files at once: file -> its Callable.
+func _mutated_files(mutations: Dictionary) -> Array[String]:
 	var texts := _real_texts()
-	var data: Variant = JSON.parse_string(texts[file])
-	mutate.call(data)
-	texts[file] = JSON.stringify(data)
+	for file: String in mutations:
+		var data: Variant = JSON.parse_string(texts[file])
+		(mutations[file] as Callable).call(data)
+		texts[file] = JSON.stringify(data)
 	return _load_quietly(texts)
 
 

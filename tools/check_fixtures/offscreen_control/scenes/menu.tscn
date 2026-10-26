@@ -1,0 +1,33 @@
+[gd_scene format=3]
+
+[node name="Menu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Inside" type="Button" parent="."]
+layout_mode = 0
+offset_left = 380.0
+offset_top = 240.0
+offset_right = 580.0
+offset_bottom = 300.0
+text = "Inside"
+
+[node name="OffScreen" type="Button" parent="."]
+layout_mode = 0
+offset_left = 900.0
+offset_top = 240.0
+offset_right = 1000.0
+offset_bottom = 300.0
+text = "Off screen"
+
+[node name="BelowScreen" type="Button" parent="."]
+layout_mode = 0
+offset_left = 380.0
+offset_top = 520.0
+offset_right = 580.0
+offset_bottom = 580.0
+text = "Below"

@@ -1,8 +1,8 @@
 class_name GameState
 extends Node
 ## Autoload "Game" (scenes/game.tscn): the app flow state machine and its scene
-## transitions, the save (the Endless best score), ScreenFit (the visible and safe-area
-## rects in base units) and the rotate overlay.
+## transitions, the save (the Endless best score, the campaign progress and the settings),
+## ScreenFit (the visible and safe-area rects in base units) and the rotate overlay.
 ## Every flow change goes through goto(), which fades a cover over the screen
 ## (touches blocked), swaps the scene, fades the cover away and logs the transition
 ## ("[Game] goto A -> B ..." when it starts, "[Game] Arrived at B" when it is done).
@@ -14,9 +14,12 @@ extends Node
 ## was already paused before the overlay showed. While it shows, GUI input (touches and
 ## keys) is disabled.
 ## The save is versioned JSON at save_path, loaded at start: a missing save starts fresh,
-## a corrupt or unknown-version one is moved to backup_path(), reported (log and error
-## label) and replaced by a fresh save. A failed save sets save_error (a short reason the
-## results screen shows), is reported and emits save_failed. On the web, user:// is an
+## an older version is upgraded step by step (save_migrations, logged), a corrupt or
+## unknown-version one is moved to backup_path(), reported (log and error label) and
+## replaced by a fresh save. A campaign entry naming a level that is not in levels.json, or
+## holding stars or a score out of range, is reported and dropped; the rest of the save
+## loads. A failed save sets save_error (a short reason the results screen shows), is
+## reported and emits save_failed. On the web, user:// is an
 ## in-memory filesystem that Godot copies to IndexedDB asynchronously, ignoring a failed
 ## copy; so a web save is logged as written, then confirmed (or reported as lost) by
 ## reading it back from IndexedDB (WEB_PERSIST_CHECK_JS), and storage that is unavailable
@@ -36,7 +39,7 @@ signal page_hidden
 ## it. `reason` is save_error.
 signal save_failed(reason: String)
 
-enum Flow { TITLE, PLAY, RESULTS }
+enum Flow { TITLE, PLAY, RESULTS, CHAPTER_SELECT, LEVEL_SELECT }
 
 ## Absolute path of this autoload, for nodes inside the tree.
 const AUTOLOAD_PATH := ^"/root/Game"
@@ -44,17 +47,31 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.TITLE: "res://scenes/title.tscn",
 	Flow.PLAY: "res://scenes/play.tscn",
 	Flow.RESULTS: "res://scenes/results.tscn",
+	Flow.CHAPTER_SELECT: "res://scenes/chapter_select.tscn",
+	Flow.LEVEL_SELECT: "res://scenes/level_select.tscn",
 }
 ## The Endless mode's id in data/modes.json.
 const ENDLESS_MODE := "endless"
 const SAVE_PATH := "user://save.json"
 ## The save of tool runs (see _ready); tests delete it when they finish.
 const TOOL_SAVE_PATH := "user://tool_save.json"
-## The save format's version; a save of any other version is backed up and replaced.
-const SAVE_VERSION := 1
-## The keys of a save, each with the type its value must have.
-const SAVE_KEYS: Dictionary[String, Variant.Type] = {"version": TYPE_INT, "best_endless": TYPE_INT}
+## The save format's version. Every change to the format bumps it and appends one step to
+## save_migrations(), so saves of older versions are upgraded, not discarded; a newer
+## version is backed up and replaced.
+const SAVE_VERSION := 2
+## The keys of a save, each with the type its value must have. `levels` maps a level id to
+## {"stars", "score"} (its Campaign.Record); `settings` holds SETTINGS_KEYS.
+const SAVE_KEYS: Dictionary[String, Variant.Type] = {"version": TYPE_INT, "best_endless": TYPE_INT, "levels": TYPE_DICTIONARY, "settings": TYPE_DICTIONARY}
 const SAVE_SCORE_MAX := 999999999
+## The keys of a saved level entry.
+const LEVEL_KEYS: Array[String] = ["stars", "score"]
+## The saved settings: the music and sound effects volumes (whole 0..VOLUME_MAX) and mutes
+## (true or false). There is no settings screen yet; the audio pass applies them to buses.
+const SETTINGS_KEYS: Array[String] = ["music", "sfx", "music_muted", "sfx_muted"]
+const VOLUME_SETTINGS: Array[String] = ["music", "sfx"]
+const VOLUME_MAX := 100
+const DEFAULT_MUSIC_VOLUME := 70
+const DEFAULT_SFX_VOLUME := 80
 ## The largest whole number a float holds exactly (2^53); see _is_whole.
 const SAVE_EXACT_MAX := 9007199254740992.0
 ## How long browser storage (IndexedDB) is given to hold a web save before it is
@@ -124,6 +141,15 @@ var safe_area_override := Rect2()
 var save_path := SAVE_PATH
 ## The best Endless score, persisted in the save.
 var best_endless := 0
+## The campaign progress, persisted in the save: level id -> its best stars and score. A
+## level without an entry was never finished.
+var progress: Dictionary[String, Campaign.Record] = {}
+## Settings, persisted in the save: the music and sound effects volumes (0..VOLUME_MAX)
+## and mutes.
+var music_volume := DEFAULT_MUSIC_VOLUME
+var sfx_volume := DEFAULT_SFX_VOLUME
+var music_muted := false
+var sfx_muted := false
 ## Why the latest save failed, short enough for the results screen; "" after a save that
 ## worked (on the web: once written; a later IndexedDB failure sets it again).
 var save_error := ""
@@ -133,6 +159,8 @@ var storage_persistent := true
 var persist_check := 0
 
 var _transitioning := false
+## Campaign entries the last load dropped (load_game writes the save back without them).
+var _dropped_entries := 0
 var _visible_rect := Rect2()
 var _safe_rect := Rect2()
 ## True while the rotate overlay holds the tree paused (it then unpauses on hiding).
@@ -267,9 +295,38 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	transition_finished.emit(new_state)
 
 
-## Starts a new Endless run with a fresh seed (the title's Play, Restart, Play again).
+## Starts a new Endless run with a fresh seed (the title's Endless, Restart, Play again).
 func start_endless() -> void:
 	goto(Flow.PLAY, {"mode": ENDLESS_MODE, "seed": randi()})
+
+
+## Starts campaign level `level_id` (level select, Restart, Next and Retry); the level's
+## own fixed seed drives it.
+func start_level(level_id: String) -> void:
+	goto(Flow.PLAY, {"level": level_id})
+
+
+## Records a finished campaign level: the stars `score` earns, kept with the level's best
+## stars and best score (a replay never lowers either), saved at once (save_error says why
+## when that failed). Logged with the level, the stars and the score, and the level it
+## unlocks. Returns true when `score` beats the level's best score (any score above 0 on
+## its first finish).
+func record_level(level: LevelSpec, score: int) -> bool:
+	var earned := Campaign.stars(level, score)
+	var before: Campaign.Record = progress.get(level.id)
+	var next := Campaign.next_level(level)
+	var was_open := next != null and Campaign.is_unlocked(next, progress)
+	var best := Campaign.merge(before, earned, score)
+	progress[level.id] = best
+	var new_best := score > (before.score if before != null else 0)
+	var unlocked := ""
+	if next != null and not was_open and Campaign.is_unlocked(next, progress):
+		unlocked = "; %s unlocked" % next.id
+	print("[Game] Level %s finished: score %d, %d stars (%s); best %d stars, score %d (was %s)%s" % [
+		level.id, score, earned, "passed" if Campaign.is_passed(earned) else "not passed", best.stars, best.score,
+		"%d stars, score %d" % [before.stars, before.score] if before != null else "never finished", unlocked])
+	save_game()
+	return new_best
 
 
 ## Records the score of a finished Endless run: a new best is saved at once (save_error
@@ -292,7 +349,13 @@ func record_endless(score: int) -> bool:
 ## all it fails at once.
 func save_game() -> bool:
 	save_error = ""
-	var text := JSON.stringify({"version": SAVE_VERSION, "best_endless": best_endless}, "  ")
+	var levels := {}
+	for id in progress:
+		levels[id] = {"stars": progress[id].stars, "score": progress[id].score}
+	var text := JSON.stringify({
+		"version": SAVE_VERSION, "best_endless": best_endless, "levels": levels,
+		"settings": {"music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
+	}, "  ")
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
 	if file == null:
@@ -311,12 +374,12 @@ func save_game() -> bool:
 		_save_failed("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)], "cannot replace the save file (%s)" % error_string(replaced))
 		return false
 	if not OS.has_feature("web"):
-		print("[Game] Saved to %s: version %d, Endless best %d" % [save_path, SAVE_VERSION, best_endless])
+		print("[Game] Saved to %s: version %d, %s" % [save_path, SAVE_VERSION, save_summary()])
 		return true
 	if not storage_persistent:
-		_save_failed("Wrote the save (Endless best %d) to %s in memory only: browser storage is unavailable, so it is lost when the page closes" % [best_endless, save_path], "browser storage is unavailable")
+		_save_failed("Wrote the save (%s) to %s in memory only: browser storage is unavailable, so it is lost when the page closes" % [save_summary(), save_path], "browser storage is unavailable")
 		return false
-	print("[Game] Saved to %s (written; waiting for browser storage to keep it): version %d, Endless best %d" % [save_path, SAVE_VERSION, best_endless])
+	print("[Game] Saved to %s (written; waiting for browser storage to keep it): version %d, %s" % [save_path, SAVE_VERSION, save_summary()])
 	_check_web_persisted(text)
 	return true
 
@@ -342,7 +405,7 @@ func persist_checked(check: int, ok: bool, detail: String) -> void:
 	if ok:
 		print("[Game] Save persisted to browser storage: %s after %s ms (check %d)" % [save_path, detail, check])
 		return
-	_save_failed("The save (Endless best %d) was written to %s but browser storage (IndexedDB) did not keep it: %s (check %d); it is lost when the page closes" % [best_endless, save_path, detail, check], "browser storage did not keep it (%s)" % detail)
+	_save_failed("The save (%s) was written to %s but browser storage (IndexedDB) did not keep it: %s (check %d); it is lost when the page closes" % [save_summary(), save_path, detail, check], "browser storage did not keep it (%s)" % detail)
 
 
 ## Asks the page to confirm that IndexedDB holds `text` at save_path (see WEB_PERSIST_CHECK_JS).
@@ -373,14 +436,30 @@ func _save_failed(message: String, reason: String) -> void:
 	save_failed.emit(reason)
 
 
-## Loads save_path. A missing save starts fresh (a log line only); an unreadable,
-## corrupt or unknown-version one is reported (push_error and the error label), moved
-## to backup_path() and replaced by a fresh save. A JSON instance reports parse errors
-## as return values, so each problem is reported once, by us.
+## What the save holds, for log lines: the Endless best, the levels finished with their
+## stars, and the settings.
+func save_summary() -> String:
+	var earned := 0
+	for id in progress:
+		earned += progress[id].stars
+	return "Endless best %d, %d levels finished (%d stars), music %d%s, sfx %d%s" % [
+		best_endless, progress.size(), earned, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""]
+
+
+## Loads save_path. A missing save starts fresh (a log line only); an older version is
+## upgraded (save_migrations, logged) and written back at once; an unreadable, corrupt or
+## unknown-version one is reported (push_error and the error label), moved to backup_path()
+## and replaced by a fresh save; a bad campaign entry is reported and dropped (the rest
+## loads, and the save is written back without it, so it is reported once). With content errors the save is left unread and untouched (its levels are
+## checked against levels.json; the title disables play). A JSON instance reports parse
+## errors as return values, so each problem is reported once, by us.
 func load_game() -> void:
-	best_endless = 0
+	_reset_save_data()
 	if not FileAccess.file_exists(save_path):
 		print("[Game] No save at %s; starting fresh" % save_path)
+		return
+	if not Content.errors().is_empty():
+		print("[Game] Content has problems; the save at %s is left unread and untouched" % save_path)
 		return
 	var text := FileAccess.get_file_as_string(save_path)
 	if text.is_empty() and FileAccess.get_open_error() != OK:
@@ -390,12 +469,29 @@ func load_game() -> void:
 	if json.parse(text) != OK:
 		_discard_save("corrupt (line %d: %s)" % [json.get_error_line(), json.get_error_message()])
 		return
-	var problem := _apply_save(json.data)
+	var data: Variant = json.data
+	var from_version: Variant = (data as Dictionary).get("version") if data is Dictionary else null
+	var problem := _apply_save(data)
 	if problem != "":
-		best_endless = 0
+		_reset_save_data()
 		_discard_save("corrupt (%s)" % problem)
 		return
-	print("[Game] Loaded save from %s: version %d, Endless best %d" % [save_path, SAVE_VERSION, best_endless])
+	print("[Game] Loaded save from %s: version %d, %s" % [save_path, SAVE_VERSION, save_summary()])
+	if int(from_version) != SAVE_VERSION:
+		print("[Game] Writing the save upgraded from version %d as version %d" % [int(from_version), SAVE_VERSION])
+		save_game()
+	elif _dropped_entries > 0:
+		print("[Game] Writing the save without its %d dropped campaign entries" % _dropped_entries)
+		save_game()
+
+
+func _reset_save_data() -> void:
+	best_endless = 0
+	progress = {}
+	music_volume = DEFAULT_MUSIC_VOLUME
+	sfx_volume = DEFAULT_SFX_VOLUME
+	music_muted = false
+	sfx_muted = false
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -403,28 +499,115 @@ func backup_path() -> String:
 	return save_path.get_basename() + ".corrupt.json"
 
 
-## Applies a parsed save; returns "" or what is wrong with it.
+## Applies a parsed save (upgraded to SAVE_VERSION first); returns "" or what is wrong
+## with it, and applies nothing then. A bad campaign entry is not a corrupt save: it is
+## reported with its key and dropped.
 func _apply_save(data: Variant) -> String:
 	if not data is Dictionary:
 		return "not an object"
 	var saved: Dictionary = data
-	if not _is_whole(saved.get("version")) or int(saved["version"]) < 1:
-		return "'version' is not a whole number >= 1"
-	if int(saved["version"]) != SAVE_VERSION:
-		return "version %d is not this game's version %d" % [int(saved["version"]), SAVE_VERSION]
+	var outdated := migrate_save(saved, save_migrations(), SAVE_VERSION)
+	if outdated != "":
+		return outdated
 	for key: Variant in saved:
 		if not SAVE_KEYS.has(str(key)):
 			return "unknown key '%s'" % key
 	for key in SAVE_KEYS:
 		if not saved.has(key):
 			return "missing key '%s'" % key
-		if SAVE_KEYS[key] == TYPE_INT and not _is_whole(saved[key]):
-			return "'%s' is not a whole number" % key
+		var value: Variant = saved[key]
+		var ok := _is_whole(value) if SAVE_KEYS[key] == TYPE_INT else typeof(value) == SAVE_KEYS[key]
+		if not ok:
+			return "'%s' is not %s" % [key, "a whole number" if SAVE_KEYS[key] == TYPE_INT else "an object"]
 	var best := int(saved["best_endless"])
 	if best < 0 or best > SAVE_SCORE_MAX:
 		return "best_endless %d is outside 0..%d" % [best, SAVE_SCORE_MAX]
+	var settings: Dictionary = saved["settings"]
+	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return settings.has(key)):
+		return "settings must be exactly %s" % [SETTINGS_KEYS]
+	for key in SETTINGS_KEYS:
+		var setting: Variant = settings[key]
+		if key in VOLUME_SETTINGS:
+			if not _is_whole(setting) or int(setting) < 0 or int(setting) > VOLUME_MAX:
+				return "settings.%s is not a whole number 0..%d" % [key, VOLUME_MAX]
+		elif typeof(setting) != TYPE_BOOL:
+			return "settings.%s is not true or false" % key
+	var loaded: Dictionary[String, Campaign.Record] = {}
+	var levels: Dictionary = saved["levels"]
+	_dropped_entries = 0
+	for id: Variant in levels:
+		var entry_problem := level_entry_problem(str(id), levels[id])
+		if entry_problem != "":
+			_dropped_entries += 1
+			report_error("Save '%s': dropped the campaign entry levels.%s: %s; the rest of the save loaded" % [save_path, id, entry_problem])
+			continue
+		var entry: Dictionary = levels[id]
+		loaded[str(id)] = Campaign.Record.new(int(entry["stars"]), int(entry["score"]))
 	best_endless = best
+	progress = loaded
+	music_volume = int(settings["music"])
+	sfx_volume = int(settings["sfx"])
+	music_muted = settings["music_muted"]
+	sfx_muted = settings["sfx_muted"]
 	return ""
+
+
+## What is wrong with the saved campaign entry `id` -> `entry`, or "": the id must be a
+## level of levels.json and the entry exactly {"stars": 0..Campaign.MAX_STARS, "score":
+## 0..SAVE_SCORE_MAX}, whole numbers.
+static func level_entry_problem(id: String, entry: Variant) -> String:
+	if not Content.has_level(id):
+		return "'%s' is not a level of levels.json" % id
+	if not entry is Dictionary:
+		return "not an object"
+	var fields: Dictionary = entry
+	if fields.size() != LEVEL_KEYS.size() or not LEVEL_KEYS.all(func(key: String) -> bool: return fields.has(key)):
+		return "must be exactly %s" % [LEVEL_KEYS]
+	if not _is_whole(fields["stars"]) or int(fields["stars"]) < 0 or int(fields["stars"]) > Campaign.MAX_STARS:
+		return "stars %s is not a whole number 0..%d" % [_number_text(fields["stars"]), Campaign.MAX_STARS]
+	if not _is_whole(fields["score"]) or int(fields["score"]) < 0 or int(fields["score"]) > SAVE_SCORE_MAX:
+		return "score %s is not a whole number 0..%d" % [_number_text(fields["score"]), SAVE_SCORE_MAX]
+	return ""
+
+
+## A saved value for a message: a whole number without its ".0" (JSON numbers load as floats).
+static func _number_text(value: Variant) -> String:
+	return str(int(value)) if _is_whole(value) else str(value)
+
+
+## Upgrades `saved` (a parsed save, changed in place) to version `target`:
+## migrations[i] turns a version i + 1 save into version i + 2 (each step logged). Returns
+## "" or why it cannot (no whole version >= 1, or a version newer than `target`).
+static func migrate_save(saved: Dictionary, migrations: Array[Callable], target: int) -> String:
+	if not _is_whole(saved.get("version")) or int(saved["version"]) < 1:
+		return "'version' is not a whole number >= 1"
+	if migrations.size() != target - 1:
+		push_error("[Game] %d save upgrade steps for save version %d (expected %d)" % [migrations.size(), target, target - 1])
+		return "this game cannot upgrade saves (%d steps for version %d)" % [migrations.size(), target]
+	var version := int(saved["version"])
+	if version > target:
+		return "version %d is newer than this game's %d" % [version, target]
+	while version < target:
+		migrations[version - 1].call(saved)
+		version += 1
+		saved["version"] = version
+		print("[Game] Upgraded the save to version %d" % version)
+	return ""
+
+
+## The save format's upgrade steps: entry i turns a version i + 1 save into version i + 2.
+## Steps run before the save is validated, so they must read keys with get() and leave
+## anything malformed for the validation to report.
+static func save_migrations() -> Array[Callable]:
+	return [_save_v1_to_v2]
+
+
+## Version 1 -> 2: the campaign arrives (no level finished yet) and the settings are saved,
+## at their defaults; the Endless best is kept as it is.
+static func _save_v1_to_v2(saved: Dictionary) -> void:
+	saved["levels"] = {}
+	saved["settings"] = {"music": DEFAULT_MUSIC_VOLUME, "sfx": DEFAULT_SFX_VOLUME, "music_muted": false, "sfx_muted": false}
+	print("[Game] Save upgrade 1 -> 2: Endless best %s kept, no campaign levels finished yet, default settings" % _number_text(saved.get("best_endless")))
 
 
 func _discard_save(problem: String) -> void:
