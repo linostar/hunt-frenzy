@@ -11,6 +11,12 @@ class Entry:
 	var weight := 1
 
 
+## One look of the mode's run: a backdrop id and the weather drawn over it (as a chapter's).
+class Stage:
+	var backdrop := ""
+	var weather := ""
+
+
 var id := ""
 var name := ""
 ## The wave mix, in data order.
@@ -41,9 +47,19 @@ var time_limit := 0.0
 ## Whether the rival steals birds left flying past their linger_time (Rival); when false he
 ## only heckles.
 var rival_steals := false
+## The run's looks, in order: each lasts backdrop_waves waves, and the last one holds from
+## then on (Endless: dawn, noon, sunset, then night; Time Attack: noon throughout).
+var stages: Array[Stage] = []
+var backdrop_waves := 0
 
 
 ## True for a mode whose run ends after time_limit seconds (Time Attack); false for one
 ## that ends at escape_limit lost birds (Endless).
 func is_timed() -> bool:
 	return time_limit > 0.0
+
+
+## The look of wave `wave_index` (1 = the first): stages[(wave_index - 1) / backdrop_waves],
+## the last stage from then on.
+func stage_for(wave_index: int) -> Stage:
+	return stages[mini(floori((wave_index - 1) / float(backdrop_waves)), stages.size() - 1)]

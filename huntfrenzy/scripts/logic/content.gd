@@ -6,7 +6,7 @@ extends RefCounted
 ## load_texts() replace it (tests).
 ## Every problem (unreadable file, bad JSON, a file with no entries, missing or unknown key,
 ## wrong type, non-integer int, out-of-range value, unknown enum value, duplicate id,
-## unknown reference, a sprite missing a frame, a hitbox outside its sprite or crossing
+## unknown reference, a sprite or backdrop missing a frame or layer (its art file), a hitbox outside its sprite or crossing
 ## itself, a split field without its pair, a wave mix with nothing from wave 1, a mode with
 ## both or neither of escape_limit and time_limit, a missing,
 ## unknown or empty rival line category, a rival line too long for the bubble, not exactly
@@ -35,10 +35,12 @@ const PATTERNS: Array[String] = ["rise", "zigzag"]
 ## LEVELS_PER_CHAPTER levels each, the last one the chapter's boss level.
 const CHAPTER_COUNT := 4
 const LEVELS_PER_CHAPTER := 6
-## A chapter's weather ids (placeholder until the art pass draws them).
+## The weather ids a chapter or a mode's stage draws over its backdrop (Weather, visual only).
 const WEATHERS: Array[String] = ["mist", "wind", "rain", "snow"]
-## A chapter's sky tint: "#rrggbb".
-const COLOR_PATTERN := "^#[0-9a-f]{6}$"
+## A backdrop's art: one SVG per layer, BACKDROP_DIR<id>_<layer>.svg, drawn back to front
+## (the sky, the far marsh, the near reeds and water, then the grass in front of the birds).
+const BACKDROP_DIR := "res://art/backdrops/"
+const BACKDROP_LAYERS: Array[String] = ["sky", "far", "near", "grass"]
 ## A level's star thresholds: STAR_COUNT final scores, each 1..STAR_SCORE_MAX.
 const STAR_COUNT := 3
 const STAR_SCORE_MAX := 10000000
@@ -106,7 +108,6 @@ static var _bad_scale: Dictionary[String, bool] = {}
 static var _file := ""
 static var _entry := ""
 static var _snake_case := RegEx.create_from_string("^[a-z][a-z0-9_]*$")
-static var _color_pattern := RegEx.create_from_string(COLOR_PATTERN)
 
 
 ## Every content problem found by the last load, oldest first. Empty means the data is valid.
@@ -195,6 +196,11 @@ static func birds() -> Array[BirdSpec]:
 	return result
 
 
+## The art of backdrop `id`'s `layer` (one of BACKDROP_LAYERS).
+static func backdrop_path(id: String, layer: String) -> String:
+	return "%s%s_%s.svg" % [BACKDROP_DIR, id, layer]
+
+
 ## The rival's timing and heckle lines.
 static func rival_lines() -> RivalLines:
 	_ensure_loaded()
@@ -255,9 +261,9 @@ static func _load_chapters(entries: Array[Dictionary]) -> void:
 	var previous: ChapterSpec = null
 	for entry in entries:
 		var item := ChapterSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "sky_tint", "weather", "rival_linger_scale"], _chapters)
+		item.id = _begin_entry(entry, ["id", "name", "backdrop", "weather", "rival_linger_scale"], _chapters)
 		item.name = _string(entry, "name", NAME_MAX)
-		item.sky_tint = _color(entry, "sky_tint")
+		item.backdrop = _backdrop(entry, "backdrop")
 		item.weather = _enum(entry, "weather", WEATHERS)
 		item.rival_linger_scale = _scale(entry, "rival_linger_scale")
 		if _failed.has("rival_linger_scale"):
@@ -358,17 +364,57 @@ static func _stars(object: Dictionary, key: String) -> Array[int]:
 	return result
 
 
-## A "#rrggbb" colour.
-static func _color(object: Dictionary, key: String) -> Color:
+## A backdrop id (snake_case) whose every layer has its art (backdrop_path); "" when it is
+## missing, mistyped or has no art (each missing layer reported).
+static func _backdrop(object: Dictionary, key: String, prefix := "") -> String:
 	if not object.has(key):
-		return Color.WHITE
+		return ""
+	var field := prefix + key
 	if typeof(object[key]) != TYPE_STRING:
-		_error(key, "expected String, got %s" % type_string(typeof(object[key])))
-		return Color.WHITE
-	if _color_pattern.search(object[key]) == null:
-		_error(key, "'%s' is not a colour \"#rrggbb\" (lowercase hex)" % object[key])
-		return Color.WHITE
-	return Color.html(object[key])
+		_error(field, "expected String, got %s" % type_string(typeof(object[key])))
+		return ""
+	var id: String = object[key]
+	if _snake_case.search(id) == null:
+		_error(field, "'%s' is not a snake_case backdrop id" % id)
+		return ""
+	var missing := false
+	for layer in BACKDROP_LAYERS:
+		if not ResourceLoader.exists(backdrop_path(id, layer)):
+			_error(field, "unknown backdrop '%s' (no %s)" % [id, backdrop_path(id, layer)])
+			missing = true
+	return "" if missing else id
+
+
+## A mode's looks: a non-empty array of {"backdrop", "weather"} objects, each a backdrop
+## with its art and a weather of WEATHERS.
+static func _stages(object: Dictionary, key: String) -> Array[ModeSpec.Stage]:
+	var result: Array[ModeSpec.Stage] = []
+	if not object.has(key):
+		return result
+	if typeof(object[key]) != TYPE_ARRAY:
+		_error(key, "expected Array, got %s" % type_string(typeof(object[key])))
+		return result
+	var list: Array = object[key]
+	if list.is_empty():
+		_error(key, "is empty")
+	for i in list.size():
+		var field := "%s[%d]" % [key, i]
+		if typeof(list[i]) != TYPE_DICTIONARY:
+			_error(field, "expected Dictionary, got %s" % type_string(typeof(list[i])))
+			continue
+		var part: Dictionary = list[i]
+		var keys: Array[String] = ["backdrop", "weather"]
+		for name in keys:
+			if not part.has(name):
+				_error("%s.%s" % [field, name], "missing key")
+		for name: Variant in part:
+			if not str(name) in keys:
+				_error("%s.%s" % [field, name], "unknown key")
+		var stage := ModeSpec.Stage.new()
+		stage.backdrop = _backdrop(part, "backdrop", field + ".")
+		stage.weather = _enum(part, "weather", WEATHERS, field + ".")
+		result.append(stage)
+	return result
 
 
 ## A scale in (0, 1]: more than 0, at most 1.
@@ -436,7 +482,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 static func _load_modes(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := ModeSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "rival_steals"], _modes,
+		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "rival_steals", "backdrops", "backdrop_waves"], _modes,
 			["escape_limit", "time_limit"])
 		item.name = _string(entry, "name", NAME_MAX)
 		item.birds = _mix(entry, "birds")
@@ -463,6 +509,8 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 			item.time_limit = _float(entry, "time_limit", TIME_LIMIT_MIN, TIME_LIMIT_MAX)
 		if entry.has("rival_steals"):
 			item.rival_steals = _bool(entry, "rival_steals")
+		item.stages = _stages(entry, "backdrops")
+		item.backdrop_waves = _int(entry, "backdrop_waves", 1, WAVE_MAX)
 		if item.id != "":
 			_modes[item.id] = item
 
@@ -708,15 +756,15 @@ static func _bool(object: Dictionary, key: String) -> bool:
 	return object[key]
 
 
-## A string that is one of `allowed`.
-static func _enum(object: Dictionary, key: String, allowed: Array[String]) -> String:
+## A string that is one of `allowed`. `prefix` names the object inside the entry ("backdrops[0].").
+static func _enum(object: Dictionary, key: String, allowed: Array[String], prefix := "") -> String:
 	if not object.has(key):
 		return ""
 	if typeof(object[key]) != TYPE_STRING:
-		_error(key, "expected String, got %s" % type_string(typeof(object[key])))
+		_error(prefix + key, "expected String, got %s" % type_string(typeof(object[key])))
 		return ""
 	if not str(object[key]) in allowed:
-		_error(key, "'%s' is not one of %s" % [object[key], allowed])
+		_error(prefix + key, "'%s' is not one of %s" % [object[key], allowed])
 		return ""
 	return object[key]
 

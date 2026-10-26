@@ -1,8 +1,8 @@
 extends SceneTree
 ## Headless content tests: loads huntfrenzy/data/*.json through Content and checks every
-## invariant of huntfrenzy/data/SCHEMA.md (I1..I20) against the real data, then proves
+## invariant of huntfrenzy/data/SCHEMA.md (I1..I22) against the real data, then proves
 ## each one fires on a malformed copy of it (the loader's I1-I4, I13, I14 and I15 with the
-## exact error lines; I5-I12 and I16-I20 with the exact problems their checks report).
+## exact error lines; I5-I12 and I16-I22 with the exact problems their checks report).
 ##   "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func that reports through _check(), and append it to
@@ -14,7 +14,7 @@ const WATCHDOG_MSEC := 60000
 ## pixels of each flap frame (the rest is anti-aliasing along the outline).
 const HITBOX_ART_MIN := 0.98
 ## I5: the share of each flap frame's opaque pixels (one sample per base unit) that its
-## hitbox must cover. The real art measures 0.60 (splitter fly_1) to 0.80 (goose fly_2):
+## hitbox must cover. The real art measures 0.63 (armored damaged_fly_1) to 0.74 (splitter fly_2):
 ## the flapping wings, beaks and tails lie outside every hitbox. A box on the body alone
 ## covers well under a third.
 const HITBOX_COVER_MIN := 0.5
@@ -22,13 +22,21 @@ const HITBOX_COVER_MIN := 0.5
 const OPAQUE_ALPHA := 0.5
 ## I6: the most a decoy's silhouette may overlap any other type's (intersection over
 ## union of their opaque masks, each sampled on SILHOUETTE_GRID across its own sprite).
-## A recoloured copy of a shape overlaps it by 0.9 or more (the armored and golden geese
-## overlap the goose by 0.93-0.99); different shapes stay well under 0.85.
+## A recoloured copy of a shape overlaps it by 0.89 or more (the armored and golden geese
+## overlap the goose by 0.89-1.00); different shapes stay well under 0.85.
 const DECOY_OVERLAP_MAX := 0.85
 const SILHOUETTE_GRID := Vector2i(48, 36)
 ## I12: the shortest side a hitbox's bounding box may have, in base units: the game's
 ## smallest touch target (CLAUDE.md, every interactive Control is at least 44x44).
 const HITBOX_SIDE_MIN := 44.0
+## I21: each flap frame's imported texture (as the game draws it): its hitbox covers at
+## least HITBOX_BODY_COVER_MIN of the opaque pixels, and the hitbox's area is at most
+## HITBOX_BODY_AREA_MAX of their area (it never stands for more than the drawn body).
+const HITBOX_BODY_COVER_MIN := 0.6
+const HITBOX_BODY_AREA_MAX := 1.0
+## I22: the least WCAG contrast a bird's outline has against every colour of every
+## backdrop's sky (the WCAG minimum for graphics against their background).
+const OUTLINE_CONTRAST_MIN := 3.0
 ## I20, the simulated fairness check: the run seeds it plays (0..SIM_SEEDS - 1), the Endless
 ## waves it covers (1..SIM_UNTIMED_WAVES; a timed mode: every wave its time_limit can
 ## reach), and the perfect player: one shot every SIM_SHOT_GAP seconds, each bird shot the
@@ -87,6 +95,8 @@ func _tests() -> Array[Callable]:
 		_test_i18_boss_last_and_shaped,
 		_test_i19_chapters_introduce_birds,
 		_test_i20_modes_are_fair,
+		_test_i21_hitbox_covers_body,
+		_test_i22_birds_readable,
 	]
 
 
@@ -151,7 +161,15 @@ func _test_lookup_api() -> void:
 	var weathers := Content.chapters().map(func(spec: ChapterSpec) -> String: return spec.weather)
 	_check(scales == [1.0, 0.9, 0.8, 0.7] and weathers == ["mist", "wind", "rain", "snow"], "every chapter has its rival linger scale and weather", "%s %s" % [scales, weathers])
 	var dawn := Content.chapter("dawn")
-	_check(dawn.name == "Dawn" and dawn.sky_tint == Color.html("#ffe2c4"), "chapter() returns the chapter's name and sky tint", "%s %s" % [dawn.name, dawn.sky_tint])
+	var backdrops := Content.chapters().map(func(spec: ChapterSpec) -> String: return spec.backdrop)
+	_check(dawn.name == "Dawn" and backdrops == ["dawn", "noon", "sunset", "night"], "chapter() returns the chapter's name; each chapter names its backdrop", "%s %s" % [dawn.name, backdrops])
+	_check(Content.backdrop_path("dawn", "far") == "res://art/backdrops/dawn_far.svg", "backdrop_path() names a backdrop layer's art", Content.backdrop_path("dawn", "far"))
+	var looks := endless.stages.map(func(stage: ModeSpec.Stage) -> String: return "%s/%s" % [stage.backdrop, stage.weather])
+	_check(looks == ["dawn/mist", "noon/wind", "sunset/rain", "night/snow"] and endless.backdrop_waves == 3, "Endless walks the four backdrops, 3 waves each", "%s every %d" % [looks, endless.backdrop_waves])
+	var by_wave := range(1, 15).map(func(index: int) -> String: return endless.stage_for(index).backdrop)
+	_check(by_wave == ["dawn", "dawn", "dawn", "noon", "noon", "noon", "sunset", "sunset", "sunset", "night", "night", "night", "night", "night"], "stage_for() moves on every backdrop_waves waves and holds the last", str(by_wave))
+	var timed_looks := range(1, 12).map(func(index: int) -> String: return "%s/%s" % [time_attack.stage_for(index).backdrop, time_attack.stage_for(index).weather])
+	_check(timed_looks.all(func(look: String) -> bool: return look == "noon/wind"), "Time Attack stays on the noon backdrop with its wind", str(timed_looks))
 	_check(Content.levels().size() == 24 and Content.has_level("night_6") and not Content.has_level("night_7"), "levels() lists the 24 levels; has_level() knows them", str(Content.levels().size()))
 	var first := Content.level("dawn_1")
 	var first_mix := first.mix.map(func(e: ModeSpec.Entry) -> String: return "%s:%d" % [e.bird, e.weight])
@@ -221,6 +239,22 @@ func _test_i1_files_ids_and_keys() -> void:
 		["data/chapters.json [noon] weather: missing key"])
 	_expect_load_errors("I1 chapter with an unknown key", _mutated("chapters.json", func(data: Array) -> void: data[0]["music"] = "banjo"),
 		["data/chapters.json [dawn] music: unknown key"])
+	_expect_load_errors("I1 chapter missing its backdrop", _mutated("chapters.json", func(data: Array) -> void: (data[2] as Dictionary).erase("backdrop")),
+		["data/chapters.json [sunset] backdrop: missing key"])
+	_expect_load_errors("I1 the retired sky_tint", _mutated("chapters.json", func(data: Array) -> void: data[0]["sky_tint"] = "#ffe2c4"),
+		["data/chapters.json [dawn] sky_tint: unknown key"])
+	_expect_load_errors("I1 a mode missing its backdrops", _mutated("modes.json", func(data: Array) -> void: (data[0] as Dictionary).erase("backdrops")),
+		["data/modes.json [endless] backdrops: missing key"])
+	_expect_load_errors("I1 a mode missing backdrop_waves", _mutated("modes.json", func(data: Array) -> void: (data[1] as Dictionary).erase("backdrop_waves")),
+		["data/modes.json [time_attack] backdrop_waves: missing key"])
+	_expect_load_errors("I1 a mode with no backdrops", _mutated("modes.json", func(data: Array) -> void: data[0]["backdrops"] = []),
+		["data/modes.json [endless] backdrops: is empty"])
+	_expect_load_errors("I1 a mode stage missing a key", _mutated("modes.json", func(data: Array) -> void: (data[0]["backdrops"][1] as Dictionary).erase("weather")),
+		["data/modes.json [endless] backdrops[1].weather: missing key"])
+	_expect_load_errors("I1 a mode stage with an unknown key", _mutated("modes.json", func(data: Array) -> void: data[0]["backdrops"][0]["music"] = "banjo"),
+		["data/modes.json [endless] backdrops[0].music: unknown key"])
+	_expect_load_errors("I1 a mode stage not an object", _mutated("modes.json", func(data: Array) -> void: data[1]["backdrops"][0] = "noon"),
+		["data/modes.json [time_attack] backdrops[0]: expected Dictionary, got String"])
 	_expect_load_errors("I1 level missing a key", _mutated("levels.json", func(data: Array) -> void: (data[0] as Dictionary).erase("stars")),
 		["data/levels.json [dawn_1] stars: missing key"])
 	_expect_load_errors("I1 level with an unknown key", _mutated("levels.json", func(data: Array) -> void: data[0]["music"] = "banjo"),
@@ -305,10 +339,16 @@ func _test_i2_types_and_ranges() -> void:
 		["data/rival_lines.json [wave_end] lines: is empty"])
 	_expect_load_errors("I2 rival lines not an object", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"] = ["Hi."]),
 		["data/rival_lines.json [-] lines: expected Dictionary, got Array"])
-	_expect_load_errors("I2 sky tint not a colour", _mutated("chapters.json", func(data: Array) -> void: data[0]["sky_tint"] = "#FFF"),
-		["data/chapters.json [dawn] sky_tint: '#FFF' is not a colour \"#rrggbb\" (lowercase hex)"])
-	_expect_load_errors("I2 sky tint not a string", _mutated("chapters.json", func(data: Array) -> void: data[0]["sky_tint"] = [1, 1, 1]),
-		["data/chapters.json [dawn] sky_tint: expected String, got Array"])
+	_expect_load_errors("I2 backdrop not a string", _mutated("chapters.json", func(data: Array) -> void: data[0]["backdrop"] = [1, 1, 1]),
+		["data/chapters.json [dawn] backdrop: expected String, got Array"])
+	_expect_load_errors("I2 backdrop id not snake_case", _mutated("chapters.json", func(data: Array) -> void: data[0]["backdrop"] = "Dawn"),
+		["data/chapters.json [dawn] backdrop: 'Dawn' is not a snake_case backdrop id"])
+	_expect_load_errors("I2 a mode's backdrop_waves out of range", _mutated("modes.json", func(data: Array) -> void: data[0]["backdrop_waves"] = 0),
+		["data/modes.json [endless] backdrop_waves: 0 is outside 1..1000"])
+	_expect_load_errors("I2 a mode stage's unknown weather", _mutated("modes.json", func(data: Array) -> void: data[0]["backdrops"][2]["weather"] = "hail"),
+		["data/modes.json [endless] backdrops[2].weather: 'hail' is not one of [\"mist\", \"wind\", \"rain\", \"snow\"]"])
+	_expect_load_errors("I2 a mode's backdrops not a list", _mutated("modes.json", func(data: Array) -> void: data[1]["backdrops"] = "noon"),
+		["data/modes.json [time_attack] backdrops: expected Array, got String"])
 	_expect_load_errors("I2 unknown weather", _mutated("chapters.json", func(data: Array) -> void: data[0]["weather"] = "fog"),
 		["data/chapters.json [dawn] weather: 'fog' is not one of [\"mist\", \"wind\", \"rain\", \"snow\"]"])
 	_expect_load_errors("I2 chapter name too long", _mutated("chapters.json", func(data: Array) -> void: data[0]["name"] = "The Very Early Morning Dawn"),
@@ -349,9 +389,17 @@ func _test_i2_types_and_ranges() -> void:
 		["data/levels.json [dawn_1] stars[1]: expected int, got 200.5"])
 
 
-## I3: every reference resolves (mix birds, golden_bird, splits_into) and every sprite has
-## its frames (the damaged flap frames too when hp > 1).
+## I3: every reference resolves (mix birds, golden_bird, splits_into), every sprite has
+## its frames (the damaged flap frames too when hp > 1) and every backdrop its layers.
 func _test_i3_references() -> void:
+	var dusk: Array[String] = []
+	for layer in Content.BACKDROP_LAYERS:
+		dusk.append("data/chapters.json [night] backdrop: unknown backdrop 'dusk' (no res://art/backdrops/dusk_%s.svg)" % layer)
+	_expect_load_errors("I3 a chapter's backdrop with no art", _mutated("chapters.json", func(data: Array) -> void: data[3]["backdrop"] = "dusk"), dusk)
+	var mode_dusk: Array[String] = []
+	for line in dusk:
+		mode_dusk.append(line.replace("data/chapters.json [night] backdrop", "data/modes.json [endless] backdrops[3].backdrop"))
+	_expect_load_errors("I3 a mode stage's backdrop with no art", _mutated("modes.json", func(data: Array) -> void: data[0]["backdrops"][3]["backdrop"] = "dusk"), mode_dusk)
 	_expect_load_errors("I3 unknown mix bird", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"][1]["bird"] = "swan"),
 		["data/modes.json [endless] birds[1].bird: unknown bird id 'swan'"])
 	_expect_load_errors("I3 unknown golden bird", _mutated("modes.json", func(data: Array) -> void: data[0]["golden_bird"] = "phoenix"),
@@ -407,10 +455,10 @@ func _test_i5_hitbox_matches_art() -> void:
 	_expect_problems("I5 a shifted hitbox", _mutated("birds.json", func(data: Array) -> void:
 		for point: Array in data[0]["hitbox"]:
 			point[1] = point[1] - 8), _i5_problems,
-		["goose fly_1: 79.6% of the hitbox's sample points lie on opaque art (needs 98%)", "goose fly_2: 72.5% of the hitbox's sample points lie on opaque art (needs 98%)"])
+		["goose fly_1: 81.8% of the hitbox's sample points lie on opaque art (needs 98%)", "goose fly_2: 76.8% of the hitbox's sample points lie on opaque art (needs 98%)"])
 	# A 20x16 box on the goose's body: all of it on the art, but most of the art outside it.
 	_expect_problems("I5 a hitbox covering little of the art", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-10, -2], [10, -2], [10, 14], [-10, 14]]), _i5_problems,
-		["goose fly_1: the hitbox covers 12.8% of the opaque art (needs 50%)", "goose fly_2: the hitbox covers 14.0% of the opaque art (needs 50%)"])
+		["goose fly_1: the hitbox covers 12.6% of the opaque art (needs 50%)", "goose fly_2: the hitbox covers 13.4% of the opaque art (needs 50%)"])
 
 
 ## I6: a bird has a penalty exactly when its escape does not count (the decoy); a decoy
@@ -427,7 +475,7 @@ func _test_i6_decoy() -> void:
 	_expect_problems("I6 a bird that scores nothing", _mutated("birds.json", func(data: Array) -> void: data[0]["points"] = 0), _i6_problems,
 		["goose: points 0 (every bird but the decoy scores)"])
 	_expect_problems("I6 a decoy shaped like a goose", _mutated("birds.json", func(data: Array) -> void: data[6]["sprite"] = "golden"), _i6_problems,
-		["decoy: its silhouette overlaps goose's by 0.99 (at most 0.85: a decoy differs by shape)", "decoy: its silhouette overlaps armored's by 0.93 (at most 0.85: a decoy differs by shape)",
+		["decoy: its silhouette overlaps goose's by 0.95 (at most 0.85: a decoy differs by shape)", "decoy: its silhouette overlaps armored's by 0.89 (at most 0.85: a decoy differs by shape)",
 		"decoy: its silhouette overlaps golden's by 1.00 (at most 0.85: a decoy differs by shape)"])
 
 
@@ -582,7 +630,7 @@ func _test_i14_chapters() -> void:
 	for index in range(1, 7):
 		dusk_levels.append("data/levels.json [-] chapter: dusk has no level %d (each chapter has levels 1..6)" % index)
 	_expect_load_errors("I14 a fifth chapter", _mutated("chapters.json", func(data: Array) -> void:
-		data.append({"id": "dusk", "name": "Dusk", "sky_tint": "#888888", "weather": "rain", "rival_linger_scale": 0.6})), dusk_levels)
+		data.append({"id": "dusk", "name": "Dusk", "backdrop": "night", "weather": "rain", "rival_linger_scale": 0.6})), dusk_levels)
 	_expect_load_errors("I14 a rival_linger_scale of 0", _mutated("chapters.json", func(data: Array) -> void: data[1]["rival_linger_scale"] = 0),
 		["data/chapters.json [noon] rival_linger_scale: 0.0 is outside (0.0, 1.0]"])
 	_expect_load_errors("I14 a rival_linger_scale above 1", _mutated("chapters.json", func(data: Array) -> void: data[0]["rival_linger_scale"] = 1.2),
@@ -728,6 +776,132 @@ func _test_i20_modes_are_fair() -> void:
 		data[1]["max_birds"] = 30
 		data[1]["spawn_interval"] = 0.1), func() -> Array[String]: return _i20_sim(Wave.for_mode)["problems"],
 		["time_attack: a perfect player kills goose only after it flees (at 6.00 s) in waves 1-16"])
+
+
+## I21: every hitbox stands for its drawn body, measured on the imported textures the game
+## draws: it covers at least HITBOX_BODY_COVER_MIN of each flap frame's opaque pixels, and
+## its area is at most HITBOX_BODY_AREA_MAX of theirs.
+func _test_i21_hitbox_covers_body() -> void:
+	_check(_i21_problems().is_empty(), "I21 every hitbox covers its bird's body", "\n".join(_i21_problems()))
+	# A 20x16 box on the goose's body: on the art, but most of the body outside it.
+	_expect_problems("I21 a hitbox covering little of the body", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-10, -2], [10, -2], [10, 14], [-10, 14]]), _i21_problems,
+		["goose fly_1: the hitbox covers 12.6% of the imported texture's opaque body (needs 60%)", "goose fly_2: the hitbox covers 13.5% of the imported texture's opaque body (needs 60%)"],
+		[])
+	# The whole sprite: it covers all of the body, but its area is far larger.
+	_expect_problems("I21 a hitbox larger than the body", _mutated("birds.json", func(data: Array) -> void: data[0]["hitbox"] = [[-48, -36], [48, -36], [48, 36], [-48, 36]]), _i21_problems,
+		["goose fly_1: the hitbox's area is 272.6% of the imported texture's opaque body (at most 100%)", "goose fly_2: the hitbox's area is 291.4% of the imported texture's opaque body (at most 100%)"],
+		[])
+
+
+## I22: every bird is readable on every backdrop: its outline (the stroke of its fly_1
+## silhouette, the first path of the art) has a WCAG contrast of at least
+## OUTLINE_CONTRAST_MIN against every colour of every backdrop's sky layer, and the night
+## (the last chapter's backdrop) keeps the birds as visible as the day: its weakest outline
+## contrast is not under the weakest of the other chapters' backdrops. The main fills'
+## contrasts are printed for the record. Each part is shown to fire on stand-in sky colours.
+func _test_i22_birds_readable() -> void:
+	var problems := _i22_problems(_sky_colours)
+	_check(problems.is_empty(), "I22 every bird's outline reads on every backdrop's sky, the night's included", "\n".join(problems))
+	for spec in Content.birds():
+		var art := _bird_colours(spec)
+		var fills := PackedStringArray()
+		for backdrop in _backdrop_ids():
+			var weakest := INF
+			for sky in _sky_colours(backdrop):
+				weakest = minf(weakest, _contrast(art[1], sky))
+			fills.append("%s %.2f" % [backdrop, weakest])
+		print("test_content: I22 %s outline #%s, fill #%s, weakest fill contrast per sky: %s" % [spec.id, art[0].to_html(false), art[1].to_html(false), ", ".join(fills)])
+	_check(Content.birds().all(func(spec: BirdSpec) -> bool: return _bird_colours(spec)[0] == Color.html("#1f1a2e")), "I22 every bird is outlined in the palette's ink", str(Content.birds().map(func(spec: BirdSpec) -> String: return _bird_colours(spec)[0].to_html(false))))
+	# A plum cloud in the sunset sky: too dark under every bird's ink outline.
+	var plum := Color.html("#5e4470")
+	var with_plum := func(backdrop: String) -> Array[Color]:
+		var colours := _sky_colours(backdrop)
+		if backdrop == "sunset":
+			colours.append(plum)
+		return colours
+	var expected: Array[String] = []
+	for spec in Content.birds():
+		expected.append("%s: its outline #1f1a2e on the sunset sky's #5e4470 is %.2f:1 (needs 3:1)" % [spec.id, _contrast(Color.html("#1f1a2e"), plum)])
+	_check(_matches(_i22_problems(with_plum), expected), "I22 a sky colour too dark for the outlines fires", "\n".join(_i22_problems(with_plum)))
+	# A night sky darker than the day's weakest, though still readable: the night rule alone.
+	var night: String = (Content.chapters().back() as ChapterSpec).backdrop
+	var dim := Color.html("#2f7fa8")
+	var dim_night := func(backdrop: String) -> Array[Color]:
+		if backdrop == night:
+			var dimmed: Array[Color] = [dim]
+			return dimmed
+		return _sky_colours(backdrop)
+	var day_weakest := INF
+	for backdrop in _backdrop_ids():
+		if backdrop != night:
+			for sky in _sky_colours(backdrop):
+				day_weakest = minf(day_weakest, _contrast(Color.html("#1f1a2e"), sky))
+	_check(_matches(_i22_problems(dim_night), ["night: its weakest outline contrast %.2f:1 is under the day backdrops' weakest %.2f:1 (the birds must read as well at night)" % [_contrast(Color.html("#1f1a2e"), dim), day_weakest]]),
+		"I22 a night dimmer than the day fires", "\n".join(_i22_problems(dim_night)))
+
+
+## The I22 problems, with `sky_of` (a backdrop id -> its sky colours) standing in for the art.
+func _i22_problems(sky_of: Callable) -> Array[String]:
+	var problems: Array[String] = []
+	var night: String = (Content.chapters().back() as ChapterSpec).backdrop
+	var weakest: Dictionary[String, float] = {}
+	for spec in Content.birds():
+		var outline: Color = _bird_colours(spec)[0]
+		for backdrop in _backdrop_ids():
+			var colours: Array[Color] = sky_of.call(backdrop)
+			for sky in colours:
+				var ratio := _contrast(outline, sky)
+				weakest[backdrop] = minf(weakest.get(backdrop, INF), ratio)
+				if ratio < OUTLINE_CONTRAST_MIN:
+					problems.append("%s: its outline #%s on the %s sky's #%s is %.2f:1 (needs %d:1)" % [spec.id, outline.to_html(false), backdrop, sky.to_html(false), ratio, roundi(OUTLINE_CONTRAST_MIN)])
+	var day := INF
+	for backdrop in weakest:
+		if backdrop != night:
+			day = minf(day, weakest[backdrop])
+	if weakest.has(night) and weakest[night] < day and weakest[night] >= OUTLINE_CONTRAST_MIN:
+		problems.append("%s: its weakest outline contrast %.2f:1 is under the day backdrops' weakest %.2f:1 (the birds must read as well at night)" % [night, weakest[night], day])
+	return problems
+
+
+## Every backdrop a chapter or a mode shows, in chapter order then the modes' new ones.
+func _backdrop_ids() -> Array[String]:
+	var ids: Array[String] = []
+	for chapter_spec in Content.chapters():
+		if not chapter_spec.backdrop in ids:
+			ids.append(chapter_spec.backdrop)
+	for mode in Content.modes():
+		for stage in mode.stages:
+			if not stage.backdrop in ids:
+				ids.append(stage.backdrop)
+	return ids
+
+
+## Every fill and gradient stop colour of backdrop `backdrop`'s sky layer.
+func _sky_colours(backdrop: String) -> Array[Color]:
+	var colours: Array[Color] = []
+	var text := FileAccess.get_file_as_string(Content.backdrop_path(backdrop, "sky"))
+	for found in RegEx.create_from_string("(?:fill|stop-color)=\"#([0-9a-f]{6})\"").search_all(text):
+		var colour := Color.html(found.get_string(1))
+		if not colour in colours:
+			colours.append(colour)
+	return colours
+
+
+## [outline, main fill] of the bird: the stroke and fill of the first path of its fly_1 art
+## (the silhouette).
+func _bird_colours(spec: BirdSpec) -> Array[Color]:
+	var text := FileAccess.get_file_as_string(spec.texture_path("fly_1"))
+	var found := RegEx.create_from_string("<path [^>]*fill=\"#([0-9a-f]{6})\" stroke=\"#([0-9a-f]{6})\"").search(text)
+	if found == null:
+		return [Color.TRANSPARENT, Color.TRANSPARENT]
+	return [Color.html(found.get_string(2)), Color.html(found.get_string(1))]
+
+
+## The WCAG contrast ratio of two sRGB colours.
+func _contrast(a: Color, b: Color) -> float:
+	var la := a.srgb_to_linear().get_luminance()
+	var lb := b.srgb_to_linear().get_luminance()
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
 
 
 ## The I20 simulation with `plan_of` (Wave.for_mode, or a stand-in) giving each mode's
@@ -981,6 +1155,48 @@ func _i5_problems() -> Array[String]:
 			if cover < HITBOX_COVER_MIN:
 				problems.append("%s %s: the hitbox covers %.1f%% of the opaque art (needs %d%%)" % [spec.id, frame, cover * 100.0, roundi(HITBOX_COVER_MIN * 100.0)])
 	return problems
+
+
+func _i21_problems() -> Array[String]:
+	var problems: Array[String] = []
+	for spec in Content.birds():
+		for frame in spec.frames():
+			if frame == "hit":
+				continue
+			var texture := load(spec.texture_path(frame)) as Texture2D
+			var image := texture.get_image() if texture != null else null
+			if image == null:
+				problems.append("%s %s: %s cannot be loaded as a texture" % [spec.id, frame, spec.texture_path(frame)])
+				continue
+			if image.is_compressed():
+				image.decompress()
+			var scale := Vector2(image.get_size()) / spec.size
+			var opaque := 0
+			var covered := 0
+			for y in image.get_height():
+				for x in image.get_width():
+					if image.get_pixel(x, y).a < OPAQUE_ALPHA:
+						continue
+					opaque += 1
+					if Geometry2D.is_point_in_polygon((Vector2(x, y) + Vector2(0.5, 0.5)) / scale - spec.size / 2.0, spec.hitbox):
+						covered += 1
+			# Opaque pixels in base units squared, against the hitbox polygon's area.
+			var body_area := opaque / (scale.x * scale.y)
+			var cover := float(covered) / opaque if opaque > 0 else 0.0
+			var area := _polygon_area(spec.hitbox) / body_area if body_area > 0.0 else INF
+			if cover < HITBOX_BODY_COVER_MIN:
+				problems.append("%s %s: the hitbox covers %.1f%% of the imported texture's opaque body (needs %d%%)" % [spec.id, frame, cover * 100.0, roundi(HITBOX_BODY_COVER_MIN * 100.0)])
+			if area > HITBOX_BODY_AREA_MAX:
+				problems.append("%s %s: the hitbox's area is %.1f%% of the imported texture's opaque body (at most %d%%)" % [spec.id, frame, area * 100.0, roundi(HITBOX_BODY_AREA_MAX * 100.0)])
+	return problems
+
+
+## The area of a simple polygon (the shoelace formula).
+func _polygon_area(polygon: PackedVector2Array) -> float:
+	var twice := 0.0
+	for i in polygon.size():
+		twice += polygon[i].cross(polygon[(i + 1) % polygon.size()])
+	return absf(twice) / 2.0
 
 
 func _i6_problems() -> Array[String]:

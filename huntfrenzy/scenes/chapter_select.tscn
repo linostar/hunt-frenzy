@@ -30,12 +30,12 @@ mouse_filter = 2
 
 [node name="Heading" type="Label" parent="Safe"]
 layout_mode = 1
+theme_type_variation = &"HeadingLabel"
 anchors_preset = -1
 anchor_right = 1.0
 offset_top = 4.0
 offset_bottom = 54.0
 grow_horizontal = 2
-theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
 theme_override_font_sizes/font_size = 36
 text = "Campaign"
 horizontal_alignment = 1

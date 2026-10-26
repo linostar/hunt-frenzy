@@ -1,11 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="72" viewBox="0 0 96 72">
-  <!-- First-pass goose, wings up (flap frame 1); faces right, centre (48, 36) is the bird's origin. -->
-  <path d="M12 36 L24 28 Q40 24 52 26 L60 24 Q64 30 70 30 L74 34 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#7a6a58" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M20 46 Q34 54 54 52 Q66 50 70 42 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#d8cfc0"/>
-  <path d="M12 36 L4 30 L6 40 L2 44 L14 44 Z" fill="#2b2622"/>
-  <path d="M58 30 Q62 18 72 14 Q80 10 86 14 Q90 18 86 22 Q78 22 74 26 Q70 32 70 36 Z" fill="#2b2622"/>
-  <path d="M86 16 L95 19 L86 22 Z" fill="#3b3430"/>
-  <path d="M74 18 Q78 24 74 26 Q71 22 74 18 Z" fill="#f4efe6"/>
-  <circle cx="81" cy="16" r="2" fill="#f4efe6"/>
-  <path d="M30 34 Q30 14 44 2 Q50 16 54 32 Z" fill="#9a8a76" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
+  <!-- Goose: brown body, dark neck and head, cream chinstrap, wings up (flap frame 1); faces right, centre (48, 36) is the bird's origin. -->
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M18 48 C30 55 58 56 71 46 C68 53 58 57 44 57 C30 57 22 53 18 48 Z" fill="#5e4d3e"/>
+  <path d="M26 31 C36 27 50 27 57 31 C48 30.5 36 31 26 34 Z" fill="#b8a58c"/>
+  <path d="M58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C68 40 62 35 58 30 Z" fill="#2b263b"/>
+  <path d="M76 15 C80 16 81.5 21 78.5 24.5 C75 23.5 73.5 19 76 15 Z" fill="#fbedcd"/>
+  <path d="M90 14 L95 17 L89 21 Z" fill="#1f1a2e"/>
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round"/>
+  <ellipse cx="84" cy="14" rx="1.8" ry="1.8" fill="#ffffff"/>
+  <ellipse cx="84.5" cy="14" rx="0.9" ry="0.9" fill="#1f1a2e"/>
+  <path d="M41 32 C42 27 41 23 38 21 C40 18 38 16 35 15 C37 13 36 11 34 10 C35 8 34 6 32 2 C46 9 53 20 53 32" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M50 30 C50 21 45 12 36 5 C44 10 48 18 47 30 Z" fill="#b8a58c"/>
 </svg>

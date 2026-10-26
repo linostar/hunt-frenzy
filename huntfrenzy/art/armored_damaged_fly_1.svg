@@ -1,15 +1,21 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="72" viewBox="0 0 96 72">
-  <!-- First-pass armored goose, damaged after its first hit, wings up (damaged flap frame 1): dented plate, cracked helmet; faces right, centre (48, 36) is the bird's origin. -->
-  <path d="M12 36 L24 28 Q40 24 52 26 L60 24 Q64 30 70 30 L74 34 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#5c6068" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M20 46 Q34 54 54 52 Q66 50 70 42 L72 46 Q66 56 52 57 L32 58 Q18 54 14 46 Z" fill="#b9bcc2"/>
-  <path d="M12 36 L4 30 L6 40 L2 44 L14 44 Z" fill="#2b2622"/>
-  <path d="M58 30 Q62 18 72 14 Q80 10 86 14 Q90 18 86 22 Q78 22 74 26 Q70 32 70 36 Z" fill="#2b2622"/>
-  <path d="M86 16 L95 19 L86 22 Z" fill="#3b3430"/>
-  <path d="M56 30 Q72 32 73 44 Q68 54 56 56 L60 46 L56 42 L61 38 Z" fill="#8d959e" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M62 36 L66 41 L63 46 L67 51" stroke="#2b2622" stroke-width="1.5" fill="none" stroke-linecap="round"/>
-  <path d="M71 18 Q73 7 82 8 Q88 9 88 14 L80 13 Z" fill="#8d959e" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M78 9 L80 13 L77 15" stroke="#2b2622" stroke-width="1.5" fill="none"/>
-  <circle cx="81" cy="17" r="2" fill="#f4efe6"/>
-  <path d="M30 34 Q30 14 44 2 Q50 16 54 32 Z" fill="#7d838c" stroke="#2b2622" stroke-width="2" stroke-linejoin="round"/>
-  <path d="M36 30 L46 28 M38 24 L48 24" stroke="#2b2622" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Armored goose after its first hit: dented, cracked armour, wings up (flap frame 1); faces right, centre (48, 36) is the bird's origin. -->
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M18 48 C30 55 58 56 71 46 C68 53 58 57 44 57 C30 57 22 53 18 48 Z" fill="#4f5d72"/>
+  <path d="M26 31 C36 27 50 27 57 31 C48 30.5 36 31 26 34 Z" fill="#b8c4d0"/>
+  <path d="M58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C68 40 62 35 58 30 Z" fill="#3a4a6e"/>
+  <path d="M76 15 C80 16 81.5 21 78.5 24.5 C75 23.5 73.5 19 76 15 Z" fill="#b8c4d0"/>
+  <path d="M90 14 L95 17 L89 21 Z" fill="#1f1a2e"/>
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round"/>
+  <ellipse cx="84" cy="14" rx="1.8" ry="1.8" fill="#ffffff"/>
+  <ellipse cx="84.5" cy="14" rx="0.9" ry="0.9" fill="#1f1a2e"/>
+  <path d="M73 14 C73 5 81 1 88 4 C92 6 93 10 92 14 C86 12 79 12 73 14 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M80 4 L82 8 L79 10 L81 13" fill="#6f7f94"/>
+  <path d="M81 2.5 L83 7 L79.5 9.5 L81.5 13" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M65 35 C69 32 75 36 74 44 C73 51 67 56 57 57 C62 50 64 42 65 35 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M67 41 C69 43 69 46 66 48 C67 45 67 43 67 41 Z" fill="#4f5d72"/>
+  <path d="M70 36 L68 41 L71 44 L67 50" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="71" cy="44" rx="1.2" ry="1.2" fill="#1f1a2e"/>
+  <path d="M41 32 C42 27 41 23 38 21 C40 18 38 16 35 15 C37 13 36 11 34 10 C35 8 34 6 32 2 C46 9 53 20 53 32" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M50 30 C50 21 45 12 36 5 C44 10 48 18 47 30 Z" fill="#b8c4d0"/>
 </svg>

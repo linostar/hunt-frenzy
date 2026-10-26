@@ -19,8 +19,12 @@ extends Node2D
 ## escaped: the score is recorded (a new best is saved at once) and the results screen
 ## opens. A campaign level has no escape limit: it plays all its waves (the boss level's
 ## last one is the boss flock) and then ends on the results screen, the level's stars and
-## best recorded and saved at once (Game.record_level). In a level the sky takes the
-## chapter's tint and the rival waits linger_time x the chapter's rival_linger_scale.
+## best recorded and saved at once (Game.record_level). In a level the chapter's backdrop
+## and weather show, and the rival waits linger_time x the chapter's rival_linger_scale. In
+## a mode each wave shows its stage (ModeSpec.stage_for: Endless walks dawn, noon, sunset,
+## night; Time Attack stays on noon); a new backdrop cross-fades in over BACKDROP_FADE_TIME
+## during the wave's lead-in, without pausing or delaying anything. The weather (Weather)
+## is drawn behind the birds and never touches their flight.
 ## A timed mode (Time Attack: ModeSpec.is_timed) has no escape limit (an escape only loses
 ## the bird's points) and ends after time_limit seconds of run_clock: game time from the
 ## run's start, frozen while the tree is paused (the pause menu, the rotate overlay), each
@@ -51,8 +55,10 @@ extends Node2D
 ## and a stolen splitter launches no goslings. With rival_steals off he only heckles. He
 ## heckles (a Rival.pick_line line in the bubble for HECKLE_TIME) on a miss, a combo
 ## rising to COMBO_HECKLE_MIN or more and a wave's end, at most once per cooldown, and on
-## every steal; the results screen shows one more line. Cues and the cooldown run on game
-## time, so a pause freezes them.
+## every steal; the results screen shows one more line. His pose follows the run: he
+## raises his gun while any cue runs, else he sulks for RIVAL_REACTION_TIME after each
+## scored kill and brags for as long after a miss heckle that showed, else he stands idle.
+## Cues, poses and the cooldown run on game time, so a pause freezes them.
 ## World holds the 960x540 base playfield, centred horizontally in the visible area;
 ## the sky and the grass stretch over the whole visible area. The HUD bar (a CanvasLayer)
 ## sits at the top of the safe area.
@@ -66,22 +72,27 @@ extends Node2D
 ## (the run seed, wave times, shot positions) to replay the run.
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
+const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
 const SHELL_TEXTURE := preload("res://art/shell.svg")
 const RIVAL_IDLE := preload("res://art/rival_idle.svg")
 const RIVAL_AIM := preload("res://art/rival_aim.svg")
+const RIVAL_SULK := preload("res://art/rival_sulk.svg")
+const RIVAL_BRAG := preload("res://art/rival_brag.svg")
 ## The 960x540 base the playfield is laid out in.
 const BASE_SIZE := Vector2(960, 540)
 const HUD_BAR_HEIGHT := 56.0
-## The grass line: grass.svg is solid from here down (_fit places it so), birds rise from
+## The grass line: the backdrop's grass is solid from here down (_fit places it so), birds rise from
 ## behind it, and a shot at or below it hits no bird (bird_at).
 const GRASS_Y := 440.0
-## How far grass.svg's blade tips reach above the grass line (the tile's solid part starts
+## How far the grass tile's blade tips reach above the grass line (the tile's solid part starts
 ## this far below its top).
 const GRASS_TIP := 24.0
 ## Where birds fly (World coordinates): below the HUD bar, above the grass line.
 const FIELD := Rect2(0, HUD_BAR_HEIGHT, 960, GRASS_Y - HUD_BAR_HEIGHT)
 ## Seconds between a wave's start and its first spawn.
 const WAVE_LEAD := 1.0
+## Seconds a new backdrop takes to fade in over the old one (within a wave's lead-in).
+const BACKDROP_FADE_TIME := 0.8
 const POPUP_COLOR := Color(1.0, 0.93, 0.6)
 const PENALTY_COLOR := Color(1.0, 0.45, 0.4)
 ## The pop-up of a hit that only damages a bird.
@@ -94,11 +105,13 @@ const SHELL_ICON_SIZE := Vector2(12, 28)
 ## a bigger pool (Endless reaches 72) shows one icon and the shells left ("x36"), so the
 ## bar never overflows whatever the pool.
 const SHELL_ICONS_MAX := 10
-const EMPTY_TINT := Color(1.0, 0.35, 0.3)
+const EMPTY_TINT := Color(1.0, 0.451, 0.4)
 ## A kill that raises the combo to this multiplier or more draws a heckle.
 const COMBO_HECKLE_MIN := 3
 ## Seconds a heckle stays in the rival's bubble.
 const HECKLE_TIME := 2.5
+## Seconds (run_clock) the rival sulks after a scored hit, or brags after a miss heckle.
+const RIVAL_REACTION_TIME := 1.2
 
 ## The mode (Endless, Time Attack), or null in a campaign level.
 var mode: ModeSpec
@@ -140,14 +153,20 @@ var _over := false
 var _rotated := false
 var _empty_tween: Tween
 var _bubble_tween: Tween
+## The backdrop fading in over _backdrop (null when none is), and its tween.
+var _next_backdrop: Backdrop
+var _backdrop_tween: Tween
 ## The run_clock of the last heckle shown (-INF before any).
 var _last_heckle := -INF
+## The rival's reaction (RIVAL_SULK or RIVAL_BRAG, null for none) and the run_clock it
+## lasts until; aiming takes precedence over it.
+var _reaction: Texture2D
+var _reaction_until := -INF
 
 @onready var _world: Node2D = $World
-@onready var _sky: TextureRect = $World/Sky
+@onready var _backdrop: Backdrop = $World/Backdrop
+@onready var _weather: Weather = $World/Weather
 @onready var _birds: Node2D = $World/Birds
-@onready var _grass: TextureRect = $World/Grass
-@onready var _ground: ColorRect = $World/Ground
 @onready var _popups: Node2D = $World/Popups
 @onready var _rival: TextureRect = $World/Rival
 @onready var _bubble: Label = $World/Bubble
@@ -225,6 +244,7 @@ func _process(delta: float) -> void:
 	_update_steals()
 	if _over:
 		return
+	_update_rival_pose()
 	if _next_spawn == wave.spawns.size() and _wave_birds_flying().is_empty():
 		if level != null and wave.index >= level.waves:
 			_end_run()
@@ -330,6 +350,33 @@ func is_rival_aiming() -> bool:
 	return _rival.texture == RIVAL_AIM
 
 
+## The rival's pose: "aim", "sulk" (after a scored hit), "brag" (after a miss heckle) or "idle".
+func rival_pose() -> String:
+	match _rival.texture:
+		RIVAL_AIM:
+			return "aim"
+		RIVAL_SULK:
+			return "sulk"
+		RIVAL_BRAG:
+			return "brag"
+	return "idle"
+
+
+## The backdrop shown, or fading in ("" before the run starts).
+func backdrop_id() -> String:
+	return _next_backdrop.id if _next_backdrop != null else _backdrop.id
+
+
+## True while a new backdrop fades in over the old one.
+func is_backdrop_fading() -> bool:
+	return _next_backdrop != null
+
+
+## The weather emitting ("" for none); tests turn it off with weather().set_weather("").
+func weather() -> Weather:
+	return _weather
+
+
 ## The heckle in the rival's bubble, or "" when it is hidden.
 func heckle_shown() -> String:
 	return _bubble.text if _bubble.visible else ""
@@ -351,7 +398,7 @@ func _start_run() -> void:
 		linger_scale = chapter.rival_linger_scale
 		run_seed = level.level_seed
 		scoring = Scoring.new(level.combo_cap)
-		_sky.modulate = chapter.sky_tint
+		_show_stage(chapter.backdrop, chapter.weather, 1)
 	else:
 		mode = Content.mode(str(args["mode"]))
 		if mode == null or problems > 0 or not args.get("seed") is int:
@@ -361,9 +408,9 @@ func _start_run() -> void:
 		scoring = Scoring.new(mode.combo_cap)
 	rival_lines = Content.rival_lines()
 	if level != null:
-		print("[Play] Run start: level %s (%s %d of %d), seed %d (%d waves%s, no escape limit, combo cap %d, %d shells per hit, rival steals on, linger x%.2f, aim %.2f s, heckle cooldown %.2f s, sky #%s, weather %s)" % [
+		print("[Play] Run start: level %s (%s %d of %d), seed %d (%d waves%s, no escape limit, combo cap %d, %d shells per hit, rival steals on, linger x%.2f, aim %.2f s, heckle cooldown %.2f s, backdrop %s, weather %s)" % [
 			level.id, chapter.name, level.index, Content.LEVELS_PER_CHAPTER, run_seed, level.waves, ", the last a boss flock" if level.is_boss() else "", level.combo_cap, level.shells_per_hit,
-			linger_scale, rival_lines.aim_time, rival_lines.cooldown, chapter.sky_tint.to_html(false), chapter.weather])
+			linger_scale, rival_lines.aim_time, rival_lines.cooldown, chapter.backdrop, chapter.weather])
 	else:
 		var ends := "time limit %.2f s, no escape limit" % mode.time_limit if mode.is_timed() else "escape limit %d" % mode.escape_limit
 		print("[Play] Run start: mode %s, seed %d (%s, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
@@ -394,6 +441,57 @@ func _start_wave(index: int) -> void:
 	var of_level := " (wave %d of %d%s, level %s)" % [index, level.waves, ", boss flock" if wave.boss else "", level.id] if level != null else _clock_note()
 	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f%s" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale, of_level])
 	set_shell_pool(wave.shells)
+	if mode != null:
+		var stage := mode.stage_for(index)
+		_show_stage(stage.backdrop, stage.weather, index)
+
+
+## Shows backdrop `to_backdrop` with weather `to_weather` from wave `wave_index` on: at once
+## for the run's first wave, else (a new backdrop) cross-fading in over BACKDROP_FADE_TIME
+## while the wave runs on. The weather switches at once (the old one's particles drift
+## out). Nothing changes when both are already showing. Logged.
+func _show_stage(to_backdrop: String, to_weather: String, wave_index: int) -> void:
+	var from := backdrop_id()
+	if to_backdrop == from and to_weather == _weather.id:
+		return
+	if _weather.id != to_weather:
+		_weather.set_weather(to_weather)
+	if to_backdrop == from:
+		print("[Play] Weather %s on backdrop %s from wave %d" % [to_weather, to_backdrop, wave_index])
+		return
+	if from == "":
+		if not _backdrop.show_backdrop(to_backdrop):
+			print("[Play] Backdrop %s could not be shown (reported); weather %s from wave %d" % [to_backdrop, to_weather, wave_index])
+			return
+		_fit()
+		print("[Play] Backdrop %s, weather %s from wave %d" % [to_backdrop, to_weather, wave_index])
+		return
+	if _next_backdrop != null:
+		_finish_backdrop_fade()
+	var next := BACKDROP_SCENE.instantiate() as Backdrop
+	_world.add_child(next)
+	_world.move_child(next, _backdrop.get_index() + 1)
+	if not next.show_backdrop(to_backdrop):
+		next.free()
+		return
+	_next_backdrop = next
+	next.modulate.a = 0.0
+	_fit()
+	_backdrop_tween = next.create_tween()
+	_backdrop_tween.tween_property(next, "modulate:a", 1.0, BACKDROP_FADE_TIME)
+	_backdrop_tween.tween_callback(_finish_backdrop_fade)
+	print("[Play] Backdrop %s -> %s, weather %s, cross-fading over %.2f s from wave %d" % [from, to_backdrop, to_weather, BACKDROP_FADE_TIME, wave_index])
+
+
+## The faded-in backdrop replaces the old one.
+func _finish_backdrop_fade() -> void:
+	if _backdrop_tween != null:
+		_backdrop_tween.kill()
+		_backdrop_tween = null
+	_next_backdrop.modulate.a = 1.0
+	_backdrop.queue_free()
+	_backdrop = _next_backdrop
+	_next_backdrop = null
 
 
 ## Gives the wave a fresh pool of `count` shells and shows it on the HUD: one icon per
@@ -433,7 +531,8 @@ func _on_shot(at: Vector2) -> void:
 	else:
 		scoring.miss()
 		print("[Play] Miss at (%.1f, %.1f): combo reset, score %d (wave %d at t %.2f, %d shells left)" % [at.x, at.y, scoring.score, wave.index, wave_clock, ammo.shells])
-		_heckle("miss")
+		if _heckle("miss"):
+			_react(RIVAL_BRAG, "brags after the miss")
 	if ammo.is_empty():
 		var fleeing := flying_birds()
 		for bird in fleeing:
@@ -472,6 +571,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	var awarded := scoring.hit(target.spec.points)
 	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier])
 	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): %d points x%d = %d, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.points, multiplier, awarded, scoring.score, wave.index, wave_clock, ammo.shells])
+	_react(RIVAL_SULK, "sulks at the %d points on %s #%d" % [awarded, target.spec.id, target.number])
 	if target.is_cued():
 		_cancel_cue(target, "shot by the player")
 	if scoring.multiplier >= COMBO_HECKLE_MIN and scoring.multiplier > multiplier:
@@ -574,20 +674,36 @@ func _clock_note() -> String:
 	return ", %.2f s left" % time_left() if is_timed() else ""
 
 
-## The rival raises his gun while any flying bird has an aim cue.
+## The rival raises his gun while any flying bird has an aim cue; otherwise he holds his
+## reaction (sulk or brag) until it runs out, then stands idle.
 func _update_rival_pose() -> void:
 	var aiming := flying_birds().any(func(bird: Bird) -> bool: return bird.is_cued())
-	_rival.texture = RIVAL_AIM if aiming else RIVAL_IDLE
+	if aiming:
+		_rival.texture = RIVAL_AIM
+	elif _reaction != null and run_clock < _reaction_until:
+		_rival.texture = _reaction
+	else:
+		_reaction = null
+		_rival.texture = RIVAL_IDLE
+
+
+## The rival reacts with `pose` (RIVAL_SULK or RIVAL_BRAG) for RIVAL_REACTION_TIME of game
+## time (logged as "[Play] Rival <what>").
+func _react(pose: Texture2D, what: String) -> void:
+	_reaction = pose
+	_reaction_until = run_clock + RIVAL_REACTION_TIME
+	_update_rival_pose()
+	print("[Play] Rival %s (wave %d at t %.2f)" % [what, wave.index, wave_clock])
 
 
 ## Shows a `category` line (Rival.pick_line) in the rival's bubble for HECKLE_TIME, unless
 ## the cooldown since the last heckle has not passed yet (Rival.may_heckle; steal lines
-## always show). Both are logged.
-func _heckle(category: String) -> void:
+## always show). Both are logged. Returns whether the line showed.
+func _heckle(category: String) -> bool:
 	if not Rival.may_heckle(category, run_clock, _last_heckle, rival_lines.cooldown):
 		print("[Play] Heckle (%s) skipped: cooldown, %.2f of %.2f s since the last (wave %d at t %.2f, rival score %d, %d stolen)" % [
 			category, run_clock - _last_heckle, rival_lines.cooldown, wave.index, wave_clock, rival_score, stolen])
-		return
+		return false
 	var line := Rival.pick_line(rival_lines.lines[category], run_seed, heckles)
 	heckles += 1
 	_last_heckle = run_clock
@@ -599,6 +715,7 @@ func _heckle(category: String) -> void:
 	_bubble_tween.tween_interval(HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
 	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen])
+	return true
 
 
 func _on_bird_escaped(bird: Bird) -> void:
@@ -715,9 +832,9 @@ func _hide_empty_cue() -> void:
 func _popup(point: Vector2, text: String, color := POPUP_COLOR) -> void:
 	var label := Label.new()
 	label.text = text
+	label.theme_type_variation = &"HeadingLabel"
 	label.add_theme_font_size_override(&"font_size", 26)
 	label.add_theme_color_override(&"font_color", color)
-	label.add_theme_color_override(&"font_outline_color", Color(0.17, 0.15, 0.13))
 	label.add_theme_constant_override(&"outline_size", 6)
 	_popups.add_child(label)
 	label.position = point - label.get_combined_minimum_size() / 2.0
@@ -745,19 +862,17 @@ func _update_hud() -> void:
 
 
 ## Lays the scene out in the visible area: the base playfield centred horizontally, the
-## sky and grass across the whole width, the ground down to the bottom, the HUD bar at
-## the top of the safe area and the shot surface below it.
+## backdrop (and one fading in) and the weather across the whole visible area, the grass
+## down to the bottom, the HUD bar at the top of the safe area and the shot surface below it.
 func _fit() -> void:
 	var shown := _game.visible_rect()
 	var safe := _game.safe_rect()
 	_world.position = Vector2(shown.position.x + (shown.size.x - BASE_SIZE.x) / 2.0, shown.position.y)
-	var left := shown.position.x - _world.position.x
-	_sky.position = Vector2(left, 0.0)
-	_sky.size = shown.size
-	_grass.position = Vector2(left, GRASS_Y - GRASS_TIP)
-	_grass.size = Vector2(shown.size.x, _grass.texture.get_height())
-	_ground.position = Vector2(left, _grass.position.y + _grass.size.y - 1.0)
-	_ground.size = Vector2(shown.size.x, maxf(0.0, shown.end.y - _ground.position.y))
+	var local := Rect2(shown.position - _world.position, shown.size)
+	for backdrop: Backdrop in [_backdrop, _next_backdrop]:
+		if backdrop != null:
+			backdrop.fit(local, GRASS_Y - GRASS_TIP)
+	_weather.fit(local)
 	_bar.position = safe.position
 	_bar.size = Vector2(safe.size.x, HUD_BAR_HEIGHT)
 	var top := safe.position.y + HUD_BAR_HEIGHT

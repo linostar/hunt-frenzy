@@ -1,0 +1,5 @@
+config_version=5
+
+[application]
+
+config/name="palette_fixture_bad_palette"

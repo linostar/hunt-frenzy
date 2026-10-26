@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bc5elrokl408w"
-path="res://.godot/imported/grass.svg-30acf7f19c3ce5526b2289984067480a.ctex"
+uid="uid://bueaxv8gv8m0e"
+path="res://.godot/imported/weather_mist.svg-6a27d19cd2f2ecbaafba9aa225c9e706.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/grass.svg"
-dest_files=["res://.godot/imported/grass.svg-30acf7f19c3ce5526b2289984067480a.ctex"]
+source_file="res://art/weather_mist.svg"
+dest_files=["res://.godot/imported/weather_mist.svg-6a27d19cd2f2ecbaafba9aa225c9e706.ctex"]
 
 [params]
 

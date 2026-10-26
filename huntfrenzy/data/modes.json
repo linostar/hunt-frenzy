@@ -21,7 +21,14 @@
     "shells_per_hit": 3,
     "combo_cap": 5,
     "escape_limit": 10,
-    "rival_steals": true
+    "rival_steals": true,
+    "backdrops": [
+      {"backdrop": "dawn", "weather": "mist"},
+      {"backdrop": "noon", "weather": "wind"},
+      {"backdrop": "sunset", "weather": "rain"},
+      {"backdrop": "night", "weather": "snow"}
+    ],
+    "backdrop_waves": 3
   },
   {
     "id": "time_attack",
@@ -45,6 +52,10 @@
     "shells_per_hit": 2,
     "combo_cap": 8,
     "time_limit": 60,
-    "rival_steals": false
+    "rival_steals": false,
+    "backdrops": [
+      {"backdrop": "noon", "weather": "wind"}
+    ],
+    "backdrop_waves": 1
   }
 ]

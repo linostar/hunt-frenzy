@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="160" height="60" viewBox="0 0 160 60">
+  <!-- Mist: one soft puff drifting over the marsh (CPUParticles2D texture, low alpha). -->
+  <path d="M10 44 C6 30 24 22 38 28 C44 12 74 8 86 24 C98 12 128 14 132 30 C150 28 158 44 146 50 C110 56 50 56 10 44 Z" fill="#ffffff"/>
+</svg>

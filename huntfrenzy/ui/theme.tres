@@ -1,0 +1,132 @@
+[gd_resource type="Theme" load_steps=11 format=3]
+
+[ext_resource type="FontFile" path="res://ui/fonts/LilitaOne-Regular.ttf" id="1_display"]
+[ext_resource type="FontFile" path="res://ui/fonts/Nunito-wght.ttf" id="2_body"]
+
+[sub_resource type="FontVariation" id="FontVariation_body"]
+base_font = ExtResource("2_body")
+variation_opentype = {
+2003265652: 650
+}
+spacing_top = -2
+spacing_bottom = -2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_normal"]
+content_margin_left = 14.0
+content_margin_top = 5.0
+content_margin_right = 14.0
+content_margin_bottom = 7.0
+bg_color = Color(0.941, 0.541, 0.141, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 6
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hover"]
+content_margin_left = 14.0
+content_margin_top = 5.0
+content_margin_right = 14.0
+content_margin_bottom = 7.0
+bg_color = Color(0.949, 0.714, 0.196, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 6
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pressed"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 4.0
+bg_color = Color(0.788, 0.541, 0.118, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled"]
+content_margin_left = 14.0
+content_margin_top = 5.0
+content_margin_right = 14.0
+content_margin_bottom = 7.0
+bg_color = Color(0.31, 0.365, 0.447, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 6
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_focus"]
+draw_center = false
+border_width_left = 4
+border_width_top = 4
+border_width_right = 4
+border_width_bottom = 4
+border_color = Color(1, 1, 1, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+expand_margin_left = 5.0
+expand_margin_top = 5.0
+expand_margin_right = 5.0
+expand_margin_bottom = 5.0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 12.0
+content_margin_top = 12.0
+content_margin_right = 12.0
+content_margin_bottom = 12.0
+bg_color = Color(0.169, 0.149, 0.231, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.984, 0.929, 0.804, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[resource]
+default_font = SubResource("FontVariation_body")
+default_font_size = 20
+Button/colors/font_color = Color(0.122, 0.102, 0.18, 1)
+Button/colors/font_disabled_color = Color(0.816, 0.765, 0.902, 1)
+Button/colors/font_focus_color = Color(0.122, 0.102, 0.18, 1)
+Button/colors/font_hover_color = Color(0.122, 0.102, 0.18, 1)
+Button/colors/font_hover_pressed_color = Color(0.122, 0.102, 0.18, 1)
+Button/colors/font_pressed_color = Color(0.122, 0.102, 0.18, 1)
+Button/fonts/font = ExtResource("1_display")
+Button/styles/disabled = SubResource("StyleBoxFlat_disabled")
+Button/styles/focus = SubResource("StyleBoxFlat_focus")
+Button/styles/hover = SubResource("StyleBoxFlat_hover")
+Button/styles/hover_pressed = SubResource("StyleBoxFlat_pressed")
+Button/styles/normal = SubResource("StyleBoxFlat_normal")
+Button/styles/pressed = SubResource("StyleBoxFlat_pressed")
+HeadingLabel/base_type = &"Label"
+HeadingLabel/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+HeadingLabel/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
+HeadingLabel/constants/outline_size = 8
+HeadingLabel/fonts/font = ExtResource("1_display")
+Label/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+Panel/styles/panel = SubResource("StyleBoxFlat_panel")

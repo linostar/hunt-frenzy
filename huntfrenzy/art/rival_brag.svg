@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="56" height="88" viewBox="0 0 56 88">
+  <!-- The rival hunter (brag): blaze-orange cap, red plaid coat; laughing, gun on his shoulder, thumb up. Faces right, stands on the bank. -->
+  <path d="M19 58 L27 58 L27 82 L19 82 Z" fill="#3a4a6e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M29 58 L37 58 L37 82 L29 82 Z" fill="#3a4a6e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M17 81 L28 81 L28 87 L14 87 C14 84 15 82 17 81 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M29 81 L40 81 C42 82 43 84 43 87 L29 87 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M15 32 C15 28 20 26 28 26 C36 26 41 28 41 32 L42 60 C36 62 20 62 14 60 Z" fill="#c8323a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M15.5 40 L41 40 M15 50 L41.5 50 M22 27.5 L21 60.5 M34 27.5 L35 60.5" fill="none" stroke="#6e2028" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M15 32 C15 28 20 26 28 26 C36 26 41 28 41 32 L42 60 C36 62 20 62 14 60 Z" fill="#c8323a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" fill-opacity="0"/>
+  <path d="M23 27 L28 33 L33 27 Z" fill="#fbedcd" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M13.1 22.4 L2.0 5.0" fill="none" stroke="#1f1a2e" stroke-width="5.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M13.1 22.4 L2.0 5.0" fill="none" stroke="#6f7f94" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M20.7 28.3 L15.0 21.2 L11.3 23.6 L15.3 31.7 Z" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M40 31 C46 28 48 20 47 13" fill="none" stroke="#1f1a2e" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 31 C46 28 48 20 47 13" fill="none" stroke="#c8323a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 32 C10 34 9 28 12 24" fill="none" stroke="#1f1a2e" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M16 32 C10 34 9 28 12 24" fill="none" stroke="#c8323a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="12" cy="24" rx="3" ry="3" fill="#e8b48a" stroke="#1f1a2e" stroke-width="2.5"/>
+  <path d="M45 11 L45 5 C46 3.5 49 3.5 49 5.5 L49 11 Z" fill="#e8b48a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M43 12 C43 8 51 8 51 12 C51 17 43 17 43 12 Z" fill="#e8b48a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M19 18 C19 11 24 9 29 9 C35 9 39 12 39 18 C39 24 35 28 29 28 C23 28 19 24 19 18 Z" fill="#e8b48a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M37 17 C41 17 42 21 38 22 Z" fill="#e8b48a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="20" cy="19" rx="2" ry="3" fill="#e8b48a" stroke="#1f1a2e" stroke-width="2.5"/>
+  <path d="M29 24 C31 22 35 22 37 24 C35 25 31 25 29 24 Z" fill="#5e4d3e"/>
+  <path d="M18 13 C17 6 23 1.5 29 1.5 C36 1.5 40 6 39 12 Z" fill="#f08a24" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M35 10 L50 12 C48 15 40 15 35 13 Z" fill="#f08a24" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M22 6 C24 3.5 28 2.5 31 3.5 C27 4.5 25 6 24 9 Z" fill="#ffd2a8"/>
+  <path d="M30 16 C31.5 14 33.5 14 35 16" fill="none" stroke="#1f1a2e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M29 25 C30 30 35 30 36 24 Z" fill="#1f1a2e"/>
+  <path d="M30.5 25 L35 24.7 L34.6 26 L31 26.2 Z" fill="#ffffff"/>
+</svg>

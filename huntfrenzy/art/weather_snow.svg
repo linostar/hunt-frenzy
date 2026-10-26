@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Snow: one flake (CPUParticles2D texture). -->
+  <path d="M8 1.5 L8 14.5 M2.4 4.8 L13.6 11.2 M2.4 11.2 L13.6 4.8" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
+  <ellipse cx="8" cy="8" rx="2.6" ry="2.6" fill="#ffffff"/>
+</svg>

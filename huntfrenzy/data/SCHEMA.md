@@ -67,7 +67,9 @@ them so they match. Do not leave the code working around the difference.
   `hits_needed = hp + split_count` (each split child takes one hit, I7) and 0 for a decoy (never to be shot).
 - **Art**: a bird's sprite is `res://art/<sprite>_fly_1.svg` and `_fly_2.svg` (flap frames), `_hit.svg` (the killed
   frame), plus `_damaged_fly_1.svg` and `_damaged_fly_2.svg` when `hp > 1`. Each is drawn facing right, its centre the
-  bird's origin, scaled to `size`.
+  bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
+  `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds). Every colour in
+  the art comes from `art/palette.hex` (`tools/check_palette.gd`).
 
 ---
 
@@ -77,8 +79,8 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 |---|---|---|---|
 | `id` | string | snake_case | `dawn`, `noon`, `sunset`, `night`. |
 | `name` | string | 1..26 chars | Display name. |
-| `sky_tint` | string | `"#rrggbb"`, lowercase hex | The play scene's placeholder sky tint (the art pass draws real backdrops). |
-| `weather` | string | `"mist" \| "wind" \| "rain" \| "snow"` (`Content.WEATHERS`) | The chapter's weather (logged; the art pass draws it). |
+| `backdrop` | string | snake_case backdrop id | The chapter's backdrop: its layers (art) must exist (I3). |
+| `weather` | string | `"mist" \| "wind" \| "rain" \| "snow"` (`Content.WEATHERS`) | The weather drawn over the backdrop (visual only: it never changes a bird's flight, hitbox or timing). |
 | `rival_linger_scale` | float | (0, 1]: above 0, at most 1 | The rival steals after `linger_time x` this in the chapter's levels; at most the chapter before's (I14). |
 
 ## birds.json
@@ -126,6 +128,10 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `escape_limit` | int | 1..100 | *Exactly one of `escape_limit` and `time_limit`* (below). Counted escapes that end a run (stolen birds count). |
 | `time_limit` | float | 10..600 | *Exactly one of `escape_limit` and `time_limit`* (below). Seconds a run lasts. |
 | `rival_steals` | bool | | Whether the rival steals birds left flying past their `linger_time` (Endless, Campaign); false: he only heckles (Time Attack). No default. |
+| `backdrops` | array of object | non-empty | The run's looks in order (`ModeSpec.stages`): each `backdrop_waves` waves long, the last one held from then on. |
+| `backdrops[].backdrop` | string | snake_case backdrop id | A backdrop whose layers exist (I3), as a chapter's. |
+| `backdrops[].weather` | string | `Content.WEATHERS` | The weather drawn over it. |
+| `backdrop_waves` | int | 1..1000 | Waves each backdrop lasts before the next cross-fades in (during that wave's lead-in, without delaying it). |
 
 **How a run ends** (the one per-mode field rule): a mode has exactly one of `escape_limit` and `time_limit`. Both
 is an error (`data/modes.json [<id>] time_limit: not allowed with escape_limit (...)`), and so is neither
@@ -185,7 +191,7 @@ A single object (not an array):
 
 ## Invariants (`tools/test_content.gd` must check all of these)
 I1-I4 and I13-I15 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
-(no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I20 are checked only by
+(no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I22 are checked only by
 `test_content.gd`, against the real data and on a malformed copy each (with the loader quiet, so the invariant's own
 check is what catches it; I17 and I20's growth and shell parts on a stand-in schedule, since the formulas and
 `shells_per_hit >= 1` always hold them). A loader
@@ -198,21 +204,23 @@ against a fallback value.
   at most once and has a bird from wave 1. `rival_lines.json` is a non-empty object with exactly `aim_time`,
   `cooldown` and `lines`, and `lines` holds exactly the five categories.
 - **I2** Every field has its type and lies in its range or enum above (every rival line is a string of 1..40
-  characters; `sky_tint` is `#rrggbb`).
+  characters; a backdrop id is snake_case).
 - **I3** Cross-references resolve: a bird's and a level's `chapter`, `birds[].bird`, `mix[].bird`, `boss.mix[].bird`,
   `golden_bird`, `splits_into`; every sprite has its `fly_1`, `fly_2` and `hit` frames, plus `damaged_fly_1` and
-  `damaged_fly_2` when `hp > 1`.
+  `damaged_fly_2` when `hp > 1`; every backdrop (a chapter's, a mode's `backdrops[].backdrop`) has each of its layers
+  (`unknown backdrop '<id>' (no res://art/backdrops/<id>_<layer>.svg)`, one line per missing layer).
 - **I4** Every hitbox has at least 3 points, all inside its sprite (`|x| <= size.x / 2`, `|y| <= size.y / 2`), and is a
   simple polygon (no two non-adjacent edges touch or cross).
 - **I5** Every hitbox matches its art, sampled once per base unit on each flap frame (damaged ones included), a pixel
   counting as art when its alpha is >= 0.5: at least 98% of the points inside the hitbox lie on the art (the rest is
   anti-aliasing along the outline), and the hitbox covers at least 50% of the art's points (the real art measures
-  60-80%: the flapping wings, beaks and tails lie outside every hitbox; a box on the body alone covers well under a
+  63-74%: the flapping wings, beaks and tails lie outside every hitbox; a box on the body alone covers well under a
   third).
 - **I6** A bird has a `penalty` exactly when its `escape_counts` is false (the decoy). A decoy has `points` 0, `hp` 1
   and no split; every other bird has `points >= 1`. The decoy's silhouette differs from every other type's by shape:
   the intersection over union of their opaque `fly_1` masks (each sampled on a 48x36 grid across its own sprite) is at
-  most 0.85 (a recoloured copy of a shape scores 0.9 or more).
+  most 0.85 (a recoloured copy of a shape scores about 0.9 or more: the armored and golden geese against the goose
+  score 0.89-1.00).
 - **I7** A bird with `splits_into` has `hp` 1 (its first hit splits it). Its child has `hp` 1, does not split, is no
   decoy, is smaller on both axes and faster than it, and is in no mode's or level's mix (the boss flock's included)
   and no `golden_bird` (it only comes from splits).
@@ -258,6 +266,17 @@ against a fallback value.
   child's from its parent's kill). The perfect player shoots one shot every 0.35 s, each bird the moment its whole
   hitbox is above the grass line (to the frame), in the order the birds come into the field (a split child comes
   in where its parent was killed), every hit a hit, never the decoy.
+- **I21** Every hitbox stands for its drawn body, measured on each flap frame's imported texture (the pixels the game
+  draws, `svg/scale` 3; a pixel counting as body when its alpha is >= 0.5): the hitbox covers at least 60% of the
+  opaque pixels, and its area is at most 100% of theirs (so it never claims more than the body). The real art
+  measures 62-74% (the armored goose's helmeted head, the golden goose's sparkles and the flapping wings lie outside).
+- **I22** Every bird reads on every backdrop: its outline (the stroke of the first path of its `fly_1` art, the
+  silhouette; the palette's ink `#1f1a2e` for every bird) has a WCAG contrast of at least 3:1 against every fill and
+  gradient-stop colour of every backdrop's sky layer (each chapter's and each mode stage's), and the night (the last
+  chapter's backdrop) keeps the birds as visible as the day: its weakest outline contrast is not under the weakest of
+  the other backdrops (real art: sunset's violet 4.00:1 is the day's weakest, the night's sky 4.06:1). The main fills'
+  contrasts are printed for the record (a sky-coloured bird such as the golden goose on the sunset sky relies on its
+  outline).
 
 ## Current content
 | bird | chapter | pattern | speed | flee | linger | points | hp | special | Endless |
@@ -270,7 +289,8 @@ against a fallback value.
 | golden | dawn | rise | 240 | 4.0 | 2.5 | 500 | 1 | | 8% of slots from wave 2 |
 | decoy | sunset | rise | 120 | 7.0 | 4.0 | 0 | 1 | penalty 200, escape not counted, never stolen (the rival's pigeon in a top hat) | wave 5+, weight 2 |
 
-Chapters: dawn (mist, rival linger x1.0), noon (wind, x0.9), sunset (rain, x0.8), night (snow, x0.7); dawn introduces
+Chapters: dawn (backdrop dawn, mist, rival linger x1.0), noon (noon, wind, x0.9), sunset (sunset, rain, x0.8), night
+(night, snow, x0.7); dawn introduces
 the goose and the golden goose, noon the armored goose, sunset the splitter (and its gosling) and the decoy, night the
 zigzag swift.
 
@@ -286,13 +306,14 @@ Golden chance 0.08 per slot everywhere but dawn_1 (0: its first wave is three pl
 
 Endless: 2 birds in wave 1, one more per wave up to 8 (wave 7), speed +0.06 per wave up to x1.6 (wave 11), a spawn
 every 1.2 s, 3 shells per hit needed, combo cap 5, the run ends at 10 counted escapes (stolen birds included), rival
-steals on (retuned in step 6 from 6 birds at most (wave 5), +0.08 speed to x1.6 (wave 9) and a spawn every 1.4 s, so
+steals on; backdrops dawn (mist), noon (wind), sunset (rain), then night (snow), 3 waves each, night held from wave 10 (retuned in step 6 from 6 birds at most (wave 5), +0.08 speed to x1.6 (wave 9) and a spawn every 1.4 s, so
 the ramp keeps growing through wave 11; I20's perfect player still kills every bird at least 0.8 s before its
 deadline, the gosling's linger the tightest).
 
 Time Attack: 60 s, 3 birds in wave 1, one more per wave up to 8 (wave 6), speed +0.06 per wave up to x1.5, a spawn
 every 0.9 s, 2 shells per hit needed (a full pool every wave), combo cap 8; goose from wave 1, armored from 2, zigzag
-and decoy from 3, splitter from 4, golden 10% of slots from wave 2; no escape limit, rival steals off (he heckles).
+and decoy from 3, splitter from 4, golden 10% of slots from wave 2; no escape limit, rival steals off (he heckles); the
+noon backdrop with its wind throughout.
 
 Rival: aim 1.0 s (so every cue ends at least 0.5 s before the bird flees: the gosling's 1.5 + 1.0 against its 3.0),
 heckle cooldown 4.0 s; 5 miss, 4 combo, 4 wave_end, 5 steal and 4 results lines, the longest 40 characters.
