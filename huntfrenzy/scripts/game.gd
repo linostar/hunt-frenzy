@@ -164,7 +164,7 @@ const SFX_BUS := &"SFX"
 ## The game's sound effects: audio/sfx/<id>.wav (tools/sfx.py EFFECTS makes one per id).
 const SFX_PATH := "res://audio/sfx/%s.wav"
 const SFX_IDS: Array[StringName] = [
-	&"shot", &"empty_click", &"refused", &"hit", &"armored_clank", &"armored_kill", &"split_pop",
+	&"shot", &"empty_click", &"out_of_shells", &"hit", &"armored_clank", &"armored_kill", &"split_pop",
 	&"golden_chime", &"decoy_penalty", &"escape", &"wave_start", &"wave_clear", &"wave_lost", &"combo_up",
 	&"rival_aim", &"rival_steal", &"countdown_tick", &"time_up", &"star", &"new_best", &"ui_tap", &"pause", &"resume",
 ]

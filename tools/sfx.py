@@ -212,8 +212,8 @@ def fx_empty_click(rng):
     return place(buf, ping(2100.0, 0.025, 140.0, STEEL), 0.045, 0.25)
 
 
-def fx_refused(rng):
-    """The last shell fired (the gun refuses any more shots, the birds flee): a dull double buzz."""
+def fx_out_of_shells(rng):
+    """The last shell fired (the pool is dry, the birds flee): a dull double buzz."""
     one = lowpass(sweep(150.0, 140.0, 0.08, square, 0.004, 0.03), [800.0] * int(0.08 * RATE))
     return place(list(one), one, 0.11)
 
@@ -360,7 +360,7 @@ def fx_resume(rng):
 EFFECTS = {
     "shot": (fx_shot, 0.85),
     "empty_click": (fx_empty_click, 0.5),
-    "refused": (fx_refused, 0.22),
+    "out_of_shells": (fx_out_of_shells, 0.22),
     "hit": (fx_hit, 0.6),
     "armored_clank": (fx_armored_clank, 0.55),
     "armored_kill": (fx_armored_kill, 0.65),

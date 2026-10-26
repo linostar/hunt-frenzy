@@ -74,7 +74,7 @@ extends Node2D
 ## kill of an armored bird "armored_kill", a splitter "split_pop", the run's golden bird
 ## "golden_chime"; "armored_clank" for a hit short of the bird's hp, "decoy_penalty" for the
 ## decoy, "combo_up" when the combo rises; nothing more for a miss), and the shot that uses
-## the last shell then "refused" (the gun refuses any more: the birds flee); a shot with no
+## the last shell then "out_of_shells" (the pool is dry: the birds flee); a shot with no
 ## shells plays only "empty_click". A wave's first spawn plays "wave_start", a cleared wave
 ## "wave_clear", a lost Time Attack wave "wave_lost"; a counted escape "escape"; the rival's
 ## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
@@ -573,7 +573,7 @@ func _on_shot(at: Vector2) -> void:
 		if _heckle("miss"):
 			_react(RIVAL_BRAG, "brags after the miss")
 	if ammo.is_empty():
-		_game.play_sfx(&"refused")
+		_game.play_sfx(&"out_of_shells")
 		var fleeing := flying_birds()
 		for bird in fleeing:
 			bird.flee()

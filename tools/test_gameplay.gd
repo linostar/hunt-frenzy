@@ -4059,8 +4059,8 @@ func _test_audio_every_event_sound() -> void:
 	play.set_shell_pool(1)
 	shot = (play.get_node("ShotInput") as ShotInput).shot
 	var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
-	_check(last_shot.slice(0, 2) == [&"shot", &"heckle_miss"] and last_shot.count(&"refused") == 1 and last_shot.find(&"refused") < last_shot.find(&"wave_lost"),
-		"the shot that uses the last shell plays refused: the gun takes no more", str(last_shot))
+	_check(last_shot.slice(0, 2) == [&"shot", &"heckle_miss"] and last_shot.count(&"out_of_shells") == 1 and last_shot.find(&"out_of_shells") < last_shot.find(&"wave_lost"),
+		"the shot that uses the last shell plays out_of_shells", str(last_shot))
 	_check(last_shot.count(&"wave_lost") == 1 and play.wave.index == 2, "a lost Time Attack wave plays wave_lost", str(last_shot))
 	# A button press plays the tap; the results play the rival's blurt, a sound per star and the new best.
 	_game.goto(GameState.Flow.TITLE)
