@@ -4095,7 +4095,7 @@ func _test_audio_heckle_blurts() -> void:
 	_check(plan.size() == 5 and _plan_text(plan) == _plan_text(again), "the same line always gives the same blurt, a syllable per word", _plan_text(plan))
 	_check(GameState.blurt_plan("miss", "Hey").size() == 1 and GameState.blurt_plan("miss", "one two three four five six seven eight nine").size() == GameState.BLURT_SYLLABLES_MAX,
 		"a blurt has one syllable per word, at most BLURT_SYLLABLES_MAX", "%d, %d" % [GameState.blurt_plan("miss", "Hey").size(), GameState.blurt_plan("miss", "one two three four five six seven eight nine").size()])
-	_check(_plan_text(plan) != _plan_text(GameState.blurt_plan("miss", "Nice shot... at the ducks!")), "another line gives another blurt", _plan_text(plan))
+	_check(_plan_text(plan) != _plan_text(GameState.blurt_plan("miss", "Nice shot... at the swans!")), "another line gives another blurt", _plan_text(plan))
 	var texts: Array[String] = []
 	for category in RivalLines.CATEGORIES:
 		var voiced := GameState.blurt_plan(category, line)
@@ -4233,7 +4233,8 @@ func _test_pause_holds_sounds_and_ducks_music() -> void:
 	_check(_game.audio_paused and _game.held_sounds >= 1 and held.size() == _game.held_sounds and held.any(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
 		"pausing holds the sound in flight", "held %d: %s" % [_game.held_sounds, held.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path)])
 	_check(pause_sound.size() == 1 and not pause_sound[0] in held, "the pause's own sound plays", str(pause_sound))
-	_check(absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01 and _game.music_track == "endless", "pausing ducks the music, which keeps playing",
+	_check(absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01 and AudioServer.get_bus_volume_db(music_bus) <= full - 6.0 and _game.music_track == "endless",
+		"pausing ducks the music (at least 6 dB quieter), which keeps playing",
 		"%.2f dB (full %.2f), %s" % [AudioServer.get_bus_volume_db(music_bus), full, _game.music_track])
 	_check_logged(from, "^\\[Audio\\] Paused: \\d+ sounds held, \\d+ blurt syllables waiting, music ducked by 12 dB$", "the audio pause is logged")
 	for i in 60:
