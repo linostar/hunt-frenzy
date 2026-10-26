@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Validation gate: asset import, project check (touch-first and landscape rules +
+# Validation gate: sound and music checks (the committed audio matches tools/sfx.py and
+# tools/music.py), asset import, project check (touch-first and landscape rules +
 # strict script compile) and its violation fixtures, palette check (every colour from
 # art/palette.hex) and its fixtures, content tests (data/SCHEMA.md invariants, art
 # included), headless gameplay tests, headless run of the main scene. Exits non-zero on the first failure and points at
@@ -15,7 +16,7 @@ mkdir -p "$LOG_DIR"
 
 fail() {
   echo "FAIL $1 (log: $2)" >&2
-  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main" "$2" >&2 || true
+  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main|sfx|music" "$2" >&2 || true
   exit 1
 }
 
@@ -49,6 +50,16 @@ run_script() {
     fail "$name" "$log"
   fi
 }
+
+# The sound effects must be byte-identical to their synth (tools/sfx.py), and the music
+# loops must match their recorded render, MP3 bytes and loop flags (tools/music.lock.json;
+# neither check needs an encoder).
+if ! python3 tools/sfx.py --check >"$LOG_DIR/sfx.log" 2>&1 || ! grep -q "^sfx: OK" "$LOG_DIR/sfx.log"; then
+  fail "sound check" "$LOG_DIR/sfx.log"
+fi
+if ! python3 tools/music.py --check >"$LOG_DIR/music.log" 2>&1 || ! grep -q "^music: OK" "$LOG_DIR/music.log"; then
+  fail "music check" "$LOG_DIR/music.log"
+fi
 
 # On a fresh clone (no import cache), and in an existing checkout after new or changed
 # assets arrive (a pull, a branch switch), the first import can report errors for
@@ -160,7 +171,7 @@ done
 # a malformed copy.
 run_script test_content "$LOG_DIR/content.log"
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
-summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
+summary="$(grep "^sfx: OK" "$LOG_DIR/sfx.log"); $(grep "^music: OK" "$LOG_DIR/music.log"); $(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
 # The main scene (the title) runs 120 frames (2 s at 60 fixed fps) by default; run_main
 # requires the flow state to match the running scene.
 RUN_FRAMES="${RUN_FRAMES:-120}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60
