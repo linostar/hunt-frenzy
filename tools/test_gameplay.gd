@@ -202,6 +202,10 @@ func _tests() -> Array[Callable]:
 		_test_time_attack_clock_ends_exactly,
 		_test_time_attack_pause_freezes_clock,
 		_test_time_attack_waves_on_clear,
+		_test_time_attack_lost_wave_starts_next_at_once,
+		_test_time_attack_lost_wave_counts_skipped_as_escaped,
+		_test_time_attack_leftover_overlaps_next_wave,
+		_test_endless_empty_pool_waits_for_the_wave,
 		_test_time_attack_no_steals_no_cue,
 		_test_time_attack_results,
 		_test_time_attack_quit_saves_nothing,
@@ -1596,18 +1600,178 @@ func _test_time_attack_waves_on_clear() -> void:
 	_check_logged(from, "^\\[Play\\] Wave 2 start: 4 birds \\([a-z, ]+\\), %d shells, speed x1\\.06, [\\d.]+ s left$" % play.wave.shells, "the wave start is logged with its shells and the time left")
 	var score := play.scoring.score
 	play.escaped = 99
+	for i in 200:
+		if not play.flying_birds().is_empty():
+			break
+		await process_frame
+	var fled := play.flying_birds()
 	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
-	_check(play.ammo.is_empty() and play.scoring.kills == 3, "wave 2's shells are spent on misses", "%d left" % play.ammo.shells)
+	# The bird of wave 2 that was up flees; its escape is past any escape limit.
 	Engine.time_scale = FAST_TIME_SCALE
-	for i in 1200:
-		if play.wave.index == 3 or _game.is_transitioning():
+	for i in 600:
+		if fled.all(func(bird: Variant) -> bool: return not is_instance_valid(bird)) or _game.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
-	_check(play.wave.index == 3 and play.ammo.shells == play.wave.shells and play.wave.shells > 0, "a lost wave is followed by the next with a full pool", "wave %d, %d of %d shells" % [play.wave.index, play.ammo.shells, play.wave.shells])
-	_check(play.escaped > 99 and not _game.is_transitioning() and current_scene == play and play.scoring.score == score, "escapes have no limit and cost no points in Time Attack", "%d escaped, transitioning %s, score %d -> %d" % [play.escaped, _game.is_transitioning(), score, play.scoring.score])
+	_check(play.wave.index >= 3 and play.ammo.shells == play.wave.shells and play.wave.shells > 0, "a lost wave is followed by the next with a full pool", "wave %d, %d of %d shells" % [play.wave.index, play.ammo.shells, play.wave.shells])
+	_check(not fled.is_empty() and play.escaped > 100 and not _game.is_transitioning() and current_scene == play and play.scoring.score == score, "escapes have no limit and cost no points in Time Attack", "%d escaped, transitioning %s, score %d -> %d" % [play.escaped, _game.is_transitioning(), score, play.scoring.score])
+
+
+## A Time Attack wave is lost the moment its pool runs out: on the frame of the last shot
+## the wave is lost (logged with its skipped birds) and the next one starts, with no dead
+## time (the out-of-shells line and the next wave's start carry the same time left) and a
+## full pool; the lost wave's birds still to spawn never spawn.
+func _test_time_attack_lost_wave_starts_next_at_once() -> void:
+	var play := await _start_run(59, GameState.TIME_ATTACK_MODE)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	_check(play.wave.index == 1 and play.flying_birds().size() == 1 and play.wave.spawns.size() == 3, "wave 1's first goose is up, two still to spawn", "%d flying" % play.flying_birds().size())
+	var from := _log.size()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.wave.shells > 0 and play.wave_clock <= -Play.WAVE_LEAD + 2.0 * FRAME + 0.0001, "the next wave starts with a full pool as soon as the pool runs out", "wave %d, %d of %d shells, wave clock %.4f" % [play.wave.index, play.ammo.shells, play.wave.shells, play.wave_clock])
+	var out := RegEx.create_from_string("^\\[Play\\] Out of shells: 1 flying birds flee, 2 still to spawn are skipped \\(wave 1, ([\\d.]+) s left\\)$")
+	var lost := RegEx.create_from_string("^\\[Play\\] Wave 1 lost \\(no shells\\): 2 birds still to spawn skipped, 2 of them counted as escaped \\(2 escaped\\), 1 flying flee, ([\\d.]+) s left$")
+	var started := RegEx.create_from_string("^\\[Play\\] Wave 2 start: .*, ([\\d.]+) s left$")
+	var times: Array[String] = ["", "", ""]
+	for line in _log.since(from):
+		for k in 3:
+			var found := ([out, lost, started][k] as RegEx).search(line)
+			if found != null and times[k] == "":
+				times[k] = found.get_string(1)
+	_check(times[0] != "" and times[0] == times[1] and times[1] == times[2], "the wave is lost and the next starts at the same moment the pool runs out (no dead time)", "out %s, lost %s, next %s" % times)
+	_check(_text(play, "Wave") == "Wave 2" and _shell_icons(play) == mini(play.wave.shells, Play.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
+	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) (#\\d+: |skipped: cooldown)", "the lost wave draws a wave_end heckle (cooldown permitting)")
+	# Past every spawn time of wave 1 (0.9 and 1.8 s), only its first goose was ever up.
+	var most_wave_1 := 0
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 60:
+		most_wave_1 = maxi(most_wave_1, play.flying_birds().filter(func(bird: Bird) -> bool: return bird.wave_index == 1).size())
+		await process_frame
+	Engine.time_scale = 1.0
+	var spawned_wave_1 := Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Play] Spawned") and line.contains("(wave 1,")).size()
+	_check(spawned_wave_1 == 0 and most_wave_1 <= 1, "the lost wave's birds still to spawn never spawn", "%d wave 1 spawns logged after the loss, %d wave 1 birds up at once" % [spawned_wave_1, most_wave_1])
+
+
+## The lost wave's skipped birds count as escaped at once, except a decoy (its escape never
+## counts); its birds in the air are counted when they escape.
+func _test_time_attack_lost_wave_counts_skipped_as_escaped() -> void:
+	var play := await _start_run(60, GameState.TIME_ATTACK_MODE)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	var leftover := play.flying_birds()[0]
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 2 and play.escaped == 2, "wave 1's two skipped geese count as escaped at once", "wave %d, %d escaped" % [play.wave.index, play.escaped])
+	# Wave 2 (still in its lead-in, nothing spawned): its last two birds made decoys, its
+	# pool spent at once, so all four are skipped and two count.
+	var count := play.wave.spawns.size()
+	for i in range(2, count):
+		play.wave.spawns[i].bird_id = "decoy"
+	var from := _log.size()
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(count == 4 and play.wave.index == 3 and play.escaped == 4, "skipped decoys do not count as escaped", "%d birds, wave %d, %d escaped" % [count, play.wave.index, play.escaped])
+	_check_logged(from, "^\\[Play\\] Wave 2 lost \\(no shells\\): 4 birds still to spawn skipped, 2 of them counted as escaped \\(4 escaped\\), 0 flying flee, [\\d.]+ s left$", "the skipped and counted birds are logged")
+	from = _log.size()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if not is_instance_valid(leftover):
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	_check(not is_instance_valid(leftover) and play.escaped == 5, "the lost wave's goose in the air is counted when it escapes", "%d escaped" % play.escaped)
+	_check_logged(from, "^\\[Play\\] Escaped goose #1 \\(5, wave 3 at t ", "the leftover goose's escape is logged")
+
+
+## After a lost Time Attack wave its birds still in the air are targets for the next
+## wave's shells (a hit scores), and they never hold up the next wave's end: once all of
+## its own birds are hit, the wave after starts though a leftover is still flying.
+func _test_time_attack_leftover_overlaps_next_wave() -> void:
+	var play := await _start_run(61, GameState.TIME_ATTACK_MODE)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	var leftover := play.flying_birds()[0]
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 2 and leftover.is_flying() and leftover.wave_index == 1, "a lost wave's goose is still in the air during the next wave", "wave %d" % play.wave.index)
+	leftover.age = IN_FIELD_AGE
+	leftover.set_process(false)
+	for i in 400:
+		if play.flying_birds().size() == play.wave.spawns.size() + 1:
+			break
+		await process_frame
+	for bird in play.flying_birds():
+		if bird != leftover:
+			bird.age = maxf(bird.age, IN_FIELD_AGE)
+	await process_frame
+	for bird in play.flying_birds():
+		if bird == leftover:
+			continue
+		for shot in bird.spec.hp:
+			if bird.is_flying():
+				await _touch(_global(play, bird.transform * LOCAL_BODY))
+	var frames := 0
+	while play.wave.index == 2 and frames < 5:
+		await process_frame
+		frames += 1
+	_check(play.wave.index == 3 and frames <= 1 and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
+	var score := play.scoring.score
+	var from := _log.size()
+	leftover.set_process(true)
+	leftover.age = IN_FIELD_AGE
+	await process_frame
+	await _touch(_global(play, leftover.transform * LOCAL_BODY))
+	_check(not leftover.is_flying() and play.scoring.score > score, "a leftover hit with the next wave's shells scores", "score %d -> %d" % [score, play.scoring.score])
+	_check_logged(from, "^\\[Play\\] Hit goose #1 \\(hit 1/1, killed\\)", "the leftover's hit is logged")
+	# A lost wave's splitter (one of wave 2, now that wave 3 runs) killed with wave 3's
+	# shells: its goslings belong to wave 2 and flee, so wave 3 does not wait for them.
+	var splitter := await _spawn_flying(play, 31, IN_FIELD_AGE, "splitter")
+	splitter.wave_index = play.wave.index - 1
+	splitter.flee()
+	await _touch(_global(play, splitter.transform * LOCAL_BODY))
+	var goslings := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling")
+	_check(not splitter.is_flying() and goslings.size() == 2 and goslings.all(func(bird: Bird) -> bool: return bird.wave_index == play.wave.index - 1 and bird.is_fleeing()), "a lost wave's splitter launches goslings of its own wave, fleeing", str(goslings.map(func(bird: Bird) -> String: return "wave %d fleeing %s" % [bird.wave_index, bird.is_fleeing()])))
+
+
+## Endless keeps its rule: when the pool runs out the wave's birds still to spawn spawn
+## fleeing, and the next wave starts only once every one of them is gone; no bird counts
+## as escaped before it escapes.
+func _test_endless_empty_pool_waits_for_the_wave() -> void:
+	var play := await _start_run(62)
+	for i in 200:
+		if play.flying_birds().size() == 1:
+			break
+		await process_frame
+	var from := _log.size()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check(play.wave.index == 1 and play.escaped == 0, "Endless: an empty pool does not end the wave or count the birds still to spawn", "wave %d, %d escaped" % [play.wave.index, play.escaped])
+	# The frame before wave 2 starts, every bird of wave 1 has spawned and none is flying.
+	var done_before := false
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 900:
+		if play.wave.index == 2 or _game.is_transitioning():
+			break
+		done_before = play.flying_birds().is_empty() and play.wave_clock >= play.wave.spawns.back().time
+		await process_frame
+	Engine.time_scale = 1.0
+	var waited := done_before
+	_check(play.wave.index == 2 and waited and play.escaped == 2, "Endless: the next wave starts only after every bird of the wave has spawned and escaped", "wave %d, waited %s, %d escaped" % [play.wave.index, waited, play.escaped])
+	_check_logged(from, "^\\[Play\\] Spawned goose #2 \\(wave 1, .*, fleeing \\(no shells\\)$", "Endless: the bird still to spawn spawns fleeing")
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Wave 1 lost")), "Endless never loses a wave early", "a lost line")
 
 
 ## In Time Attack the rival never aims at or steals a bird left flying past its linger

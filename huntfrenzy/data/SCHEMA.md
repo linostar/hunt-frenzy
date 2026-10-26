@@ -137,9 +137,15 @@ leaves out does not apply to it (`ModeSpec` holds 0 for it; code reads either fi
   ends after `time_limit` seconds of play. The clock is the run's game time from its start: it stops while the
   game is paused (the pause menu, the rotate overlay) and runs through each wave's 1 s lead-in (`Play.WAVE_LEAD`),
   so the lead-ins are part of the time limit (the first lead-in also covers the 0.15 s fade into the run, while
-  shots are ignored and no bird has spawned yet). Every other field applies to both kinds alike: a wave ends once
-  every bird of it has spawned and none is flying (all hit, escaped, or fled once the shells ran out), the next
-  wave starts at once with a full pool of its own shells, and `rival_steals` decides whether the rival steals.
+  shots are ignored and no bird has spawned yet). A wave ends when every bird of it has spawned and none of them is
+  flying (all hit or escaped), or, in a timed mode only, the moment its pool runs out: the wave is lost (logged), its
+  birds still to spawn never spawn and each of them with `escape_counts` is counted as escaped at once, and the next
+  wave starts on the same frame (with a `wave_end` heckle, cooldown permitting, and the HUD showing the new wave's
+  number and pool). The lost wave's birds already in the air flee and are counted when they escape; until then they
+  are still targets for the next wave's shells (a hit scores as any hit; a lost wave's splitter launches goslings of
+  that wave, fleeing), and a wave's end waits only for its own birds, never a lost wave's. With an escape limit, an empty pool ends nothing: the birds still to spawn
+  spawn fleeing and the wave ends once they have all escaped. Either way the next wave comes with a full pool of its
+  own shells, and `rival_steals` decides whether the rival steals.
 
 ## levels.json
 Exactly `Content.LEVELS_PER_CHAPTER` (6) levels per chapter, indexes 1..6, the last one the boss level (I15).

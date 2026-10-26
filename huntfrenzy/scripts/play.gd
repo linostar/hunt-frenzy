@@ -14,7 +14,7 @@ extends Node2D
 ## deducts its penalty (never below 0), resets the combo and shows a negative pop-up.
 ## When the shells run out, the wave's flying birds (and any still to spawn, goslings
 ## included) flee at once; the next wave starts when every bird of the wave has spawned
-## and none is flying. An escape counts toward escape_limit unless the bird's
+## and none is flying (a timed mode loses the wave at once instead: below). An escape counts toward escape_limit unless the bird's
 ## escape_counts is false (the decoy). An Endless run ends once escape_limit birds have
 ## escaped: the score is recorded (a new best is saved at once) and the results screen
 ## opens. A campaign level has no escape limit: it plays all its waves (the boss level's
@@ -26,10 +26,19 @@ extends Node2D
 ## run's start, frozen while the tree is paused (the pause menu, the rotate overlay), each
 ## wave's WAVE_LEAD lead-in included. The HUD shows the seconds left ("Time 42", rounded
 ## up); the frame that reaches time_limit stops the clock exactly there and ends the run
-## (the score recorded, a new best saved at once, then the results screen). Its waves
-## follow one another as in Endless: the next starts as soon as the last is cleared or
-## lost, with a full pool of its own shells. Its rival never steals (rival_steals false),
-## so his tally is not on the HUD; he still heckles.
+## (the score recorded, a new best saved at once, then the results screen). Its next wave
+## starts as soon as the current one is cleared (every bird of it spawned and none of them
+## flying) or lost: the moment its pool runs out, the wave is lost (logged) and the next
+## starts at once (its WAVE_LEAD lead-in, a full pool of its own shells). The lost wave's
+## birds still to spawn never spawn; each of them that counts as an escape (escape_counts)
+## is counted as escaped, as it would have fled and escaped in Endless. The loss draws a
+## wave_end heckle (cooldown permitting, as any wave's end) and the HUD shows the new
+## wave's number and pool at once. The lost wave's birds already in the air flee as usual
+## and are counted when they escape; until then they are still targets (a hit with the new
+## wave's shells scores as any hit; a leftover splitter's goslings belong to the lost wave
+## and flee at once), and they never hold up a later wave's end (a wave ends on its own
+## birds: Bird.wave_index). Its rival never steals
+## (rival_steals false), so his tally is not on the HUD; he still heckles.
 ## The rival hunter (Rival, data/rival_lines.json) stands in the grass band (at or below
 ## GRASS_Y, so he never covers the field; he and his speech bubble ignore touches, so a
 ## shot anywhere hits as before). In a mode with rival_steals, every frame Play asks
@@ -216,7 +225,7 @@ func _process(delta: float) -> void:
 	_update_steals()
 	if _over:
 		return
-	if _next_spawn == wave.spawns.size() and flying_birds().is_empty():
+	if _next_spawn == wave.spawns.size() and _wave_birds_flying().is_empty():
 		if level != null and wave.index >= level.waves:
 			_end_run()
 			return
@@ -231,6 +240,7 @@ func spawn_bird(bird_id: String, bird_seed: int, from := Flight.NOT_LAUNCHED, he
 	_spawned += 1
 	var bird := BIRD_SCENE.instantiate() as Bird
 	bird.setup(Content.bird(bird_id), _spawned, bird_seed, wave.speed_scale, FIELD, ammo.is_empty(), from, heading)
+	bird.wave_index = wave.index
 	bird.escaped.connect(_on_bird_escaped)
 	_birds.add_child(bird)
 	return bird
@@ -243,6 +253,14 @@ func flying_birds() -> Array[Bird]:
 		var bird := child as Bird
 		if bird != null and bird.is_flying():
 			result.append(bird)
+	return result
+
+
+## The current wave's birds still flying (a lost Time Attack wave's fleeing birds are
+## not; outside Time Attack no other wave's bird is ever in the air).
+func _wave_birds_flying() -> Array[Bird]:
+	var result: Array[Bird] = []
+	result.assign(flying_birds().filter(func(bird: Bird) -> bool: return bird.wave_index == wave.index))
 	return result
 
 
@@ -420,8 +438,26 @@ func _on_shot(at: Vector2) -> void:
 		var fleeing := flying_birds()
 		for bird in fleeing:
 			bird.flee()
-		print("[Play] Out of shells: %d flying birds flee, %d still to spawn will flee (wave %d)" % [fleeing.size(), wave.spawns.size() - _next_spawn, wave.index])
+		var waiting := wave.spawns.size() - _next_spawn
+		print("[Play] Out of shells: %d flying birds flee, %d still to spawn %s (wave %d%s)" % [fleeing.size(), waiting, "are skipped" if is_timed() else "will flee", wave.index, _clock_note()])
+		if is_timed() and not (waiting == 0 and _wave_birds_flying().is_empty()):
+			_lose_wave(waiting)
 	_update_hud()
+
+
+## A timed mode's wave whose pool ran out is lost at once: its `waiting` birds still to
+## spawn are skipped (each that counts as an escape is counted as escaped), and the next
+## wave starts now. A wave cleared by its last shell ends as usual (_process).
+func _lose_wave(waiting: int) -> void:
+	var counted := 0
+	for i in range(_next_spawn, wave.spawns.size()):
+		if Content.bird(wave.spawns[i].bird_id).escape_counts:
+			counted += 1
+	escaped += counted
+	print("[Play] Wave %d lost (no shells): %d birds still to spawn skipped, %d of them counted as escaped (%s escaped), %d flying flee%s" % [
+		wave.index, waiting, counted, _escapes(), _wave_birds_flying().size(), _clock_note()])
+	_heckle("wave_end")
+	_start_wave(wave.index + 1)
 
 
 ## A hit on a bird other than the decoy: damage short of its hp, else a kill that scores
@@ -452,6 +488,10 @@ func _split(parent: Bird, point: Vector2) -> void:
 	for i in headings.size():
 		var child_seed := hash([parent.bird_seed, i])
 		var child := spawn_bird(parent.spec.splits_into, child_seed, point, headings[i])
+		# A lost wave's splitter (Time Attack) launches goslings of that wave, fleeing.
+		if parent.wave_index != wave.index:
+			child.wave_index = parent.wave_index
+			child.flee()
 		children.append("#%d seed %d heading (%.2f, %.2f)" % [child.number, child_seed, headings[i].x, headings[i].y])
 	print("[Play] Split %s #%d at (%.1f, %.1f) into %d %s: %s (wave %d at t %.2f)%s" % [parent.spec.id, parent.number, point.x, point.y, headings.size(), parent.spec.splits_into, ", ".join(children), wave.index, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
 
