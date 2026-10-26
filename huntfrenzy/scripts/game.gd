@@ -28,6 +28,10 @@ extends Node
 ## copy; so a web save is logged as written, then confirmed (or reported as lost) by
 ## reading it back from IndexedDB (WEB_PERSIST_CHECK_JS), and storage that is unavailable
 ## at start (OS.is_userfs_persistent() false) is reported at once.
+## At start the UI theme (project.godot gui/theme/custom) and its fonts are checked: a theme
+## or font file that is missing or cannot be loaded is reported (log and error label) with
+## the file named (theme_problems), never left to a silent fallback; a scene that fails to
+## load names its missing files too (missing_dependencies).
 
 ## Emitted when a goto() has finished: the new scene is in place and the cover is gone.
 signal transition_finished(state: Flow)
@@ -132,6 +136,8 @@ window.huntFrenzyCheckPersisted = function (dbName, key, expected, timeoutMs, ch
 const BASE_SIZE := Vector2(960, 540)
 ## Seconds the cover takes to fade in, and again to fade out.
 const FADE_TIME := 0.15
+## The project setting naming the UI theme every scene uses.
+const THEME_SETTING := "gui/theme/custom"
 
 ## Paths per flow state; tests swap one to check the missing-scene path.
 var scene_paths: Dictionary[Flow, String] = SCENE_PATHS.duplicate()
@@ -194,6 +200,7 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		check_storage(OS.is_userfs_persistent())
 	load_game()
+	_check_ui_theme()
 	_watch_page_visibility()
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
@@ -292,7 +299,8 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	await _fade_to(1.0)
 	var error := get_tree().change_scene_to_file(path)
 	if error != OK:
-		report_error("Failed to load scene '%s' for %s: %s" % [path, to_name, error_string(error)])
+		var missing := missing_dependencies(path)
+		report_error("Failed to load scene '%s' for %s: %s%s" % [path, to_name, error_string(error), "; missing: %s" % ", ".join(missing) if not missing.is_empty() else ""])
 		await _fade_to(0.0)
 		_end_fade()
 		return
@@ -304,6 +312,101 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	_end_fade()
 	print("[Game] Arrived at %s" % to_name)
 	transition_finished.emit(new_state)
+
+
+## Reports every problem with the project's UI theme and its fonts (theme_problems), or
+## logs the fonts it uses.
+func _check_ui_theme() -> void:
+	var path: String = ProjectSettings.get_setting(THEME_SETTING, "")
+	var problems := theme_problems(path)
+	for problem in problems:
+		report_error(problem)
+	if problems.is_empty():
+		print("[Game] UI theme %s loaded with its fonts: %s" % [path, ", ".join(theme_font_files(load(path) as Theme))])
+
+
+## What is wrong with the UI theme at `path` (empty when nothing is): no theme set, no such
+## file, a file it needs (a font) missing (checked before loading, so the loader is never
+## asked for it), a file that is no Theme, or a font the theme uses that is missing or
+## holds no font data. Each problem names the file. Public for tests.
+static func theme_problems(path: String) -> Array[String]:
+	var problems: Array[String] = []
+	if path == "":
+		problems.append("No UI theme is set (project.godot %s)" % THEME_SETTING)
+		return problems
+	if not ResourceLoader.exists(path):
+		problems.append("UI theme '%s' does not exist" % path)
+		return problems
+	for missing in missing_dependencies(path):
+		problems.append("UI theme '%s' needs '%s', which is missing" % [path, missing])
+	if not problems.is_empty():
+		return problems
+	var theme := load(path) as Theme
+	if theme == null:
+		problems.append("UI theme '%s' cannot be loaded as a Theme" % path)
+		return problems
+	return font_problems(theme, path)
+
+
+## The fonts of `theme` (its default font and every type's fonts, through FontVariation
+## bases) that are missing or hold no font data, named by where the theme uses them.
+static func font_problems(theme: Theme, path: String) -> Array[String]:
+	var problems: Array[String] = []
+	for where in _theme_fonts(theme):
+		var font := _font_file(_theme_fonts(theme)[where])
+		if font == null:
+			problems.append("UI theme '%s': %s has no font file" % [path, where])
+		elif font is FontFile and (font as FontFile).data.is_empty():
+			problems.append("UI theme '%s': %s font '%s' holds no font data" % [path, where, font.resource_path])
+	return problems
+
+
+## The font files `theme` uses (for the log).
+static func theme_font_files(theme: Theme) -> PackedStringArray:
+	var files := PackedStringArray()
+	for font: Font in _theme_fonts(theme).values():
+		var file := _font_file(font)
+		if file != null and not file.resource_path.get_file() in files:
+			files.append(file.resource_path.get_file())
+	return files
+
+
+## "default_font" and "<Type>/fonts/<name>" -> the font the theme holds there.
+static func _theme_fonts(theme: Theme) -> Dictionary[String, Font]:
+	var fonts: Dictionary[String, Font] = {"default_font": theme.default_font}
+	for type in theme.get_font_type_list():
+		for font_name in theme.get_font_list(type):
+			fonts["%s/fonts/%s" % [type, font_name]] = theme.get_font(font_name, type)
+	return fonts
+
+
+## The font file under `font` (through FontVariation bases), or null.
+static func _font_file(font: Font) -> Font:
+	while font is FontVariation:
+		font = (font as FontVariation).base_font
+	return font
+
+
+## The files the resource at `path` needs, directly or through the files it needs, that do
+## not exist (read from the files' dependency lists, nothing is loaded).
+static func missing_dependencies(path: String, seen: Dictionary[String, bool] = {}) -> PackedStringArray:
+	var missing := PackedStringArray()
+	seen[path] = true
+	for entry in ResourceLoader.get_dependencies(path):
+		var dependency := ""
+		for part in entry.split("::"):
+			if part.begins_with("res://"):
+				dependency = part
+		if dependency == "" and entry.begins_with("uid://"):
+			var id := ResourceUID.text_to_id(entry.get_slice("::", 0))
+			dependency = ResourceUID.get_id_path(id) if ResourceUID.has_id(id) else entry.get_slice("::", 0)
+		if dependency == "" or seen.has(dependency):
+			continue
+		if not ResourceLoader.exists(dependency):
+			missing.append(dependency)
+		else:
+			missing.append_array(missing_dependencies(dependency, seen))
+	return missing
 
 
 ## Starts a new Endless run with a fresh seed (the title's Endless, Restart, Play again).
@@ -421,7 +524,7 @@ func save_game() -> bool:
 func check_storage(persistent: bool) -> void:
 	storage_persistent = persistent
 	if persistent:
-		print("[Game] Browser storage (IndexedDB) is available for %s" % save_path)
+		print("[Game] Browser storage (IndexedDB) is available for %s (%s)" % [save_path, ProjectSettings.globalize_path(save_path)])
 		return
 	report_error("Browser storage (IndexedDB) is unavailable (private browsing or blocked site data): best scores are kept only until the page closes")
 

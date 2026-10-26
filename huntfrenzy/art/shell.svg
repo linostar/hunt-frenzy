@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="28" viewBox="0 0 12 28">
-  <!-- First-pass shotgun shell for the HUD. -->
-  <rect x="1" y="1" width="10" height="19" rx="2" fill="#c8402e" stroke="#2b2622" stroke-width="1.5"/>
-  <rect x="1" y="19" width="10" height="8" rx="1" fill="#d9a441" stroke="#2b2622" stroke-width="1.5"/>
-  <rect x="3" y="3" width="2" height="14" fill="#e67a5c"/>
+  <!-- Shell: red hull, brass head; one per shell on the HUD. -->
+  <path d="M2.5 6 C2.5 3 4 1.5 6 1.5 C8 1.5 9.5 3 9.5 6 L9.5 20 L2.5 20 Z" fill="#c8323a" stroke="#1f1a2e" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M4 5 C4 3.6 4.8 3 5.6 3 L5.6 18.5 L4 18.5 Z" fill="#ff7366"/>
+  <path d="M1.5 20 L10.5 20 L10.5 26.5 L1.5 26.5 Z" fill="#f2b632" stroke="#1f1a2e" stroke-width="1.2" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M3 21.5 L4.5 21.5 L4.5 25 L3 25 Z" fill="#ffed99"/>
 </svg>

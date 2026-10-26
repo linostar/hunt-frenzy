@@ -6,9 +6,10 @@ extends Resource
 
 var id := ""
 var name := ""
-## The placeholder tint of the play scene's sky (the art pass replaces it with a backdrop).
-var sky_tint := Color.WHITE
-## The chapter's weather (one of Content.WEATHERS); logged until the art pass draws it.
+## The id of the chapter's backdrop: its layers are res://art/backdrops/<id>_<layer>.svg
+## (Content.backdrop_path, one per Content.BACKDROP_LAYERS).
+var backdrop := ""
+## The chapter's weather (one of Content.WEATHERS): drawn over the backdrop, visual only.
 var weather := ""
 ## The rival steals after a bird's linger_time x this (0 < scale <= 1, never larger than
 ## the chapter before's): he gets quicker chapter by chapter.

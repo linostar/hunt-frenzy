@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Validation gate: asset import, project check (touch-first and landscape rules +
-# strict script compile) and its violation fixtures, content tests (data/SCHEMA.md
-# invariants), headless gameplay tests, headless run of the main scene. Exits non-zero on the first failure and points at
+# strict script compile) and its violation fixtures, palette check (every colour from
+# art/palette.hex) and its fixtures, content tests (data/SCHEMA.md invariants, art
+# included), headless gameplay tests, headless run of the main scene. Exits non-zero on the first failure and points at
 # the log that explains it. Every Godot call is killed after GODOT_TIMEOUT seconds.
 # Env: GODOT (Godot binary), GODOT_TIMEOUT (default 300), RUN_FRAMES (headless run length, default 120).
 set -euo pipefail
@@ -14,7 +15,7 @@ mkdir -p "$LOG_DIR"
 
 fail() {
   echo "FAIL $1 (log: $2)" >&2
-  grep -E "ERROR|WARNING|check_project|test_content|test_gameplay|run_main" "$2" >&2 || true
+  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main" "$2" >&2 || true
   exit 1
 }
 
@@ -100,11 +101,36 @@ for fixture in tools/check_fixtures/*/; do
   fi
   fixtures=$((fixtures + 1))
 done
+# check_palette.gd: every colour in the art (SVG), the scenes, the scripts, the UI Theme and
+# project.godot is one of art/palette.hex's (only the alpha may differ). Each case in
+# tools/palette_fixtures/ (a tiny project, outside the game) must report exactly the
+# violation lines its expected.txt lists (each a prefix), and nothing else; a case without
+# expected.txt must pass. No case may log an engine ERROR/WARNING.
+run_script check_palette "$LOG_DIR/palette.log"
+palette_fixtures=0
+for fixture in tools/palette_fixtures/*/; do
+  case_name="$(basename "$fixture")"
+  log="$LOG_DIR/palette_fixture_$case_name.log"
+  godot "$log" --headless --path "$fixture" --script "$PWD/tools/check_palette.gd" || true
+  if grep -qE "ERROR|WARNING" "$log"; then
+    fail "check_palette fixture $case_name reported engine problems" "$log"
+  fi
+  if [ -f "$fixture/expected.txt" ]; then
+    while IFS= read -r line; do
+      grep -qF "check_palette: $line" "$log" || fail "check_palette fixture $case_name did not report: $line" "$log"
+    done <"$fixture/expected.txt"
+    expected="$(grep -c . "$fixture/expected.txt")"
+    grep -qxF "check_palette: FAILED with $expected violation(s)" "$log" || fail "check_palette fixture $case_name must report exactly $expected violation(s)" "$log"
+  elif ! grep -q "^check_palette: OK" "$log"; then
+    fail "check_palette fixture $case_name (palette colours only) must pass" "$log"
+  fi
+  palette_fixtures=$((palette_fixtures + 1))
+done
 # The data first: every data/SCHEMA.md invariant on the real data, and each one firing on
 # a malformed copy.
 run_script test_content "$LOG_DIR/content.log"
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
-summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
+summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
 # The main scene (the title) runs 120 frames (2 s at 60 fixed fps) by default; run_main
 # requires the flow state to match the running scene.
 RUN_FRAMES="${RUN_FRAMES:-120}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60

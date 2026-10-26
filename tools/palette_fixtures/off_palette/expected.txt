@@ -1,0 +1,13 @@
+art/bird.svg:2: stop-color '#123456' (#123456) is not in art/palette.hex
+art/bird.svg:4: fill '#ff0000' (#ff0000) is not in art/palette.hex
+art/bird.svg:4: stroke 'rgb(0, 128, 0)' (#008000) is not in art/palette.hex
+art/bird.svg:5: fill 'red' (#ff0000) is not in art/palette.hex
+art/bird.svg:6: fill '#00f' (#0000ff) is not in art/palette.hex
+art/bird.svg:8: fill 'hsl(0, 100%, 50%)' is not a colour this check reads
+scenes/part.tscn:4: PackedColorArray colour 2 '0, 0, 1, 1' (#0000ff) is not in art/palette.hex
+scenes/part.tscn:7: 'Color(0.5, 0.5, 0.5, 1)' (#808080) is not in art/palette.hex
+scripts/colours.gd:3: 'Color(1, 0, 0)' (#ff0000) is not in art/palette.hex
+scripts/colours.gd:4: '#00ff00' (#00ff00) is not in art/palette.hex
+scripts/colours.gd:5: 'Color.RED' (#ff0000) is not in art/palette.hex
+ui/theme.tres:4: 'Color(0, 1, 1, 1)' (#00ffff) is not in art/palette.hex
+project.godot:9: 'Color(0.2, 0.2, 0.2, 1)' (#333333) is not in art/palette.hex

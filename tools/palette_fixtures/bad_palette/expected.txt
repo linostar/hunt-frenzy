@@ -1,0 +1,4 @@
+art/palette.hex:1: 'FFFFFF' is not a colour (one lowercase rrggbb per line)
+art/palette.hex:2: '#1f1a2e' is not a colour (one lowercase rrggbb per line)
+art/palette.hex:44: 000000 is already on line 3
+art/palette.hex: 41 colours, at most 40

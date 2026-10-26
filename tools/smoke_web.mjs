@@ -27,6 +27,15 @@
 //     time_attack" and the play scene, and its first goose is shot as above; reloaded once
 //     more, Endless is tapped, requiring its press, "[Play] Run start: mode endless" and the
 //     play scene;
+//   desktop only, then the backdrop tour: a save that has finished every level of the first
+//     three chapters is written to the page's IndexedDB (where Godot's user:// lives) and the
+//     page reloaded, requiring "[Game] Loaded save ... 18 levels finished"; then level 1 of
+//     each chapter (dawn_1, noon_1, sunset_1, night_1), Endless and Time Attack are started
+//     by mouse (Campaign, the chapter, level 1 where they log themselves; the mode buttons),
+//     each requiring its run start and "[Play] Backdrop <id>, weather <weather> from wave 1"
+//     (the chapter's or the mode's first stage); a screenshot is taken once the first bird
+//     has been in the air for BACKDROP_SHOT_DELAY_MS, and Escape, Down, Down, Enter quits
+//     to the title;
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Campaign is and Enter press nothing, turn the phone to landscape (844x390),
 //     require "[Game] Rotate overlay hidden ... unpaused", then tap Campaign and require the press;
@@ -45,7 +54,8 @@
 // build/smoke-<run>-time-attack.png (after Time Attack's goose is hit; its start for
 // keyboard), plus
 // build/smoke-mobile-portrait-rotate.png (the overlay), build/smoke-keyboard-focus.png (the
-// focus ring after Tab) and build/smoke-keyboard-pause.png (the pause menu).
+// focus ring after Tab), build/smoke-keyboard-pause.png (the pause menu) and the desktop
+// backdrop tour's build/smoke-desktop-backdrop-<dawn_1|noon_1|sunset_1|night_1|endless|time_attack>.png.
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome, serveBuild } from './web_util.mjs';
@@ -59,7 +69,7 @@ const STEP_TIMEOUT_MS = Number(process.env.SMOKE_STEP_TIMEOUT_MS ?? 20000);
 const PHONE = { deviceScaleFactor: 3, hasTouch: true, isMobile: true };
 const LANDSCAPE_PHONE = { width: 844, height: 390 };
 const RUNS = [
-  { name: 'desktop', context: { viewport: { width: 1280, height: 720 } } },
+  { name: 'desktop', backdrops: true, context: { viewport: { width: 1280, height: 720 } } },
   { name: 'mobile-landscape', context: { viewport: LANDSCAPE_PHONE, ...PHONE } },
   { name: 'mobile-portrait', portrait: true, context: { viewport: { width: 390, height: 844 }, ...PHONE } },
   { name: 'keyboard', keyboard: true, context: { viewport: { width: 1280, height: 720 } } },
@@ -109,6 +119,30 @@ const AIM_ABOVE_Y = 400;
 // shot then measures it.
 const AIM_LATENCY_S = 0.1;
 const HIT_ATTEMPTS = 5;
+// The backdrop tour: each run the desktop screenshots, with the backdrop and weather it must
+// start on (data/chapters.json, data/modes.json), and how long after its first spawn the
+// screenshot waits (birds in the air).
+const BACKDROP_TOUR = [
+  { shot: 'dawn_1', chapter: 'dawn', backdrop: 'dawn', weather: 'mist' },
+  { shot: 'noon_1', chapter: 'noon', backdrop: 'noon', weather: 'wind' },
+  { shot: 'sunset_1', chapter: 'sunset', backdrop: 'sunset', weather: 'rain' },
+  { shot: 'night_1', chapter: 'night', backdrop: 'night', weather: 'snow' },
+  { shot: 'endless', mode: 'Endless', backdrop: 'dawn', weather: 'mist' },
+  { shot: 'time_attack', mode: 'Time Attack', backdrop: 'noon', weather: 'wind' },
+];
+const BACKDROP_SHOT_DELAY_MS = 2500;
+// A version 3 save (GameState.SAVE_VERSION) with every level of the first three chapters
+// finished, so each chapter's level 1 is open; Godot's web user:// is Emscripten IDBFS in
+// IndexedDB database /userfs, store FILE_DATA, key = the file's path, which the game logs
+// (SAVE_FILE) along with its directories, each stored as an entry of its own.
+const SAVE_FILE = /^\[Game\] Browser storage \(IndexedDB\) is available for user:\/\/save\.json \((\/userfs\/.+)\)$/;
+const TOUR_LEVELS = ['dawn', 'noon', 'sunset'].flatMap((c) => [1, 2, 3, 4, 5, 6].map((i) => `${c}_${i}`));
+const TOUR_SAVE = JSON.stringify({
+  version: 3,
+  bests: { endless: 0, time_attack: 0 },
+  levels: Object.fromEntries(TOUR_LEVELS.map((id) => [id, { stars: 1, score: 1000 }])),
+  settings: { music: 70, sfx: 80, music_muted: false, sfx_muted: false },
+});
 
 // Waits until a console line logged at or after index `from` matches `pattern` (a RegExp)
 // and returns its match (with `index`: the line's index in logs).
@@ -268,6 +302,72 @@ async function startMode(page, logs, pointer, rect, label, run, how) {
   return waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, `the play scene (${label})`, from);
 }
 
+// Writes TOUR_SAVE as user://save.json into the page's IndexedDB as Godot's IDBFS stores
+// files and directories ({timestamp: Date, mode[, contents]}), then reloads and requires it
+// loaded.
+async function plantTourSave(page, logs) {
+  const file = (await waitForLog(page, logs, SAVE_FILE, 'the save file\'s path in browser storage'))[1];
+  const error = await page.evaluate(([path, text]) => new Promise((resolveWrite) => {
+    const request = indexedDB.open('/userfs');
+    request.onerror = () => resolveWrite(`cannot open IndexedDB /userfs: ${request.error}`);
+    request.onsuccess = () => {
+      const db = request.result;
+      try {
+        const write = db.transaction(['FILE_DATA'], 'readwrite');
+        const store = write.objectStore('FILE_DATA');
+        // Every directory between the mount (/userfs) and the file (mode 040777), then the file (0100644).
+        const parts = path.split('/');
+        for (let i = 3; i < parts.length; i++) store.put({ timestamp: new Date(), mode: 16895 }, parts.slice(0, i).join('/'));
+        store.put({ timestamp: new Date(), mode: 33188, contents: new TextEncoder().encode(text) }, path);
+        write.oncomplete = () => { db.close(); resolveWrite(''); };
+        write.onerror = () => { db.close(); resolveWrite(`cannot write the save: ${write.error}`); };
+      } catch (e) {
+        db.close();
+        resolveWrite(`cannot write the save: ${e}`);
+      }
+    };
+  }), [file, TOUR_SAVE]);
+  if (error !== '') throw new Error(error);
+  const from = logs.length;
+  await reloadToTitle(page, logs);
+  await waitForLog(page, logs, new RegExp(`^\\[Game\\] Loaded save from user://save\\.json: version 3, .*, ${TOUR_LEVELS.length} levels finished`), 'the planted save to load', from);
+}
+
+// Starts each BACKDROP_TOUR run from the title, requires its backdrop and weather, takes
+// its screenshot with birds in the air and quits to the title.
+async function backdropTour(page, logs, pointer, shot) {
+  await plantTourSave(page, logs);
+  for (const stop of BACKDROP_TOUR) {
+    let from = logs.length;
+    if (stop.mode !== undefined) {
+      const rect = stop.mode === 'Endless' ? ENDLESS_RECT : TIME_ATTACK_RECT;
+      await startMode(page, logs, pointer, rect, stop.mode, stop.mode === 'Endless' ? ENDLESS_RUN : TIME_ATTACK_RUN, 'mouse');
+    } else {
+      // The title logged its layout on arrival: the latest rect is this title's.
+      await pointer.tap(await buttonPoint(page, logs, CAMPAIGN_RECT, 'the Campaign button layout'));
+      await waitForLog(page, logs, /^\[Game\] Arrived at CHAPTER_SELECT/, 'the chapter select', from);
+      const chapterRect = new RegExp(`^\\[ChapterSelect\\] Chapter ${stop.chapter} at \\[P: \\(([\\d.-]+), ([\\d.-]+)\\), S: \\(([\\d.-]+), ([\\d.-]+)\\)\\] \\(open`);
+      await pointer.tap(await buttonPoint(page, logs, chapterRect, `the ${stop.chapter} chapter button (open)`, from));
+      await waitForLog(page, logs, /^\[Game\] Arrived at LEVEL_SELECT/, `the ${stop.chapter} level select`, from);
+      const levelRect = new RegExp(`^\\[LevelSelect\\] Level ${stop.shot} at \\[P: \\(([\\d.-]+), ([\\d.-]+)\\), S: \\(([\\d.-]+), ([\\d.-]+)\\)\\] \\(open`);
+      const levelFrom = logs.length;
+      await pointer.tap(await buttonPoint(page, logs, levelRect, `the ${stop.shot} button (open)`, from));
+      await waitForLog(page, logs, new RegExp(`^\\[Play\\] Run start: level ${stop.shot} `), `${stop.shot} to start`, levelFrom);
+      await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, `the play scene (${stop.shot})`, levelFrom);
+    }
+    await waitForLog(page, logs, new RegExp(`^\\[Play\\] Backdrop ${stop.backdrop}, weather ${stop.weather} from wave 1$`), `the ${stop.backdrop} backdrop with ${stop.weather}`, from);
+    await waitForLog(page, logs, /^\[Play\] Spawned /, 'the first bird to spawn', from);
+    await page.waitForTimeout(BACKDROP_SHOT_DELAY_MS);
+    await shot(`backdrop-${stop.shot}`);
+    from = logs.length;
+    await page.keyboard.press('Escape');
+    await waitForLog(page, logs, /^\[Play\] Paused \(Escape\)/, `Escape to pause ${stop.shot}`, from);
+    for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, `the title after quitting ${stop.shot}`, from);
+    await page.waitForTimeout(300);
+  }
+}
+
 // The run's scripted path once the title is up; throws on a missing log line.
 async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.keyboard) {
@@ -370,6 +470,7 @@ async function playPath(page, context, run, logs, logTimes, shot) {
   await shot('time-attack');
   await reloadToTitle(page, logs);
   await startMode(page, logs, pointer, ENDLESS_RECT, 'Endless', ENDLESS_RUN, how);
+  if (run.backdrops) await backdropTour(page, logs, pointer, shot);
   return failures;
 }
 

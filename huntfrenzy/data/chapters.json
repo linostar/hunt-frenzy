@@ -1,6 +1,6 @@
 [
-  {"id": "dawn", "name": "Dawn", "sky_tint": "#ffe2c4", "weather": "mist", "rival_linger_scale": 1.0},
-  {"id": "noon", "name": "Noon", "sky_tint": "#ffffff", "weather": "wind", "rival_linger_scale": 0.9},
-  {"id": "sunset", "name": "Sunset", "sky_tint": "#ffb38a", "weather": "rain", "rival_linger_scale": 0.8},
-  {"id": "night", "name": "Night", "sky_tint": "#6f78b8", "weather": "snow", "rival_linger_scale": 0.7}
+  {"id": "dawn", "name": "Dawn", "backdrop": "dawn", "weather": "mist", "rival_linger_scale": 1.0},
+  {"id": "noon", "name": "Noon", "backdrop": "noon", "weather": "wind", "rival_linger_scale": 0.9},
+  {"id": "sunset", "name": "Sunset", "backdrop": "sunset", "weather": "rain", "rival_linger_scale": 0.8},
+  {"id": "night", "name": "Night", "backdrop": "night", "weather": "snow", "rival_linger_scale": 0.7}
 ]

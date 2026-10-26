@@ -189,6 +189,12 @@ func _tests() -> Array[Callable]:
 		_test_rival_steals_off,
 		_test_rival_heckle_cooldown,
 		_test_rival_layout_and_pass_through,
+		_test_rival_poses,
+		_test_weather_is_visual_only,
+		_test_backdrop_cycle_and_fade,
+		_test_missing_backdrop_is_reported,
+		_test_ui_theme_and_fonts,
+		_test_menu_texts_fit_largest_values,
 		_test_pause_causes_and_resume,
 		_test_pause_menu_keyboard,
 		_test_pause_touches_are_not_shots,
@@ -1347,7 +1353,7 @@ func _test_play_hit_frame_keeps_facing() -> void:
 ## goose above the grass hits it.
 func _test_play_grass_hides_geese() -> void:
 	var play := await _start_run(27)
-	var grass := play.get_node("World/Grass") as Control
+	var grass := play.get_node("World/Backdrop/Grass") as Control
 	_check(is_equal_approx(grass.position.y + Play.GRASS_TIP, Play.GRASS_Y), "the grass is drawn solid from the grass line the hit rule uses", "grass top %.1f" % grass.position.y)
 	var bird := play.spawn_bird("goose", 3)
 	await process_frame
@@ -2618,6 +2624,251 @@ func _test_rival_layout_and_pass_through() -> void:
 	_check_logged(from, "^\\[Play\\] Miss at ", "the shots on the rival and his bubble are logged as misses")
 
 
+## The rival's poses (step 7): idle at the start; a scored kill makes him sulk for
+## RIVAL_REACTION_TIME of game time (logged), then idle again; a miss whose heckle shows
+## makes him brag (logged), a miss inside the heckle cooldown (no line) does not; an aim
+## cue raises his gun over any reaction.
+func _test_rival_poses() -> void:
+	var play := await _start_run(70)
+	play.mode.rival_steals = false
+	_check(play.rival_pose() == "idle", "the rival stands idle at the start", play.rival_pose())
+	var from := _log.size()
+	var goose := await _spawn_flying(play, 180)
+	await _touch(_global(play, goose.transform * LOCAL_BODY))
+	_check(play.scoring.kills == 1 and play.rival_pose() == "sulk", "a scored kill makes the rival sulk", "%d kills, %s" % [play.scoring.kills, play.rival_pose()])
+	_check_logged(from, "^\\[Play\\] Rival sulks at the 100 points on goose #%d \\(wave 1 at t -?[\\d.]+\\)$" % goose.number, "the sulk is logged with the points and the bird")
+	var since := play.run_clock
+	for i in roundi(Play.RIVAL_REACTION_TIME * 60.0) + 10:
+		if play.rival_pose() != "sulk":
+			break
+		await process_frame
+	var lasted := play.run_clock - since
+	_check(play.rival_pose() == "idle" and absf(lasted - Play.RIVAL_REACTION_TIME) <= 2.0 * FRAME, "the sulk lasts RIVAL_REACTION_TIME, then he stands idle", "%s after %.3f s" % [play.rival_pose(), lasted])
+	await _touch(_global(play, SKY_POINTS[0]))
+	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()) and play.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.heckle_shown(), play.rival_pose()])
+	_check_logged(from, "^\\[Play\\] Rival brags after the miss \\(wave 1 at t -?[\\d.]+\\)$", "the brag is logged")
+	for i in roundi(Play.RIVAL_REACTION_TIME * 60.0) + 10:
+		if play.rival_pose() == "idle":
+			break
+		await process_frame
+	var heckles := play.heckles
+	await _touch(_global(play, SKY_POINTS[1]))
+	_check(play.heckles == heckles and play.rival_pose() == "idle", "a miss inside the heckle cooldown (no line) draws no brag", "%d heckles, %s" % [play.heckles, play.rival_pose()])
+	play.mode.rival_steals = true
+	var cued := await _cued_bird(play, 181, "goose")
+	var other := await _spawn_flying(play, 182)
+	await _touch(_global(play, other.transform * LOCAL_BODY))
+	_check(cued.is_cued() and not other.is_flying() and play.rival_pose() == "aim", "an aim cue raises his gun over the sulk", "cued %s, %s" % [cued.is_cued(), play.rival_pose()])
+
+
+## The weather is visual only (AC 6): the same seeded run gives the same bird positions,
+## frame by frame, under each weather and with none; each weather has a fixed particle
+## count of at most Weather.PARTICLES_MAX; the weather is drawn behind the birds (before
+## them, at their z_index); set_weather starts exactly one emitter, and an unknown id is
+## reported and changes nothing.
+func _test_weather_is_visual_only() -> void:
+	var baseline := await _bird_track(73, "")
+	_check(baseline.size() > 100 and baseline.any(func(frame: String) -> bool: return frame.count("#") >= 2), "the tracked run has birds in the air", "%d frames" % baseline.size())
+	for weather_id in Content.WEATHERS:
+		var track := await _bird_track(73, weather_id)
+		var first_diff := -1
+		for i in mini(track.size(), baseline.size()):
+			if track[i] != baseline[i]:
+				first_diff = i
+				break
+		_check(track.size() == baseline.size() and first_diff == -1, "under %s the birds fly exactly as with no weather" % weather_id, "frame %d: %s vs %s" % [first_diff, track[first_diff] if first_diff >= 0 else "", baseline[first_diff] if first_diff >= 0 else ""])
+	var play := current_scene as Play
+	var weather := play.weather()
+	var birds := play.get_node("World/Birds") as Node2D
+	_check(weather.get_index() < birds.get_index() and weather.z_index <= birds.z_index and weather.z_as_relative, "the weather is drawn behind the birds", "weather #%d z %d, birds #%d z %d" % [weather.get_index(), weather.z_index, birds.get_index(), birds.z_index])
+	for weather_id in Content.WEATHERS:
+		var emitter := weather.emitter(weather_id)
+		_check(emitter != null and emitter.amount > 0 and emitter.amount <= Weather.PARTICLES_MAX and emitter.z_index <= birds.z_index and not emitter.top_level, "%s has a fixed count of at most %d particles, behind the birds" % [weather_id, Weather.PARTICLES_MAX], str(emitter.amount) if emitter != null else "no emitter")
+		weather.set_weather(weather_id)
+		var emitting := Content.WEATHERS.filter(func(other: String) -> bool: return weather.emitter(other).emitting)
+		_check(emitting == [weather_id] and weather.id == weather_id, "set_weather(%s) starts exactly its emitter" % weather_id, str(emitting))
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var refused := weather.set_weather("hail")
+	_game.quiet_errors = false
+	_check(not refused and weather.id == Content.WEATHERS.back() and _game.reported_errors.size() == errors + 1 and "hail" in _game.reported_errors.back(), "an unknown weather is reported and changes nothing", str(_game.reported_errors.slice(errors)))
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+
+
+## Where the birds are drawn (canvas coordinates, 3 decimals) frame by frame for 240 frames
+## of an Endless run of `run_seed` under weather `weather_id` ("" for none), steals off.
+func _bird_track(run_seed: int, weather_id: String) -> Array[String]:
+	var play := await _start_run(run_seed)
+	play.mode.rival_steals = false
+	play.weather().set_weather(weather_id)
+	var frames: Array[String] = []
+	for i in 240:
+		var parts := PackedStringArray()
+		for bird in play.flying_birds():
+			parts.append("#%d %.3f,%.3f" % [bird.number, bird.global_position.x, bird.global_position.y])
+		frames.append(" ".join(parts))
+		await process_frame
+	play.mode.rival_steals = true
+	return frames
+
+
+## Endless walks its backdrops by wave (AC 7): dawn with mist from wave 1; at wave 4 noon
+## (wind) cross-fades in during the lead-in and is done before the first spawn, which comes
+## on time (the fade delays nothing); the old backdrop is freed. Time Attack shows noon with
+## wind from its first wave and keeps it through later waves, with no cross-fade.
+func _test_backdrop_cycle_and_fade() -> void:
+	var play := await _start_run(74)
+	play.mode.rival_steals = false
+	_check(play.backdrop_id() == "dawn" and play.weather().id == "mist" and not play.is_backdrop_fading(), "Endless starts on the dawn backdrop with mist", "%s, %s" % [play.backdrop_id(), play.weather().id])
+	var from := _log.size()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 6000:
+		if play.wave.index >= 4 or _game.state != GameState.Flow.PLAY:
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	_check(play.wave.index == 4 and play.is_backdrop_fading() and play.backdrop_id() == "noon" and play.weather().id == "wind", "wave 4 cross-fades the noon backdrop in, with wind", "wave %d, fading %s, %s, %s" % [play.wave.index, play.is_backdrop_fading(), play.backdrop_id(), play.weather().id])
+	_check_logged(from, "^\\[Play\\] Backdrop dawn -> noon, weather wind, cross-fading over 0\\.80 s from wave 4$", "the cross-fade is logged")
+	# The loop stops on the frame wave 4 started in (_start_wave runs at the end of _process):
+	# its clock starts at -WAVE_LEAD and its first bird is due WAVE_LEAD of run time later.
+	var started_at := play.run_clock
+	var lead_clock := play.wave_clock
+	var faded_at := INF
+	var first_spawn := INF
+	var spawned := play.flying_birds().size()
+	for i in 120:
+		await process_frame
+		if faded_at == INF and not play.is_backdrop_fading():
+			faded_at = play.run_clock - started_at
+		if play.flying_birds().size() > spawned:
+			first_spawn = play.run_clock - started_at
+			break
+	var backdrops := play.get_node("World").get_children().filter(func(node: Node) -> bool: return node is Backdrop)
+	_check(faded_at <= Play.WAVE_LEAD and backdrops.size() == 1 and (backdrops[0] as Backdrop).id == "noon" and is_equal_approx((backdrops[0] as CanvasItem).modulate.a, 1.0), "the cross-fade ends within the lead-in, leaving only the noon backdrop", "faded %.3f s into the wave, %d backdrops" % [faded_at, backdrops.size()])
+	_check(is_equal_approx(lead_clock, -Play.WAVE_LEAD) and first_spawn >= Play.WAVE_LEAD - 0.001 and first_spawn <= Play.WAVE_LEAD + FRAME + 0.001, "the wave's first bird spawns on time (the fade delays nothing)", "wave clock %.3f at its start, first spawn %.3f s of run time after it" % [lead_clock, first_spawn])
+	play.mode.rival_steals = true
+	var timed := await _start_run(75, GameState.TIME_ATTACK_MODE)
+	_check(timed.backdrop_id() == "noon" and timed.weather().id == "wind", "Time Attack shows the noon backdrop with wind", "%s, %s" % [timed.backdrop_id(), timed.weather().id])
+	from = _log.size()
+	for i in 3:
+		timed.ammo.shells = 1
+		await _touch(_global(timed, SKY_POINTS[i]))
+	_check(timed.wave.index == 4 and timed.backdrop_id() == "noon" and not timed.is_backdrop_fading(), "Time Attack keeps noon through later waves", "wave %d, %s" % [timed.wave.index, timed.backdrop_id()])
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Backdrop")), "Time Attack never changes its backdrop", "a backdrop line")
+
+
+## A backdrop whose art is missing is reported (AC 11): the log and the error label name
+## the file, show_backdrop() refuses, and the backdrop shown stays as it was.
+func _test_missing_backdrop_is_reported() -> void:
+	var play := await _start_run(76)
+	var backdrop := play.get_node("World/Backdrop") as Backdrop
+	var sky := (backdrop.get_node("Sky") as TextureRect).texture
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var shown := backdrop.show_backdrop("dusk")
+	_game.quiet_errors = false
+	var label := _game.get_node("Fade/ErrorLabel") as Label
+	var message: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(not shown and _game.reported_errors.size() == errors + 1 and "res://art/backdrops/dusk_sky.svg" in message and "res://art/backdrops/dusk_grass.svg" in message, "a backdrop with missing art is reported with its files", message)
+	_check(label.visible and label.text == message, "the missing art shows on the error label", label.text)
+	_check(backdrop.id == "dawn" and (backdrop.get_node("Sky") as TextureRect).texture == sky, "the backdrop shown stays as it was (no placeholder)", backdrop.id)
+	label.hide()
+
+
+## The UI theme (AC 9): project.godot sets res://ui/theme.tres, which loads with no
+## problem; body text uses Nunito (a FontVariation of the bundled variable font), buttons
+## and headings Lilita One, both shipped with their OFL licence (exported by the preset);
+## buttons have flat styles for every state, their text at least 4.5:1 on each enabled
+## state, and a focus ring drawn outside the button that stands out from the menus'
+## background; the scenes use it. Missing theme or font files are reported by name (AC 11),
+## before anything is loaded: a theme whose font file is gone, no theme file, a theme
+## without a default font; a scene's missing art is named too.
+func _test_ui_theme_and_fonts() -> void:
+	var path: String = ProjectSettings.get_setting(GameState.THEME_SETTING, "")
+	_check(path == "res://ui/theme.tres" and GameState.theme_problems(path).is_empty(), "project.godot sets the UI theme, which loads without problems", "%s: %s" % [path, GameState.theme_problems(path)])
+	_check(not _game.reported_errors.any(func(message: String) -> bool: return "UI theme" in message), "nothing about the theme was reported at start", str(_game.reported_errors))
+	var theme := load(path) as Theme
+	var body := theme.default_font as FontVariation
+	var display := theme.get_font(&"font", &"Button")
+	_check(body != null and body.base_font.resource_path == "res://ui/fonts/Nunito-wght.ttf" and display.resource_path == "res://ui/fonts/LilitaOne-Regular.ttf" and theme.get_font(&"font", &"HeadingLabel") == display,
+		"body text is Nunito, buttons and headings Lilita One", "%s, %s" % [body.base_font.resource_path if body != null else "none", display.resource_path])
+	for licence: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
+		_check("SIL Open Font License" in FileAccess.get_file_as_string(licence), "%s is bundled" % licence.get_file(), "missing")
+	var presets := ConfigFile.new()
+	presets.load(EXPORT_PRESETS_PATH)
+	_check("ui/fonts/*.txt" in str(presets.get_value("preset.0", "include_filter", "")), "the web export ships the fonts' licences", str(presets.get_value("preset.0", "include_filter", "")))
+	var ink := theme.get_color(&"font_color", &"Button")
+	for state: String in ["normal", "hover", "pressed"]:
+		var style := theme.get_stylebox(state, &"Button") as StyleBoxFlat
+		var ratio := _contrast(ink, style.bg_color) if style != null else 0.0
+		_check(style != null and ratio >= MIN_CONTRAST, "button text reads at %.1f:1 on the %s style" % [ratio, state], str(style))
+	var disabled := theme.get_stylebox(&"disabled", &"Button") as StyleBoxFlat
+	_check(disabled != null and disabled.bg_color != (theme.get_stylebox(&"normal", &"Button") as StyleBoxFlat).bg_color, "a disabled button looks different", str(disabled))
+	var focus := theme.get_stylebox(&"focus", &"Button") as StyleBoxFlat
+	var panel := theme.get_stylebox(&"panel", &"Panel") as StyleBoxFlat
+	_check(focus != null and not focus.draw_center and focus.border_width_top >= 3 and focus.expand_margin_top > 0.0 and _contrast(focus.border_color, panel.bg_color) >= MIN_CONTRAST,
+		"the focus ring is a thick outline around the button that stands out from the menus' background", "%s, %.1f:1" % [focus, _contrast(focus.border_color, panel.bg_color) if focus != null else 0.0])
+	await _open_title()
+	var campaign := current_scene.get_node("Safe/CampaignButton") as Button
+	var heading := current_scene.get_node("Safe/GameName") as Label
+	_check(campaign.get_theme_font(&"font") == display and heading.get_theme_font(&"font") == display and (current_scene.get_node("Safe/Tagline") as Label).get_theme_font(&"font") == body, "the title uses the theme's fonts", "%s" % campaign.get_theme_font(&"font"))
+	var broken := "user://broken_theme.tres"
+	var file := FileAccess.open(broken, FileAccess.WRITE)
+	file.store_string('[gd_resource type="Theme" load_steps=2 format=3]\n\n[ext_resource type="FontFile" path="res://ui/fonts/Missing.ttf" id="1_font"]\n\n[resource]\ndefault_font = ExtResource("1_font")\n')
+	file.close()
+	_check(GameState.theme_problems(broken) == ["UI theme 'user://broken_theme.tres' needs 'res://ui/fonts/Missing.ttf', which is missing"], "a theme whose font file is missing is reported with the file", str(GameState.theme_problems(broken)))
+	DirAccess.remove_absolute(broken)
+	_check(GameState.theme_problems("res://ui/no_theme.tres") == ["UI theme 'res://ui/no_theme.tres' does not exist"], "a missing theme file is reported", str(GameState.theme_problems("res://ui/no_theme.tres")))
+	_check(GameState.font_problems(Theme.new(), "test") == ["UI theme 'test': default_font has no font file"], "a theme without a default font is reported", str(GameState.font_problems(Theme.new(), "test")))
+	var scene := "user://broken_scene.tscn"
+	file = FileAccess.open(scene, FileAccess.WRITE)
+	file.store_string('[gd_scene load_steps=2 format=3]\n\n[ext_resource type="Texture2D" path="res://art/no_such_bird.svg" id="1_art"]\n\n[node name="Broken" type="Sprite2D"]\ntexture = ExtResource("1_art")\n')
+	file.close()
+	_check(GameState.missing_dependencies(scene) == PackedStringArray(["res://art/no_such_bird.svg"]), "a scene's missing art is named", str(GameState.missing_dependencies(scene)))
+	DirAccess.remove_absolute(scene)
+
+
+## With the theme's fonts, every menu button's text fits inside it at the largest values the
+## save holds (AC 10): the title's Endless and Time Attack bests at SAVE_SCORE_MAX, every
+## chapter at 18/18 stars and every level at 3/3 stars with a best of SAVE_SCORE_MAX, at
+## 16:9 and 4:3 (each button's minimum size, its text included, within the size its scene
+## gives it: a Button grows to fit its text, so a grown one would push into its neighbours).
+func _test_menu_texts_fit_largest_values() -> void:
+	_clear_tool_save()
+	for mode_id in GameState.BEST_MODES:
+		_game.bests[mode_id] = GameState.SAVE_SCORE_MAX
+	for level in Content.levels():
+		_game.progress[level.id] = Campaign.Record.new(Campaign.MAX_STARS, GameState.SAVE_SCORE_MAX)
+	var screens: Array[Array] = [[GameState.Flow.TITLE, {}, ["Safe/CampaignButton", "Safe/EndlessButton", "Safe/TimeAttackButton"]], [GameState.Flow.CHAPTER_SELECT, {}, ["Safe/Chapter1", "Safe/Chapter2", "Safe/Chapter3", "Safe/Chapter4", "Safe/BackButton"]]]
+	for chapter_spec in Content.chapters():
+		screens.append([GameState.Flow.LEVEL_SELECT, {"chapter": chapter_spec.id}, ["Safe/Level1", "Safe/Level2", "Safe/Level3", "Safe/Level4", "Safe/Level5", "Safe/Level6", "Safe/BackButton"]])
+	for screen: Array in screens:
+		_game.goto(screen[0], screen[1])
+		await _game.transition_finished
+		await process_frame
+		for window: Vector2i in [LANDSCAPE_16_9, LANDSCAPE_4_3]:
+			root.size = window
+			await process_frame
+			await process_frame
+			var overflow: Array[String] = []
+			var texts: Array[String] = []
+			for node_path: String in screen[2]:
+				var button := current_scene.get_node(node_path) as Button
+				texts.append(button.text.replace("\n", " / "))
+				# A Button grows to its minimum size, so its text is measured against the size
+				# the scene gives it (its offsets; these buttons' anchors are a point).
+				var need := button.get_combined_minimum_size()
+				var designed := Vector2(button.offset_right - button.offset_left, button.offset_bottom - button.offset_top)
+				if need.x > designed.x + 0.5 or need.y > designed.y + 0.5:
+					overflow.append("%s needs %s in its %s" % [button.name, need, designed])
+			# The chapter buttons show stars only; the title and level select show the best score.
+			var shows_max: bool = screen[0] == GameState.Flow.CHAPTER_SELECT or str(GameState.SAVE_SCORE_MAX) in " ".join(texts)
+			_check(overflow.is_empty() and shows_max, "%s %dx%d: every button's text fits at the largest values (%s)" % [GameState.Flow.keys()[screen[0]], window.x, window.y, "; ".join(texts)], "; ".join(overflow))
+	root.size = BASE_WINDOW
+	await process_frame
+	_clear_tool_save()
+
+
 ## Campaign waves (Wave.campaign) are a pure function of the level and the wave index (the
 ## level's fixed seed): the same level and index give the same spawns, shells and speed,
 ## another level other seeds. A plain wave holds wave_birds birds every spawn_interval at
@@ -2873,17 +3124,17 @@ func _test_save_settings_and_bad_entries() -> void:
 ## many birds get away (no escape limit, no early fail): dawn_2 loses all 12 of its birds
 ## (more than Endless's limit of 10) and still reaches wave 3. The run start, the waves and
 ## the end are logged with the level; the HUD shows wave x/N and the escapes without a limit;
-## the sky takes the chapter's tint. A run with 0 stars is recorded as not passed: Next is
+## the chapter's backdrop and weather show. A run with 0 stars is recorded as not passed: Next is
 ## hidden, Retry is focused and plays the level again.
 func _test_campaign_level_plays_all_waves() -> void:
 	_clear_tool_save()
 	_game.progress["dawn_1"] = Campaign.Record.new(1, 900)
 	var from := _log.size()
 	var play := await _start_level("dawn_2")
-	_check_logged(from, "^\\[Play\\] Run start: level dawn_2 \\(Dawn 2 of 6\\), seed 102 \\(3 waves, no escape limit, combo cap 3, 3 shells per hit, rival steals on, linger x1\\.00, aim 1\\.00 s, heckle cooldown 4\\.00 s, sky #ffe2c4, weather mist\\)$", "the level's run start is logged with its seed and settings")
+	_check_logged(from, "^\\[Play\\] Run start: level dawn_2 \\(Dawn 2 of 6\\), seed 102 \\(3 waves, no escape limit, combo cap 3, 3 shells per hit, rival steals on, linger x1\\.00, aim 1\\.00 s, heckle cooldown 4\\.00 s, backdrop dawn, weather mist\\)$", "the level's run start is logged with its seed and settings")
 	_check_logged(from, "^\\[Play\\] Wave 1 start: 4 birds \\(.+\\), \\d+ shells, speed x1\\.00 \\(wave 1 of 3, level dawn_2\\)$", "a level's wave start is logged with its place in the level")
 	_check(_text(play, "Wave") == "Wave 1/3" and _text(play, "Escaped") == "Escaped 0", "the HUD shows wave x/N and the escapes without a limit", "%s, %s" % [_text(play, "Wave"), _text(play, "Escaped")])
-	_check((play.get_node("World/Sky") as CanvasItem).modulate == Content.chapter("dawn").sky_tint, "the sky takes the chapter's tint", str((play.get_node("World/Sky") as CanvasItem).modulate))
+	_check(play.backdrop_id() == "dawn" and play.weather().id == "mist" and (play.get_node("World/Backdrop/Sky") as TextureRect).texture.resource_path == Content.backdrop_path("dawn", "sky"), "the level shows its chapter's backdrop and weather", "%s, %s" % [play.backdrop_id(), play.weather().id])
 	var waves_seen: Array[int] = []
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 9000:

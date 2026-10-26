@@ -1,0 +1,101 @@
+[gd_scene load_steps=11 format=3]
+
+[ext_resource type="Script" path="res://scripts/weather.gd" id="1_weather"]
+[ext_resource type="Texture2D" path="res://art/weather_mist.svg" id="2_mist"]
+[ext_resource type="Texture2D" path="res://art/weather_wind.svg" id="3_wind"]
+[ext_resource type="Texture2D" path="res://art/weather_rain.svg" id="4_rain"]
+[ext_resource type="Texture2D" path="res://art/weather_snow.svg" id="5_snow"]
+
+[sub_resource type="Gradient" id="Gradient_mist"]
+offsets = PackedFloat32Array(0, 0.3, 0.7, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.45, 1, 1, 1, 0.45, 1, 1, 1, 0)
+
+[sub_resource type="Gradient" id="Gradient_wind"]
+offsets = PackedFloat32Array(0, 0.15, 0.8, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="Gradient" id="Gradient_rain"]
+offsets = PackedFloat32Array(0, 0.85, 1)
+colors = PackedColorArray(1, 1, 1, 0.75, 1, 1, 1, 0.75, 1, 1, 1, 0)
+
+[sub_resource type="Gradient" id="Gradient_snow"]
+offsets = PackedFloat32Array(0, 0.1, 0.85, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.9, 1, 1, 1, 0.9, 1, 1, 1, 0)
+
+[node name="Weather" type="Node2D"]
+script = ExtResource("1_weather")
+
+[node name="Mist" type="CPUParticles2D" parent="."]
+position = Vector2(480, 360)
+emitting = false
+amount = 10
+texture = ExtResource("2_mist")
+lifetime = 14.0
+preprocess = 14.0
+emission_shape = 3
+emission_rect_extents = Vector2(560, 50)
+direction = Vector2(1, 0)
+spread = 0.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 8.0
+initial_velocity_max = 18.0
+scale_amount_min = 1.2
+scale_amount_max = 2.2
+color_ramp = SubResource("Gradient_mist")
+
+[node name="Wind" type="CPUParticles2D" parent="."]
+position = Vector2(-20, 250)
+emitting = false
+amount = 24
+texture = ExtResource("3_wind")
+lifetime = 4.5
+preprocess = 4.5
+emission_shape = 3
+emission_rect_extents = Vector2(10, 190)
+direction = Vector2(1, 0.12)
+spread = 12.0
+gravity = Vector2(0, 0)
+initial_velocity_min = 220.0
+initial_velocity_max = 320.0
+angular_velocity_min = -240.0
+angular_velocity_max = 240.0
+scale_amount_min = 0.8
+scale_amount_max = 1.3
+color_ramp = SubResource("Gradient_wind")
+
+[node name="Rain" type="CPUParticles2D" parent="."]
+position = Vector2(480, -20)
+emitting = false
+amount = 110
+texture = ExtResource("4_rain")
+lifetime = 0.9
+preprocess = 0.9
+emission_shape = 3
+emission_rect_extents = Vector2(540, 10)
+particle_flag_align_y = true
+direction = Vector2(0.18, 1)
+spread = 2.0
+gravity = Vector2(0, 300)
+initial_velocity_min = 560.0
+initial_velocity_max = 680.0
+color_ramp = SubResource("Gradient_rain")
+
+[node name="Snow" type="CPUParticles2D" parent="."]
+position = Vector2(480, -20)
+emitting = false
+amount = 80
+texture = ExtResource("5_snow")
+lifetime = 9.0
+preprocess = 9.0
+emission_shape = 3
+emission_rect_extents = Vector2(540, 10)
+direction = Vector2(0.1, 1)
+spread = 20.0
+gravity = Vector2(0, 12)
+initial_velocity_min = 40.0
+initial_velocity_max = 70.0
+angular_velocity_min = -60.0
+angular_velocity_max = 60.0
+scale_amount_min = 0.6
+scale_amount_max = 1.2
+color_ramp = SubResource("Gradient_snow")

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="360" viewBox="0 0 240 360">
+  <!-- Noon backdrop. Grass layer: a seamless 240-wide tile. -->
+  <rect x="0" y="24" width="240" height="336" fill="#6f9f4a"/>
+  <path d="M-6 34 L-6 26 L3.0 8.0 L7.5 26 L18.0 11.0 L22.5 26 L33.0 6.0 L37.5 26 L48.0 9.0 L52.5 26 L63.0 4.0 L67.5 26 L78.0 7.0 L82.5 26 L93.0 8.0 L97.5 26 L108.0 11.0 L112.5 26 L123.0 6.0 L127.5 26 L138.0 9.0 L142.5 26 L153.0 4.0 L157.5 26 L168.0 7.0 L172.5 26 L183.0 8.0 L187.5 26 L198.0 11.0 L202.5 26 L213.0 6.0 L217.5 26 L228.0 9.0 L232.5 26 L246 26 L246 34 Z" fill="#a6c96e" stroke="#1f1a2e" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M8 30 L11 18 L13 30 Z" fill="#ffffff"/>
+  <path d="M38 30 L41 21 L43 30 Z" fill="#ffffff"/>
+  <path d="M68 30 L71 24 L73 30 Z" fill="#ffffff"/>
+  <path d="M98 30 L101 18 L103 30 Z" fill="#ffffff"/>
+  <path d="M128 30 L131 21 L133 30 Z" fill="#ffffff"/>
+  <path d="M158 30 L161 24 L163 30 Z" fill="#ffffff"/>
+  <path d="M188 30 L191 18 L193 30 Z" fill="#ffffff"/>
+  <path d="M218 30 L221 21 L223 30 Z" fill="#ffffff"/>
+  <rect x="10" y="70" width="28" height="4" fill="#4a7a3a"/>
+  <rect x="90" y="107" width="28" height="4" fill="#4a7a3a"/>
+  <rect x="130" y="144" width="28" height="4" fill="#4a7a3a"/>
+  <rect x="210" y="91" width="28" height="4" fill="#4a7a3a"/>
+  <rect x="40" y="150" width="34" height="4" fill="#4a7a3a"/>
+  <rect x="100" y="203" width="34" height="4" fill="#4a7a3a"/>
+  <rect x="160" y="256" width="34" height="4" fill="#4a7a3a"/>
+  <rect x="220" y="169" width="34" height="4" fill="#4a7a3a"/>
+  <circle cx="24.0" cy="110.0" r="4.0" fill="#b8a58c"/>
+  <circle cx="72.0" cy="181.0" r="4.0" fill="#b8a58c"/>
+  <circle cx="120.0" cy="252.0" r="4.0" fill="#b8a58c"/>
+  <circle cx="168.0" cy="123.0" r="4.0" fill="#b8a58c"/>
+  <circle cx="216.0" cy="194.0" r="4.0" fill="#b8a58c"/>
+</svg>

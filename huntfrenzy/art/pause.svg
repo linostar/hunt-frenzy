@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-  <!-- First-pass pause icon. -->
-  <rect x="7" y="5" width="6" height="22" rx="2" fill="#fbedcd"/>
-  <rect x="19" y="5" width="6" height="22" rx="2" fill="#fbedcd"/>
+  <!-- Pause icon: two cream bars on a dark disc. -->
+  <ellipse cx="16" cy="16" rx="14" ry="14" fill="#2b263b" stroke="#1f1a2e" stroke-width="2.5"/>
+  <path d="M10 9 L14 9 L14 23 L10 23 Z" fill="#fbedcd"/>
+  <path d="M18 9 L22 9 L22 23 L18 23 Z" fill="#fbedcd"/>
 </svg>
