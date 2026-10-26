@@ -4,9 +4,11 @@ extends Control
 ## button each with the best stars and best score earned (or "New" for one never finished,
 ## "Boss" on the boss level); a locked level shows "Locked" and its button is disabled, so
 ## neither a touch, a click nor Enter starts it. A level starts it (Game.start_level);
-## Back goes to the chapter select. The last unlocked level is focused on arrival (ring
-## hidden until keyboard navigation). Laid out in the safe area; every refit logs each
-## button's rect (base units), which the smoke test taps.
+## Back goes to the chapter select (focusing this chapter there). On arrival the level just
+## left (Game.flow_args {"level": id}, from the results' Levels) is focused when it is
+## open, else the last unlocked level (ring hidden until keyboard navigation). Laid out in
+## the safe area; every refit logs each button's rect (base units), which the smoke test
+## taps.
 
 const LEVEL_TEXT := "Level %d%s\n%s"
 const BOSS_NOTE := " (boss)"
@@ -43,6 +45,8 @@ func _ready() -> void:
 		_game.report_error("Level select has %d level buttons for %d levels of %s" % [_buttons.size(), _levels.size(), chapter_id])
 	_heading.text = HEADING_TEXT % [chapter.name, Campaign.chapter_stars(chapter_id, _game.progress), _levels.size() * Campaign.MAX_STARS]
 	var focus := _back_button
+	var left := str(_game.flow_args.get("level", ""))
+	var returned: Button = null
 	for i in _buttons.size():
 		var button := _buttons[i]
 		if i >= _levels.size():
@@ -57,9 +61,11 @@ func _ready() -> void:
 		button.pressed.connect(_on_level_pressed.bind(level.id))
 		if open:
 			focus = button
+			if level.id == left:
+				returned = button
 	_back_button.pressed.connect(_on_back_pressed)
 	_fit()
-	focus.grab_focus(true)
+	(returned if returned != null else focus).grab_focus(true)
 
 
 func _fit() -> void:
@@ -88,4 +94,4 @@ func _on_level_pressed(level_id: String) -> void:
 
 func _on_back_pressed() -> void:
 	print("[LevelSelect] Back pressed")
-	_game.goto(GameState.Flow.CHAPTER_SELECT)
+	_game.goto(GameState.Flow.CHAPTER_SELECT, {"chapter": chapter.id})

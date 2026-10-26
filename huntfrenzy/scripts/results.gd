@@ -15,7 +15,8 @@ extends Control
 ## Endless: Play again (focused on arrival, ring hidden until keyboard navigation) starts
 ## a new Endless run; Title goes to the title. A campaign level: Next (only when the next
 ## level exists and is unlocked; focused when shown) starts it, Retry plays the level
-## again, Levels opens its chapter's level select (Retry is focused without Next).
+## again, Levels opens its chapter's level select with this level focused (Retry is focused
+## without Next).
 ## Laid out in the safe area.
 
 const NO_VALUE := "—"
@@ -191,4 +192,4 @@ func _on_retry_pressed() -> void:
 
 func _on_levels_pressed() -> void:
 	print("[Results] Levels pressed: opening chapter %s" % _level.chapter)
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": _level.chapter})
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": _level.chapter, "level": _level.id})

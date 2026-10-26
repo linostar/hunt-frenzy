@@ -4,9 +4,10 @@ extends Control
 ## order) as one button each with the stars earned in it out of its levels x 3; a chapter
 ## whose level 1 is still locked shows "Locked" and its button is disabled, so neither a
 ## touch, a click nor Enter starts it. A chapter opens its level select; Back goes to the
-## title. The last unlocked chapter is focused on arrival (ring hidden until keyboard
-## navigation). Laid out in the safe area; every refit logs each button's rect (base
-## units), which the smoke test taps.
+## title. On arrival the chapter just left (Game.flow_args {"chapter": id}, from the level
+## select's Back) is focused when it is open, else the last unlocked chapter (ring hidden
+## until keyboard navigation). Laid out in the safe area; every refit logs each button's
+## rect (base units), which the smoke test taps.
 
 const OPEN_TEXT := "%s\n%d/%d stars"
 const LOCKED_TEXT := "%s\nLocked"
@@ -26,6 +27,8 @@ func _ready() -> void:
 	if _chapters.size() != _buttons.size():
 		_game.report_error("Chapter select has %d chapter buttons for %d chapters" % [_buttons.size(), _chapters.size()])
 	var focus := _back_button
+	var left := str(_game.flow_args.get("chapter", ""))
+	var returned: Button = null
 	for i in _buttons.size():
 		var button := _buttons[i]
 		if i >= _chapters.size():
@@ -39,9 +42,11 @@ func _ready() -> void:
 		button.pressed.connect(_on_chapter_pressed.bind(spec.id))
 		if open:
 			focus = button
+			if spec.id == left:
+				returned = button
 	_back_button.pressed.connect(_on_back_pressed)
 	_fit()
-	focus.grab_focus(true)
+	(returned if returned != null else focus).grab_focus(true)
 
 
 func _fit() -> void:

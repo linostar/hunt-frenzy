@@ -17,9 +17,13 @@ extends Node
 ## an older version is upgraded step by step (save_migrations, logged), a corrupt or
 ## unknown-version one is moved to backup_path(), reported (log and error label) and
 ## replaced by a fresh save. A campaign entry naming a level that is not in levels.json, or
-## holding stars or a score out of range, is reported and dropped; the rest of the save
-## loads. A failed save sets save_error (a short reason the results screen shows), is
-## reported and emits save_failed. On the web, user:// is an
+## holding stars or a score out of range, is dropped (each logged with its stored value);
+## the rest of the save loads, the original file is first copied to a free
+## dropped_backup_path() (never over another backup), and only then is the save written
+## back without the dropped entries; the error label says how many were dropped and where
+## the original is. If the copy fails, the save is not written back (the original stays).
+## A failed save sets save_error (a short reason the results screen shows), is reported
+## and emits save_failed. On the web, user:// is an
 ## in-memory filesystem that Godot copies to IndexedDB asynchronously, ignoring a failed
 ## copy; so a web save is logged as written, then confirmed (or reported as lost) by
 ## reading it back from IndexedDB (WEB_PERSIST_CHECK_JS), and storage that is unavailable
@@ -63,6 +67,8 @@ const SAVE_VERSION := 2
 ## {"stars", "score"} (its Campaign.Record); `settings` holds SETTINGS_KEYS.
 const SAVE_KEYS: Dictionary[String, Variant.Type] = {"version": TYPE_INT, "best_endless": TYPE_INT, "levels": TYPE_DICTIONARY, "settings": TYPE_DICTIONARY}
 const SAVE_SCORE_MAX := 999999999
+## The most backups of saves with dropped campaign entries (dropped_backup_path).
+const DROPPED_BACKUPS_MAX := 20
 ## The keys of a saved level entry.
 const LEVEL_KEYS: Array[String] = ["stars", "score"]
 ## The saved settings: the music and sound effects volumes (whole 0..VOLUME_MAX) and mutes
@@ -159,8 +165,9 @@ var storage_persistent := true
 var persist_check := 0
 
 var _transitioning := false
-## Campaign entries the last load dropped (load_game writes the save back without them).
-var _dropped_entries := 0
+## The campaign entries the last load dropped, one log message each (load_game backs the
+## original up, then writes the save back without them).
+var _dropped_entries: Array[String] = []
 var _visible_rect := Rect2()
 var _safe_rect := Rect2()
 ## True while the rotate overlay holds the tree paused (it then unpauses on hiding).
@@ -450,9 +457,11 @@ func save_summary() -> String:
 ## upgraded (save_migrations, logged) and written back at once; an unreadable, corrupt or
 ## unknown-version one is reported (push_error and the error label), moved to backup_path()
 ## and replaced by a fresh save; a bad campaign entry is reported and dropped (the rest
-## loads, and the save is written back without it, so it is reported once). With content errors the save is left unread and untouched (its levels are
-## checked against levels.json; the title disables play). A JSON instance reports parse
-## errors as return values, so each problem is reported once, by us.
+## loads; the original is copied to dropped_backup_path() and the save is then written back
+## without it, so it is reported once, or left as it is when the copy fails). With content
+## errors the save is left unread and untouched (its levels are checked against
+## levels.json; the title disables play). A JSON instance reports parse errors as return
+## values, so each problem is reported once, by us.
 func load_game() -> void:
 	_reset_save_data()
 	if not FileAccess.file_exists(save_path):
@@ -477,12 +486,31 @@ func load_game() -> void:
 		_discard_save("corrupt (%s)" % problem)
 		return
 	print("[Game] Loaded save from %s: version %d, %s" % [save_path, SAVE_VERSION, save_summary()])
-	if int(from_version) != SAVE_VERSION:
+	# Dropped entries come first: the original is backed up before anything is written back.
+	if not _dropped_entries.is_empty():
+		if int(from_version) != SAVE_VERSION:
+			print("[Game] The save upgraded from version %d is written as version %d once its dropped entries are backed up" % [int(from_version), SAVE_VERSION])
+		_write_back_without_dropped()
+	elif int(from_version) != SAVE_VERSION:
 		print("[Game] Writing the save upgraded from version %d as version %d" % [int(from_version), SAVE_VERSION])
 		save_game()
-	elif _dropped_entries > 0:
-		print("[Game] Writing the save without its %d dropped campaign entries" % _dropped_entries)
-		save_game()
+
+
+## Copies the save as loaded to a free dropped_backup_path(), then writes it back without
+## the dropped campaign entries; the player is told how many were dropped and where the
+## original is. When the copy fails nothing is written: the original stays on disk.
+func _write_back_without_dropped() -> void:
+	var count := _dropped_entries.size()
+	var dropped := "%d campaign %s" % [count, "entry was" if count == 1 else "entries were"]
+	var backup := dropped_backup_path()
+	var copied := DirAccess.copy_absolute(save_path, backup) if backup != "" else ERR_ALREADY_EXISTS
+	if copied != OK:
+		report_error("Save '%s': %s dropped (see the log), but the original could not be backed up to '%s' (%s); the save is left as it is" % [save_path, dropped, backup if backup != "" else save_path.get_basename() + ".dropped*.json", error_string(copied)])
+		return
+	print("[Game] Backed up the save with %d dropped campaign entries to %s" % [count, backup])
+	report_error("Save '%s': %s dropped (see the log); the original is kept as '%s'" % [save_path, dropped, backup])
+	print("[Game] Writing the save without its %d dropped campaign entries" % count)
+	save_game()
 
 
 func _reset_save_data() -> void:
@@ -497,6 +525,18 @@ func _reset_save_data() -> void:
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
 func backup_path() -> String:
 	return save_path.get_basename() + ".corrupt.json"
+
+
+## Where a save with dropped campaign entries is copied before it is written back: the first
+## of save.dropped.json, save.dropped.2.json, ... (up to DROPPED_BACKUPS_MAX) that does not
+## exist yet, so it never replaces an earlier backup or the corrupt-save backup; "" when
+## all are taken.
+func dropped_backup_path() -> String:
+	for n in range(1, DROPPED_BACKUPS_MAX + 1):
+		var path := save_path.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n)
+		if not FileAccess.file_exists(path) and not DirAccess.dir_exists_absolute(path):
+			return path
+	return ""
 
 
 ## Applies a parsed save (upgraded to SAVE_VERSION first); returns "" or what is wrong
@@ -534,12 +574,14 @@ func _apply_save(data: Variant) -> String:
 			return "settings.%s is not true or false" % key
 	var loaded: Dictionary[String, Campaign.Record] = {}
 	var levels: Dictionary = saved["levels"]
-	_dropped_entries = 0
+	_dropped_entries.clear()
 	for id: Variant in levels:
 		var entry_problem := level_entry_problem(str(id), levels[id])
 		if entry_problem != "":
-			_dropped_entries += 1
-			report_error("Save '%s': dropped the campaign entry levels.%s: %s; the rest of the save loaded" % [save_path, id, entry_problem])
+			var message := "Save '%s': dropped the campaign entry levels.%s = %s: %s; the rest of the save loaded" % [save_path, id, JSON.stringify(_as_stored(levels[id]), "", false), entry_problem]
+			_dropped_entries.append(message)
+			# Each drop is reported; the error label then shows their count (load_game).
+			report_error(message)
 			continue
 		var entry: Dictionary = levels[id]
 		loaded[str(id)] = Campaign.Record.new(int(entry["stars"]), int(entry["score"]))
@@ -568,6 +610,19 @@ static func level_entry_problem(id: String, entry: Variant) -> String:
 	if not _is_whole(fields["score"]) or int(fields["score"]) < 0 or int(fields["score"]) > SAVE_SCORE_MAX:
 		return "score %s is not a whole number 0..%d" % [_number_text(fields["score"]), SAVE_SCORE_MAX]
 	return ""
+
+
+## A parsed save value as it was stored, for a message: whole numbers (which JSON loads as
+## floats) back to ints, inside objects and arrays too.
+static func _as_stored(value: Variant) -> Variant:
+	if value is Dictionary:
+		var copy := {}
+		for key: Variant in value:
+			copy[key] = _as_stored((value as Dictionary)[key])
+		return copy
+	if value is Array:
+		return (value as Array).map(_as_stored)
+	return int(value) if value is float and _is_whole(value) else value
 
 
 ## A saved value for a message: a whole number without its ".0" (JSON numbers load as floats).

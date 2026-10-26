@@ -209,6 +209,8 @@ func _tests() -> Array[Callable]:
 		_test_results_verdict,
 		_test_chapter_select,
 		_test_level_select,
+		_test_save_dropped_backup_failure,
+		_test_select_focus_returns,
 	]
 
 
@@ -2235,25 +2237,48 @@ func _test_save_settings_and_bad_entries() -> void:
 		"dawn_1": {"stars": 2, "score": 1500}, "dusk_9": {"stars": 1, "score": 10}, "dawn_2": {"stars": 4, "score": 10},
 		"dawn_3": {"stars": 1, "score": -5}, "dawn_4": "lots", "dawn_5": {"stars": 1}, "dawn_6": {"stars": 1.5, "score": 3},
 	}
+	# Each drop names the key, the value stored and the problem.
 	var expected := {
-		"dusk_9": "'dusk_9' is not a level of levels.json", "dawn_2": "stars 4 is not a whole number 0..3", "dawn_3": "score -5 is not a whole number 0..999999999",
-		"dawn_4": "not an object", "dawn_5": "must be exactly [\"stars\", \"score\"]", "dawn_6": "stars 1.5 is not a whole number 0..3",
+		"dusk_9": "{\"stars\":1,\"score\":10}: 'dusk_9' is not a level of levels.json", "dawn_2": "{\"stars\":4,\"score\":10}: stars 4 is not a whole number 0..3",
+		"dawn_3": "{\"stars\":1,\"score\":-5}: score -5 is not a whole number 0..999999999", "dawn_4": "\"lots\": not an object",
+		"dawn_5": "{\"stars\":1}: must be exactly [\"stars\", \"score\"]", "dawn_6": "{\"stars\":1.5,\"score\":3}: stars 1.5 is not a whole number 0..3",
 	}
+	var original := JSON.stringify({"version": 2, "best_endless": 42, "levels": levels, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}, "", false)
 	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
-	file.store_string(JSON.stringify({"version": 2, "best_endless": 42, "levels": levels, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}))
+	file.store_string(original)
+	file.close()
+	# An earlier corrupt-save backup must survive: the dropped entries' backup has its own name.
+	file = FileAccess.open(_game.backup_path(), FileAccess.WRITE)
+	file.store_string("earlier corrupt save")
 	file.close()
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
+	var from := _log.size()
 	_game.load_game()
 	_game.quiet_errors = false
 	var reported := _game.reported_errors.slice(errors)
-	_check(_game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 2 and _game.best_endless == 42 and not FileAccess.file_exists(_game.backup_path()), "bad campaign entries are dropped and the rest of the save loads", "%s, best %d" % [_game.progress.keys(), _game.best_endless])
+	var backup := _game.save_path.get_basename() + ".dropped.json"
+	_check(_game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 2 and _game.best_endless == 42, "bad campaign entries are dropped and the rest of the save loads", "%s, best %d" % [_game.progress.keys(), _game.best_endless])
 	for id: String in expected:
-		var line := "dropped the campaign entry levels.%s: %s" % [id, expected[id]]
-		_check(reported.any(func(message: String) -> bool: return message.contains(line) and message.contains(_game.save_path)), "a bad entry is reported with its key: " + id, "\n".join(reported))
-	_check(reported.size() == expected.size() and error_label.visible, "each dropped entry is reported once, on screen too", "%d reports" % reported.size())
+		var line := "dropped the campaign entry levels.%s = %s" % [id, expected[id]]
+		_check(reported.any(func(message: String) -> bool: return message.contains(line) and message.contains(_game.save_path)), "a bad entry is reported with its key and stored value: " + id, "\n".join(reported))
+	var summary := "Save '%s': 6 campaign entries were dropped (see the log); the original is kept as '%s'" % [_game.save_path, backup]
+	_check(reported.size() == expected.size() + 1 and reported.back() == summary and error_label.visible and error_label.text == summary, "the screen says how many entries were dropped and where the original is", "%d reports, label '%s'" % [reported.size(), error_label.text])
+	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
+	_check_logged(from, "^\\[Game\\] Backed up the save with 6 dropped campaign entries to user://tool_save\\.dropped\\.json$", "the backup path is logged")
 	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
 	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("best_endless") == 42.0, "the save is written back without the dropped entries", str(rewritten))
+	# A second save with a bad entry: its backup takes the next free name.
+	var second := JSON.stringify({"version": 2, "best_endless": 42, "levels": {"old_level": {"stars": 3, "score": 999}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
+	file = FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(second)
+	file.close()
+	_game.quiet_errors = true
+	_game.load_game()
+	_game.quiet_errors = false
+	var next_backup := _game.save_path.get_basename() + ".dropped.2.json"
+	_check(FileAccess.get_file_as_string(next_backup) == second and FileAccess.get_file_as_string(backup) == original and error_label.text.contains("1 campaign entry was dropped") and error_label.text.contains(next_backup), "a later drop backs up to the next free name, keeping the first backup", error_label.text)
+	_clear_tool_save()
 	var corrupt := {
 		JSON.stringify({"version": 2, "best_endless": 0, "levels": {}, "settings": {"music": 70, "sfx": 80, "music_muted": false}}): "settings must be exactly",
 		JSON.stringify({"version": 2, "best_endless": 0, "levels": {}, "settings": {"music": 101, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "settings.music is not a whole number 0..100",
@@ -2368,7 +2393,7 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	await _tap(levels)
 	await _game.transition_finished
 	var select := current_scene as LevelSelect
-	_check(select != null and _game.flow_args == {"chapter": "dawn"}, "Levels opens the chapter's level select", str(_game.flow_args))
+	_check(select != null and _game.flow_args == {"chapter": "dawn", "level": "dawn_1"} and (select.get_node("Safe/Level1") as Control).has_focus(), "Levels opens the chapter's level select on the level just played (not the last open one, dawn_2)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
 	if select != null:
 		var texts := ["Level1", "Level2", "Level3"].map(func(n: String) -> String: return (select.get_node("Safe/" + n) as Button).text)
 		_check(texts == ["Level 1\n2/3 stars, best 1500", "Level 2\nNew", "Level 3\nLocked"], "the level select shows the new best and the level it opened", str(texts))
@@ -2586,6 +2611,72 @@ func _test_level_select() -> void:
 	_clear_tool_save()
 
 
+## A save whose dropped entries cannot be backed up (every backup name is taken) is not
+## written back: the original stays on disk, the failure is reported on screen with the
+## count, and nothing claims a write-back.
+func _test_save_dropped_backup_failure() -> void:
+	_clear_tool_save()
+	var original := JSON.stringify({"version": 2, "best_endless": 7, "levels": {"dawn_1": {"stars": 2, "score": 300}, "old_level": {"stars": 3, "score": 999}, "dawn_2": {"stars": 9, "score": 5}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(original)
+	file.close()
+	for n in range(1, GameState.DROPPED_BACKUPS_MAX + 1):
+		var taken := FileAccess.open(_game.save_path.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n), FileAccess.WRITE)
+		taken.store_string("earlier backup %d" % n)
+		taken.close()
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.load_game()
+	_game.quiet_errors = false
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+	_check(reported.contains("2 campaign entries were dropped") and reported.contains("could not be backed up") and reported.contains("the save is left as it is") and error_label.text == reported, "a failed backup is reported on screen with the count", reported)
+	_check(FileAccess.get_file_as_string(_game.save_path.get_basename() + ".dropped.json") == "earlier backup 1", "no earlier backup is replaced", "")
+	_check(FileAccess.get_file_as_string(_game.save_path) == original, "a failed backup leaves the original save on disk", FileAccess.get_file_as_string(_game.save_path))
+	_check(not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to") or l.begins_with("[Game] Writing the save without")), "nothing is written back without a backup", "a write-back line")
+	_check(_game.progress.keys() == ["dawn_1"] and _game.best_endless == 7, "the rest of the save still loads", str(_game.progress.keys()))
+	error_label.hide()
+	_clear_tool_save()
+
+
+## Returning to a select screen focuses the entry just left when it is open: the level
+## select's Back focuses its chapter on the chapter select, and results' Levels focus the
+## level just played (_test_campaign_pass_next_retry_levels). Otherwise (no entry passed,
+## a locked one) the last open entry is focused, as on arrival from the title.
+func _test_select_focus_returns() -> void:
+	_clear_tool_save()
+	for index in range(1, 7):
+		_game.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
+	_game.progress["noon_1"] = Campaign.Record.new(1, 3000)
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Level6") as Control).has_focus(), "without a level to return to, the last open level is focused", str(root.gui_get_focus_owner()))
+	await _tap(current_scene.get_node("Safe/BackButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	_check(_game.flow_args == {"chapter": "dawn"} and (current_scene.get_node("Safe/Chapter1") as Control).has_focus(), "Back focuses the chapter just left (dawn), not the last open one (noon)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
+	await _open_title()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	_check(_game.flow_args == {} and (current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "from the title the last open chapter is focused", str(root.gui_get_focus_owner()))
+	_game.goto(GameState.Flow.CHAPTER_SELECT, {"chapter": "sunset"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "returning to a locked chapter falls back to the last open one", str(root.gui_get_focus_owner()))
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn", "level": "dawn_3"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Level3") as Control).has_focus(), "returning to an open level focuses it", str(root.gui_get_focus_owner()))
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "noon", "level": "noon_4"})
+	await _game.transition_finished
+	await process_frame
+	_check((current_scene.get_node("Safe/Level2") as Control).has_focus(), "returning to a locked level falls back to the last open one", str(root.gui_get_focus_owner()))
+	_clear_tool_save()
+
+
 ## Every control of `controls` (a select screen's buttons): at least 44x44, focusable with a
 ## visible focus style, inside the safe area at 16:9, 19.5:9, 4:3 and under a notch, below
 ## the top HUD bar and not overlapping another.
@@ -2749,8 +2840,11 @@ func _touches(points: Array[Vector2], indices: Array[int]) -> void:
 
 
 func _clear_tool_save() -> void:
-	for path: String in [GameState.TOOL_SAVE_PATH, GameState.TOOL_SAVE_PATH.get_basename() + ".corrupt.json"]:
-		if FileAccess.file_exists(path):
+	var paths: Array[String] = [GameState.TOOL_SAVE_PATH, GameState.TOOL_SAVE_PATH.get_basename() + ".corrupt.json"]
+	for n in range(1, GameState.DROPPED_BACKUPS_MAX + 1):
+		paths.append(GameState.TOOL_SAVE_PATH.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n))
+	for path in paths:
+		if FileAccess.file_exists(path) or DirAccess.dir_exists_absolute(path):
 			DirAccess.remove_absolute(path)
 	_game.best_endless = 0
 	_game.progress = {}
