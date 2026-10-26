@@ -81,6 +81,7 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `name` | string | 1..26 chars | Display name. |
 | `backdrop` | string | snake_case backdrop id | The chapter's backdrop: its layers (art) must exist (I3). |
 | `weather` | string | `"mist" \| "wind" \| "rain" \| "snow"` (`Content.WEATHERS`) | The weather drawn over the backdrop (visual only: it never changes a bird's flight, hitbox or timing). |
+| `music` | string | snake_case music track id | The loop the chapter's levels play: `res://audio/music/<id>.mp3` must exist (I23). |
 | `rival_linger_scale` | float | (0, 1]: above 0, at most 1 | The rival steals after `linger_time x` this in the chapter's levels; at most the chapter before's (I14). |
 
 ## birds.json
@@ -132,6 +133,7 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `backdrops[].backdrop` | string | snake_case backdrop id | A backdrop whose layers exist (I3), as a chapter's. |
 | `backdrops[].weather` | string | `Content.WEATHERS` | The weather drawn over it. |
 | `backdrop_waves` | int | 1..1000 | Waves each backdrop lasts before the next cross-fades in (during that wave's lead-in, without delaying it). |
+| `music` | string | snake_case music track id | The loop the mode's runs play: `res://audio/music/<id>.mp3` must exist (I23). |
 
 **How a run ends** (the one per-mode field rule): a mode has exactly one of `escape_limit` and `time_limit`. Both
 is an error (`data/modes.json [<id>] time_limit: not allowed with escape_limit (...)`), and so is neither
@@ -190,7 +192,7 @@ A single object (not an array):
 ---
 
 ## Invariants (`tools/test_content.gd` must check all of these)
-I1-I4 and I13-I15 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
+I1-I4, I13-I15 and I23 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
 (no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I22 are checked only by
 `test_content.gd`, against the real data and on a malformed copy each (with the loader quiet, so the invariant's own
 check is what catches it; I17 and I20's growth and shell parts on a stand-in schedule, since the formulas and
@@ -277,6 +279,10 @@ against a fallback value.
   the other backdrops (real art: sunset's violet 4.00:1 is the day's weakest, the night's sky 4.06:1). The main fills'
   contrasts are printed for the record (a sky-coloured bird such as the golden goose on the sunset sky relies on its
   outline).
+- **I23** Every music track the data names (a chapter's `music`, a mode's `music`) is a snake_case id whose loop exists
+  as `res://audio/music/<id>.mp3` (made by `tools/music.py`): `unknown music track '<id>' (no
+  res://audio/music/<id>.mp3)`, a non-snake_case id `'<id>' is not a snake_case music track id`. The title and results
+  loops are the game's own (`GameState.TITLE_TRACK`, `RESULTS_TRACK`), checked when the game starts.
 
 ## Current content
 | bird | chapter | pattern | speed | flee | linger | points | hp | special | Endless |
@@ -289,8 +295,8 @@ against a fallback value.
 | golden | dawn | rise | 240 | 4.0 | 2.5 | 500 | 1 | | 8% of slots from wave 2 |
 | decoy | sunset | rise | 120 | 7.0 | 4.0 | 0 | 1 | penalty 200, escape not counted, never stolen (the rival's pigeon in a top hat) | wave 5+, weight 2 |
 
-Chapters: dawn (backdrop dawn, mist, rival linger x1.0), noon (noon, wind, x0.9), sunset (sunset, rain, x0.8), night
-(night, snow, x0.7); dawn introduces
+Chapters: dawn (backdrop dawn, mist, music campaign_dawn, rival linger x1.0), noon (noon, wind, campaign_noon, x0.9),
+sunset (sunset, rain, campaign_sunset, x0.8), night (night, snow, campaign_night, x0.7); dawn introduces
 the goose and the golden goose, noon the armored goose, sunset the splitter (and its gosling) and the decoy, night the
 zigzag swift.
 
@@ -306,14 +312,14 @@ Golden chance 0.08 per slot everywhere but dawn_1 (0: its first wave is three pl
 
 Endless: 2 birds in wave 1, one more per wave up to 8 (wave 7), speed +0.06 per wave up to x1.6 (wave 11), a spawn
 every 1.2 s, 3 shells per hit needed, combo cap 5, the run ends at 10 counted escapes (stolen birds included), rival
-steals on; backdrops dawn (mist), noon (wind), sunset (rain), then night (snow), 3 waves each, night held from wave 10 (retuned in step 6 from 6 birds at most (wave 5), +0.08 speed to x1.6 (wave 9) and a spawn every 1.4 s, so
+steals on; backdrops dawn (mist), noon (wind), sunset (rain), then night (snow), 3 waves each, night held from wave 10, music endless (retuned in step 6 from 6 birds at most (wave 5), +0.08 speed to x1.6 (wave 9) and a spawn every 1.4 s, so
 the ramp keeps growing through wave 11; I20's perfect player still kills every bird at least 0.8 s before its
 deadline, the gosling's linger the tightest).
 
 Time Attack: 60 s, 3 birds in wave 1, one more per wave up to 8 (wave 6), speed +0.06 per wave up to x1.5, a spawn
 every 0.9 s, 2 shells per hit needed (a full pool every wave), combo cap 8; goose from wave 1, armored from 2, zigzag
 and decoy from 3, splitter from 4, golden 10% of slots from wave 2; no escape limit, rival steals off (he heckles); the
-noon backdrop with its wind throughout.
+noon backdrop with its wind throughout, music time_attack.
 
 Rival: aim 1.0 s (so every cue ends at least 0.5 s before the bird flees: the gosling's 1.5 + 1.0 against its 3.0),
 heckle cooldown 4.0 s; 5 miss, 4 combo, 4 wave_end, 5 steal and 4 results lines, the longest 40 characters.

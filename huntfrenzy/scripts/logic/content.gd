@@ -6,7 +6,8 @@ extends RefCounted
 ## load_texts() replace it (tests).
 ## Every problem (unreadable file, bad JSON, a file with no entries, missing or unknown key,
 ## wrong type, non-integer int, out-of-range value, unknown enum value, duplicate id,
-## unknown reference, a sprite or backdrop missing a frame or layer (its art file), a hitbox outside its sprite or crossing
+## unknown reference, a sprite or backdrop missing a frame or layer (its art file), a music
+## track with no file (I23), a hitbox outside its sprite or crossing
 ## itself, a split field without its pair, a wave mix with nothing from wave 1, a mode with
 ## both or neither of escape_limit and time_limit, a missing,
 ## unknown or empty rival line category, a rival line too long for the bubble, not exactly
@@ -41,6 +42,9 @@ const WEATHERS: Array[String] = ["mist", "wind", "rain", "snow"]
 ## (the sky, the far marsh, the near reeds and water, then the grass in front of the birds).
 const BACKDROP_DIR := "res://art/backdrops/"
 const BACKDROP_LAYERS: Array[String] = ["sky", "far", "near", "grass"]
+## A music track: MUSIC_DIR<id>.mp3 (tools/music.py makes them); a chapter's levels and a
+## mode's runs each play the one their entry names.
+const MUSIC_DIR := "res://audio/music/"
 ## A level's star thresholds: STAR_COUNT final scores, each 1..STAR_SCORE_MAX.
 const STAR_COUNT := 3
 const STAR_SCORE_MAX := 10000000
@@ -201,6 +205,11 @@ static func backdrop_path(id: String, layer: String) -> String:
 	return "%s%s_%s.svg" % [BACKDROP_DIR, id, layer]
 
 
+## The file of music track `id`.
+static func music_path(id: String) -> String:
+	return "%s%s.mp3" % [MUSIC_DIR, id]
+
+
 ## The rival's timing and heckle lines.
 static func rival_lines() -> RivalLines:
 	_ensure_loaded()
@@ -261,10 +270,11 @@ static func _load_chapters(entries: Array[Dictionary]) -> void:
 	var previous: ChapterSpec = null
 	for entry in entries:
 		var item := ChapterSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "backdrop", "weather", "rival_linger_scale"], _chapters)
+		item.id = _begin_entry(entry, ["id", "name", "backdrop", "weather", "music", "rival_linger_scale"], _chapters)
 		item.name = _string(entry, "name", NAME_MAX)
 		item.backdrop = _backdrop(entry, "backdrop")
 		item.weather = _enum(entry, "weather", WEATHERS)
+		item.music = _music(entry, "music")
 		item.rival_linger_scale = _scale(entry, "rival_linger_scale")
 		if _failed.has("rival_linger_scale"):
 			_bad_scale[_entry] = true
@@ -385,6 +395,24 @@ static func _backdrop(object: Dictionary, key: String, prefix := "") -> String:
 	return "" if missing else id
 
 
+## A music track id (snake_case) whose file exists (music_path, I23); "" when it is missing,
+## mistyped or has no file.
+static func _music(object: Dictionary, key: String) -> String:
+	if not object.has(key):
+		return ""
+	if typeof(object[key]) != TYPE_STRING:
+		_error(key, "expected String, got %s" % type_string(typeof(object[key])))
+		return ""
+	var id: String = object[key]
+	if _snake_case.search(id) == null:
+		_error(key, "'%s' is not a snake_case music track id" % id)
+		return ""
+	if not ResourceLoader.exists(music_path(id)):
+		_error(key, "unknown music track '%s' (no %s)" % [id, music_path(id)])
+		return ""
+	return id
+
+
 ## A mode's looks: a non-empty array of {"backdrop", "weather"} objects, each a backdrop
 ## with its art and a weather of WEATHERS.
 static func _stages(object: Dictionary, key: String) -> Array[ModeSpec.Stage]:
@@ -482,7 +510,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 static func _load_modes(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := ModeSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "rival_steals", "backdrops", "backdrop_waves"], _modes,
+		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "rival_steals", "backdrops", "backdrop_waves", "music"], _modes,
 			["escape_limit", "time_limit"])
 		item.name = _string(entry, "name", NAME_MAX)
 		item.birds = _mix(entry, "birds")
@@ -511,6 +539,7 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 			item.rival_steals = _bool(entry, "rival_steals")
 		item.stages = _stages(entry, "backdrops")
 		item.backdrop_waves = _int(entry, "backdrop_waves", 1, WAVE_MAX)
+		item.music = _music(entry, "music")
 		if item.id != "":
 			_modes[item.id] = item
 

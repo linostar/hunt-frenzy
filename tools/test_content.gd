@@ -97,6 +97,7 @@ func _tests() -> Array[Callable]:
 		_test_i20_modes_are_fair,
 		_test_i21_hitbox_covers_body,
 		_test_i22_birds_readable,
+		_test_i23_music_tracks_exist,
 	]
 
 
@@ -115,11 +116,11 @@ func _run() -> void:
 		quit(1)
 
 
-## I1-I4 and I13-I15 hold for the real data: the loader checks them, so clean real data
+## I1-I4, I13-I15 and I23 hold for the real data: the loader checks them, so clean real data
 ## means no loader errors.
 func _test_real_data_loads_clean() -> void:
 	Content.reload()
-	_check(Content.errors().is_empty(), "I1-I4 and I13-I15 the real data loads without errors", "\n".join(Content.errors()))
+	_check(Content.errors().is_empty(), "I1-I4, I13-I15 and I23 the real data loads without errors", "\n".join(Content.errors()))
 
 
 ## The lookups return the typed data: the six types plus the gosling, in data order, and
@@ -237,8 +238,8 @@ func _test_i1_files_ids_and_keys() -> void:
 	_expect_load_errors("I1 rival lines file missing", _load_quietly(texts), ["data/rival_lines.json [-] (file): missing"])
 	_expect_load_errors("I1 chapter missing a key", _mutated("chapters.json", func(data: Array) -> void: (data[1] as Dictionary).erase("weather")),
 		["data/chapters.json [noon] weather: missing key"])
-	_expect_load_errors("I1 chapter with an unknown key", _mutated("chapters.json", func(data: Array) -> void: data[0]["music"] = "banjo"),
-		["data/chapters.json [dawn] music: unknown key"])
+	_expect_load_errors("I1 chapter with an unknown key", _mutated("chapters.json", func(data: Array) -> void: data[0]["soundtrack"] = "banjo"),
+		["data/chapters.json [dawn] soundtrack: unknown key"])
 	_expect_load_errors("I1 chapter missing its backdrop", _mutated("chapters.json", func(data: Array) -> void: (data[2] as Dictionary).erase("backdrop")),
 		["data/chapters.json [sunset] backdrop: missing key"])
 	_expect_load_errors("I1 the retired sky_tint", _mutated("chapters.json", func(data: Array) -> void: data[0]["sky_tint"] = "#ffe2c4"),
@@ -387,6 +388,31 @@ func _test_i2_types_and_ranges() -> void:
 		["data/levels.json [dawn_1] stars[0]: 0 is outside 1..10000000"])
 	_expect_load_errors("I2 a star threshold not an int", _mutated("levels.json", func(data: Array) -> void: data[0]["stars"] = [100, 200.5, 300]),
 		["data/levels.json [dawn_1] stars[1]: expected int, got 200.5"])
+
+
+## I23: every music track the data names (a chapter's, a mode's) has its loop file; the real
+## data names one per chapter and mode, each a different loop.
+func _test_i23_music_tracks_exist() -> void:
+	var tracks: Array[String] = []
+	for spec in Content.chapters():
+		tracks.append(spec.music)
+	for spec in Content.modes():
+		tracks.append(spec.music)
+	_check(tracks == ["campaign_dawn", "campaign_noon", "campaign_sunset", "campaign_night", "endless", "time_attack"], "I23 every chapter and mode names its own track", str(tracks))
+	for track in tracks:
+		_check(ResourceLoader.exists(Content.music_path(track)), "I23 track %s exists" % track, Content.music_path(track))
+	_expect_load_errors("I23 a chapter's track with no file", _mutated("chapters.json", func(data: Array) -> void: data[1]["music"] = "campaign_dusk"),
+		["data/chapters.json [noon] music: unknown music track 'campaign_dusk' (no res://audio/music/campaign_dusk.mp3)"])
+	_expect_load_errors("I23 a mode's track with no file", _mutated("modes.json", func(data: Array) -> void: data[1]["music"] = "boss_fight"),
+		["data/modes.json [time_attack] music: unknown music track 'boss_fight' (no res://audio/music/boss_fight.mp3)"])
+	_expect_load_errors("I23 a track id that is not snake_case", _mutated("chapters.json", func(data: Array) -> void: data[0]["music"] = "Campaign Dawn"),
+		["data/chapters.json [dawn] music: 'Campaign Dawn' is not a snake_case music track id"])
+	_expect_load_errors("I23 a track that is not a string", _mutated("modes.json", func(data: Array) -> void: data[0]["music"] = 3),
+		["data/modes.json [endless] music: expected String, got float"])
+	_expect_load_errors("I23 a chapter without a track", _mutated("chapters.json", func(data: Array) -> void: (data[2] as Dictionary).erase("music")),
+		["data/chapters.json [sunset] music: missing key"])
+	_expect_load_errors("I23 a mode without a track", _mutated("modes.json", func(data: Array) -> void: (data[0] as Dictionary).erase("music")),
+		["data/modes.json [endless] music: missing key"])
 
 
 ## I3: every reference resolves (mix birds, golden_bird, splits_into), every sprite has
@@ -630,7 +656,7 @@ func _test_i14_chapters() -> void:
 	for index in range(1, 7):
 		dusk_levels.append("data/levels.json [-] chapter: dusk has no level %d (each chapter has levels 1..6)" % index)
 	_expect_load_errors("I14 a fifth chapter", _mutated("chapters.json", func(data: Array) -> void:
-		data.append({"id": "dusk", "name": "Dusk", "backdrop": "night", "weather": "rain", "rival_linger_scale": 0.6})), dusk_levels)
+		data.append({"id": "dusk", "name": "Dusk", "backdrop": "night", "music": "campaign_night", "weather": "rain", "rival_linger_scale": 0.6})), dusk_levels)
 	_expect_load_errors("I14 a rival_linger_scale of 0", _mutated("chapters.json", func(data: Array) -> void: data[1]["rival_linger_scale"] = 0),
 		["data/chapters.json [noon] rival_linger_scale: 0.0 is outside (0.0, 1.0]"])
 	_expect_load_errors("I14 a rival_linger_scale above 1", _mutated("chapters.json", func(data: Array) -> void: data[0]["rival_linger_scale"] = 1.2),

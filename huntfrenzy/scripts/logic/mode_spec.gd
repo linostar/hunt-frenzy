@@ -51,6 +51,8 @@ var rival_steals := false
 ## then on (Endless: dawn, noon, sunset, then night; Time Attack: noon throughout).
 var stages: Array[Stage] = []
 var backdrop_waves := 0
+## The music track the mode's runs play: res://audio/music/<id>.mp3 (Content.music_path).
+var music := ""
 
 
 ## True for a mode whose run ends after time_limit seconds (Time Attack); false for one
