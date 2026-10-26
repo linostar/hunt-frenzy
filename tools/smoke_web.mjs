@@ -15,7 +15,9 @@
 //     guessed, then measured from each logged shot's game time), and require "[Play] Hit
 //     goose #1" (HIT_ATTEMPTS real attempts within wave 1's logged shell pool: after a miss a
 //     phone fires a salvo of up to SALVO fingers along the path around the measured latency,
-//     keeping one shell for each attempt still to come; a refused shot fails at once); then a
+//     keeping one shell for each attempt still to come; a refused shot fails at once); then
+//     require a rival line ("[Play] Heckle (<category>) #n: ..." or "[Play] Aim cue on ...":
+//     a miss, a combo, a steal or at the latest wave 1's end always brings one); then a
 //     visibilitychange with document.hidden true must log "[Play] Paused (page hidden)";
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Play is and Enter press nothing, turn the phone to landscape (844x390),
@@ -64,6 +66,8 @@ const FIRST_SPAWN = /^\[Play\] Spawned goose #1 \(.*\) at t ([\d.-]+)/;
 const FIRST_WAVE = /^\[Play\] Wave 1 start: \d+ birds \(.*\), (\d+) shells/;
 // Shot outcomes the play scene logs for a shot, with the wave time it was handled at.
 const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused).* at t ([\d.-]+)/;
+// The rival speaking or aiming (Play logs every heckle shown and every aim cue started).
+const RIVAL_LINE = /^\[Play\] (Heckle \(\w+\) #\d+: |Aim cue on )/;
 // Seconds between two "ahead" points of a [Bird] line (Bird.TRACK_AHEAD_STEP).
 const AHEAD_STEP_S = 0.1;
 // Points ahead per [Bird] line (Bird.TRACK_AHEAD_STEPS).
@@ -257,6 +261,8 @@ async function playPath(page, context, run, logs, logTimes, shot) {
   const outcomes = await shootFirstGoose(page, logs, logTimes, pointer, arrived.index + 1);
   console.log(`[${run.name}] shots at the first goose: ${outcomes.join(', ')}`);
   await shot('play');
+  const rival = await waitForLog(page, logs, RIVAL_LINE, 'a rival line (a heckle or an aim cue)', arrived.index + 1);
+  console.log(`[${run.name}] rival: ${rival.input}`);
   // The page becoming hidden (another tab, the phone's home button) pauses the run.
   const hiddenFrom = logs.length;
   await page.evaluate(() => {

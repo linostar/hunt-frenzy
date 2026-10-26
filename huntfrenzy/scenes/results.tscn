@@ -31,12 +31,12 @@ mouse_filter = 2
 [node name="Heading" type="Label" parent="Safe"]
 layout_mode = 1
 anchors_preset = -1
-anchor_top = 0.04
 anchor_right = 1.0
-anchor_bottom = 0.18
+offset_top = 4.0
+offset_bottom = 54.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
-theme_override_font_sizes/font_size = 56
+theme_override_font_sizes/font_size = 36
 text = "Run over"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -45,13 +45,15 @@ vertical_alignment = 1
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.18
 anchor_right = 0.5
-anchor_bottom = 0.6
+anchor_bottom = 1.0
 offset_left = -200.0
+offset_top = 54.0
 offset_right = 200.0
+offset_bottom = -178.0
 grow_horizontal = 2
 mouse_filter = 2
+theme_override_constants/separation = 0
 alignment = 1
 
 [node name="Score" type="Label" parent="Safe/Stats"]
@@ -64,35 +66,49 @@ horizontal_alignment = 1
 [node name="Accuracy" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Accuracy"
 horizontal_alignment = 1
 
 [node name="Hits" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Birds hit"
 horizontal_alignment = 1
 
 [node name="Escaped" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Birds escaped"
+horizontal_alignment = 1
+
+[node name="Stolen" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 20
+text = "Birds stolen"
+horizontal_alignment = 1
+
+[node name="RivalScore" type="Label" parent="Safe/Stats"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
+theme_override_font_sizes/font_size = 20
+text = "Rival score"
 horizontal_alignment = 1
 
 [node name="Pigeons" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Pigeons hit"
 horizontal_alignment = 1
 
 [node name="Best" type="Label" parent="Safe/Stats"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 20
 text = "Endless best"
 horizontal_alignment = 1
 
@@ -100,9 +116,11 @@ horizontal_alignment = 1
 visible = false
 layout_mode = 1
 anchors_preset = -1
-anchor_top = 0.6
+anchor_top = 1.0
 anchor_right = 1.0
-anchor_bottom = 0.68
+anchor_bottom = 1.0
+offset_top = -178.0
+offset_bottom = -136.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
 theme_override_font_sizes/font_size = 30
@@ -115,9 +133,11 @@ visible = false
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.05
-anchor_top = 0.68
+anchor_top = 1.0
 anchor_right = 0.95
-anchor_bottom = 0.765
+anchor_bottom = 1.0
+offset_top = -134.0
+offset_bottom = -84.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 0.62, 0.58, 1)
 theme_override_font_sizes/font_size = 16
@@ -132,13 +152,13 @@ max_lines_visible = 2
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.83
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.83
+anchor_bottom = 1.0
 offset_left = -250.0
-offset_top = -32.0
+offset_top = -82.0
 offset_right = -10.0
-offset_bottom = 32.0
+offset_bottom = -34.0
 grow_horizontal = 2
 grow_vertical = 2
 focus_neighbor_left = NodePath("../TitleButton")
@@ -152,13 +172,13 @@ text = "Play again"
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
-anchor_top = 0.83
+anchor_top = 1.0
 anchor_right = 0.5
-anchor_bottom = 0.83
+anchor_bottom = 1.0
 offset_left = 10.0
-offset_top = -32.0
+offset_top = -82.0
 offset_right = 250.0
-offset_bottom = 32.0
+offset_bottom = -34.0
 grow_horizontal = 2
 grow_vertical = 2
 focus_neighbor_left = NodePath("../PlayAgainButton")
@@ -167,3 +187,20 @@ focus_next = NodePath("../PlayAgainButton")
 focus_previous = NodePath("../PlayAgainButton")
 theme_override_font_sizes/font_size = 30
 text = "Title"
+
+[node name="RivalLine" type="Label" parent="Safe"]
+visible = false
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.05
+anchor_top = 1.0
+anchor_right = 0.95
+anchor_bottom = 1.0
+offset_top = -32.0
+offset_bottom = -6.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 18
+text = "Rival line"
+horizontal_alignment = 1
+vertical_alignment = 1

@@ -17,6 +17,20 @@ extends Node2D
 ## and none is flying. An escape counts toward escape_limit unless the bird's
 ## escape_counts is false (the decoy). The run ends once escape_limit birds have escaped:
 ## the score is recorded (a new best is saved at once) and the results screen opens.
+## The rival hunter (Rival, data/rival_lines.json) stands in the grass band (at or below
+## GRASS_Y, so he never covers the field; he and his speech bubble ignore touches, so a
+## shot anywhere hits as before). In a mode with rival_steals, every frame Play asks
+## Rival.steal_state about each flying bird: once one has flown its linger_time (never the
+## decoy, never a fleeing bird) the aim cue starts (a reticle on the bird, the rival
+## raising his gun) and runs aim_time; a kill during it saves the bird (a damaging hit
+## does not), a bird that starts fleeing drops it, and once it has run the rival fires
+## and never misses: the bird falls as stolen, its points (no combo) go to his tally, it
+## counts as an escape (stolen birds can end the run), the player's combo is untouched
+## and a stolen splitter launches no goslings. With rival_steals off he only heckles. He
+## heckles (a Rival.pick_line line in the bubble for HECKLE_TIME) on a miss, a combo
+## rising to COMBO_HECKLE_MIN or more and a wave's end, at most once per cooldown, and on
+## every steal; the results screen shows one more line. Cues and the cooldown run on game
+## time, so a pause freezes them.
 ## World holds the 960x540 base playfield, centred horizontally in the visible area;
 ## the sky and the grass stretch over the whole visible area. The HUD bar (a CanvasLayer)
 ## sits at the top of the safe area.
@@ -30,6 +44,8 @@ extends Node2D
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const SHELL_TEXTURE := preload("res://art/shell.svg")
+const RIVAL_IDLE := preload("res://art/rival_idle.svg")
+const RIVAL_AIM := preload("res://art/rival_aim.svg")
 ## The 960x540 base the playfield is laid out in.
 const BASE_SIZE := Vector2(960, 540)
 const HUD_BAR_HEIGHT := 56.0
@@ -56,13 +72,26 @@ const SHELL_ICON_SIZE := Vector2(12, 28)
 ## bar never overflows whatever the pool.
 const SHELL_ICONS_MAX := 10
 const EMPTY_TINT := Color(1.0, 0.35, 0.3)
+## A kill that raises the combo to this multiplier or more draws a heckle.
+const COMBO_HECKLE_MIN := 3
+## Seconds a heckle stays in the rival's bubble.
+const HECKLE_TIME := 2.5
 
 var mode: ModeSpec
 var run_seed := 0
 var wave: Wave.Plan
 var ammo: Ammo
 var scoring: Scoring
+## Birds lost: counted escapes plus stolen birds (escape_limit of them end the run).
 var escaped := 0
+## Birds the rival stole, and the points they took to his tally.
+var stolen := 0
+var rival_score := 0
+var rival_lines: RivalLines
+## Heckles shown this run (the next line's pick counter).
+var heckles := 0
+## Seconds since the run started (game time: frozen while paused); the heckle cooldown runs on it.
+var run_clock := 0.0
 ## Shots refused because the pool was empty.
 var refused := 0
 ## Seconds since the current wave started, from -WAVE_LEAD (its first spawn is at 0).
@@ -80,6 +109,9 @@ var _over := false
 ## transition in) has not hidden yet.
 var _rotated := false
 var _empty_tween: Tween
+var _bubble_tween: Tween
+## The run_clock of the last heckle shown (-INF before any).
+var _last_heckle := -INF
 
 @onready var _world: Node2D = $World
 @onready var _sky: TextureRect = $World/Sky
@@ -87,6 +119,8 @@ var _empty_tween: Tween
 @onready var _grass: TextureRect = $World/Grass
 @onready var _ground: ColorRect = $World/Ground
 @onready var _popups: Node2D = $World/Popups
+@onready var _rival: TextureRect = $World/Rival
+@onready var _bubble: Label = $World/Bubble
 @onready var _shot_input: ShotInput = $ShotInput
 @onready var _cancel_key: CancelKey = $CancelKey
 @onready var _bar: Control = $Hud/Bar
@@ -96,6 +130,7 @@ var _empty_tween: Tween
 @onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Count
 @onready var _empty_label: Label = $Hud/Bar/Stats/Empty
 @onready var _combo_label: Label = $Hud/Bar/Stats/Combo
+@onready var _rival_label: Label = $Hud/Bar/Stats/Rival
 @onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped
 @onready var _pause_button: Button = $Hud/Bar/PauseButton
 @onready var _pause_menu: Control = $PauseLayer/PauseMenu
@@ -136,13 +171,18 @@ func _notification(what: int) -> void:
 func _process(delta: float) -> void:
 	if _over or wave == null:
 		return
+	run_clock += delta
 	wave_clock += delta
 	while _next_spawn < wave.spawns.size() and wave.spawns[_next_spawn].time <= wave_clock:
 		var spawn := wave.spawns[_next_spawn]
 		_next_spawn += 1
 		var bird := spawn_bird(spawn.bird_id, spawn.bird_seed)
 		print("[Play] Spawned %s #%d (wave %d, seed %d) at t %.2f%s" % [spawn.bird_id, bird.number, wave.index, spawn.bird_seed, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
+	_update_steals()
+	if _over:
+		return
 	if _next_spawn == wave.spawns.size() and flying_birds().is_empty():
+		_heckle("wave_end")
 		_start_wave(wave.index + 1)
 
 
@@ -219,6 +259,16 @@ func is_empty_cue_shown() -> bool:
 	return _empty_label.visible
 
 
+## True while the rival raises his gun (an aim cue is on a flying bird).
+func is_rival_aiming() -> bool:
+	return _rival.texture == RIVAL_AIM
+
+
+## The heckle in the rival's bubble, or "" when it is hidden.
+func heckle_shown() -> String:
+	return _bubble.text if _bubble.visible else ""
+
+
 func _start_run() -> void:
 	var args := _game.flow_args
 	if not args.has("mode"):
@@ -237,7 +287,9 @@ func _start_run() -> void:
 		return
 	run_seed = args["seed"]
 	scoring = Scoring.new(mode.combo_cap)
-	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit)" % [mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit])
+	rival_lines = Content.rival_lines()
+	print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
+		mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
 	_start_wave(1)
 
 
@@ -289,6 +341,7 @@ func _on_shot(at: Vector2) -> void:
 	else:
 		scoring.miss()
 		print("[Play] Miss at (%.1f, %.1f): combo reset, score %d (wave %d at t %.2f, %d shells left)" % [at.x, at.y, scoring.score, wave.index, wave_clock, ammo.shells])
+		_heckle("miss")
 	if ammo.is_empty():
 		var fleeing := flying_birds()
 		for bird in fleeing:
@@ -309,6 +362,10 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	var awarded := scoring.hit(target.spec.points)
 	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier])
 	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): %d points x%d = %d, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.points, multiplier, awarded, scoring.score, wave.index, wave_clock, ammo.shells])
+	if target.is_cued():
+		_cancel_cue(target, "shot by the player")
+	if scoring.multiplier >= COMBO_HECKLE_MIN and scoring.multiplier > multiplier:
+		_heckle("combo")
 	if target.spec.split_count > 0:
 		_split(target, point)
 
@@ -333,6 +390,81 @@ func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): penalty %d, -%d, combo reset, score %d (%d pigeons hit, wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.penalty, deducted, scoring.score, scoring.penalties, wave.index, wave_clock, ammo.shells])
 
 
+## Asks Rival about every flying bird: start or keep its aim cue, drop it (the bird
+## started fleeing, or steals were turned off), or steal it once the cue has run.
+func _update_steals() -> void:
+	for bird in flying_birds():
+		match Rival.steal_state(bird.age, bird.spec.linger_time, rival_lines.aim_time, bird.cue_age, bird.spec.penalty > 0, bird.is_fleeing(), mode.rival_steals):
+			Rival.Steal.NONE:
+				if bird.is_cued():
+					_cancel_cue(bird, "fled" if bird.is_fleeing() else "rival steals off")
+			Rival.Steal.AIMING:
+				if not bird.is_cued():
+					_start_cue(bird)
+			Rival.Steal.FIRE:
+				_steal(bird)
+				if _over:
+					return
+
+
+func _start_cue(bird: Bird) -> void:
+	bird.set_cue(true)
+	_update_rival_pose()
+	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (wave %d at t %.2f, rival score %d, %d stolen)" % [
+		bird.spec.id, bird.number, bird.age, bird.spec.linger_time, rival_lines.aim_time, wave.index, wave_clock, rival_score, stolen])
+
+
+func _cancel_cue(bird: Bird, cause: String) -> void:
+	var held := bird.age - bird.cue_age
+	bird.set_cue(false)
+	_update_rival_pose()
+	print("[Play] Aim cue on %s #%d cancelled (%s) after %.2f s (wave %d at t %.2f, rival score %d, %d stolen)" % [bird.spec.id, bird.number, cause, held, wave.index, wave_clock, rival_score, stolen])
+
+
+## The rival fires: the bird falls as stolen, its points go to his tally (no combo) and it
+## counts as an escape; the player's combo is left alone.
+func _steal(bird: Bird) -> void:
+	var held := bird.age - bird.cue_age
+	bird.steal()
+	_update_rival_pose()
+	stolen += 1
+	rival_score += bird.spec.points
+	escaped += 1
+	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %d/%d escaped, combo x%d kept (wave %d at t %.2f)" % [
+		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, escaped, mode.escape_limit, scoring.multiplier, wave.index, wave_clock])
+	_heckle(Rival.STEAL)
+	_update_hud()
+	if escaped >= mode.escape_limit:
+		_end_run()
+
+
+## The rival raises his gun while any flying bird has an aim cue.
+func _update_rival_pose() -> void:
+	var aiming := flying_birds().any(func(bird: Bird) -> bool: return bird.is_cued())
+	_rival.texture = RIVAL_AIM if aiming else RIVAL_IDLE
+
+
+## Shows a `category` line (Rival.pick_line) in the rival's bubble for HECKLE_TIME, unless
+## the cooldown since the last heckle has not passed yet (Rival.may_heckle; steal lines
+## always show). Both are logged.
+func _heckle(category: String) -> void:
+	if not Rival.may_heckle(category, run_clock, _last_heckle, rival_lines.cooldown):
+		print("[Play] Heckle (%s) skipped: cooldown, %.2f of %.2f s since the last (wave %d at t %.2f, rival score %d, %d stolen)" % [
+			category, run_clock - _last_heckle, rival_lines.cooldown, wave.index, wave_clock, rival_score, stolen])
+		return
+	var line := Rival.pick_line(rival_lines.lines[category], run_seed, heckles)
+	heckles += 1
+	_last_heckle = run_clock
+	_bubble.text = line
+	_bubble.show()
+	if _bubble_tween != null:
+		_bubble_tween.kill()
+	_bubble_tween = create_tween()
+	_bubble_tween.tween_interval(HECKLE_TIME)
+	_bubble_tween.tween_callback(_bubble.hide)
+	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen])
+
+
 func _on_bird_escaped(bird: Bird) -> void:
 	if _over:
 		return
@@ -350,15 +482,19 @@ func _end_run() -> void:
 	_stop()
 	var new_best := _game.record_endless(scoring.score)
 	var save_error := _game.save_error if new_best else ""
+	var rival_line := Rival.pick_line(rival_lines.lines["results"], run_seed, heckles)
+	heckles += 1
+	print("[Play] Heckle (results) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [heckles, rival_line, wave.index, wave_clock, rival_score, stolen])
 	var stats := {
 		"mode": mode.id, "seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits, "kills": scoring.kills,
-		"pigeons": scoring.penalties, "escaped": escaped, "best": _game.best_endless, "new_best": new_best, "save_error": save_error,
+		"pigeons": scoring.penalties, "escaped": escaped, "stolen": stolen, "rival_score": rival_score, "rival_line": rival_line,
+		"best": _game.best_endless, "new_best": new_best, "save_error": save_error,
 	}
 	var best_note := ""
 	if new_best:
 		best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
-	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped, best %d%s" % [
-		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, _game.best_endless, best_note])
+	print("[Play] Run end: mode %s, seed %d, wave %d, score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d, best %d%s" % [
+		mode.id, run_seed, wave.index, scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, stolen, rival_score, _game.best_endless, best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -449,6 +585,7 @@ func _update_hud() -> void:
 			if icon != _shell_count:
 				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
 	_combo_label.text = "x%d" % scoring.multiplier
+	_rival_label.text = "Rival %d" % rival_score
 	_escaped_label.text = "Escaped %d/%d" % [escaped, mode.escape_limit]
 
 

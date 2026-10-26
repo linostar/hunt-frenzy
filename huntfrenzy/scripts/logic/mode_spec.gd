@@ -34,3 +34,6 @@ var shells_per_hit := 0
 var combo_cap := 0
 ## Escaped birds that end a run.
 var escape_limit := 0
+## Whether the rival steals birds left flying past their linger_time (Rival); when false he
+## only heckles.
+var rival_steals := false

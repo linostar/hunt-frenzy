@@ -19,6 +19,9 @@ var wobble := 0.0
 var wobble_hz := 0.0
 ## Seconds of flight before the bird heads off the top of the screen.
 var flee_time := 0.0
+## Seconds of flight after which the rival starts aiming at it (in modes with rival_steals;
+## never the decoy). linger_time + the rival's aim_time is under flee_time (SCHEMA.md I13).
+var linger_time := 0.0
 ## Points a kill scores (before the combo multiplier); 0 for the decoy.
 var points := 0
 ## Hits it takes to kill; every hit before the last shows the damaged frames.

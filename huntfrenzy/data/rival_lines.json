@@ -1,0 +1,38 @@
+{
+  "aim_time": 1.0,
+  "cooldown": 4.0,
+  "lines": {
+    "miss": [
+      "Missed! The geese are laughing too.",
+      "That shot scared nothing but the reeds.",
+      "Aim at the bird, not the sky, rookie.",
+      "Nice shot. For a scarecrow.",
+      "Keep that up and they're all mine."
+    ],
+    "combo": [
+      "Lucky streak. It won't last.",
+      "Hmph. Even a broken clock...",
+      "Don't get cocky, it's only geese.",
+      "Fine, fine. I wasn't trying yet."
+    ],
+    "wave_end": [
+      "Next flock's mine, you'll see.",
+      "Warm-up's over. Now it gets real.",
+      "Reload, kid. More are coming.",
+      "That flock was easy. Wait for the next."
+    ],
+    "steal": [
+      "Too slow! That one's mine.",
+      "Thanks for warming it up for me.",
+      "Mine! Write that down.",
+      "You looked, I shot. That's hunting.",
+      "Another one for my tally!"
+    ],
+    "results": [
+      "Same marsh tomorrow? Bring better aim.",
+      "Not bad. Not good either.",
+      "I'll save you a goose next time.",
+      "Practice. Then come back and lose again."
+    ]
+  }
+}

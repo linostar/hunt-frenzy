@@ -20,6 +20,7 @@
     "spawn_interval": 1.4,
     "shells_per_hit": 3,
     "combo_cap": 5,
-    "escape_limit": 10
+    "escape_limit": 10,
+    "rival_steals": true
   }
 ]

@@ -6,7 +6,10 @@ extends Node2D
 ## that leaves it hit points (an armored bird's first) only switches it to its damaged
 ## flap frames; the killing hit stops it on its hit frame for HIT_HOLD seconds, then it
 ## falls off the bottom of the screen, emits `gone` and frees itself. A bird launched
-## from a point (a splitter's gosling) flies Flight's launched path from there. While flying, the run's first bird (TRACKED_NUMBER)
+## from a point (a splitter's gosling) flies Flight's launched path from there. While the
+## rival aims at it (set_cue, driven by Play from Rival.steal_state) it shows the Reticle
+## over itself; steal() drops it like a kill (hit frame, then the fall), marked stolen.
+## While flying, the run's first bird (TRACKED_NUMBER)
 ## logs its position and velocity (canvas base units) every TRACK_INTERVAL seconds, with
 ## where its flight will take it TRACK_AHEAD_STEP, 2 x TRACK_AHEAD_STEP, ... seconds later
 ## (TRACK_AHEAD_STEPS points); the smoke test aims at it from these lines. Other birds are
@@ -26,6 +29,8 @@ const TRACK_INTERVAL := 0.25
 const TRACK_AHEAD_STEP := 0.1
 const TRACK_AHEAD_STEPS := 20
 const TRACKED_NUMBER := 1
+## The aim reticle's drawn size in base units.
+const RETICLE_SIZE := 56.0
 
 var spec: BirdSpec
 ## The bird's number in its run (1 is the first bird spawned).
@@ -44,6 +49,10 @@ var launch_heading := Vector2.ZERO
 ## Hits taken so far (a kill at spec.hp).
 var hits_taken := 0
 var state := State.FLYING
+## The age the rival's aim cue on it started at (Rival.NOT_AIMING: he is not aiming at it).
+var cue_age := Rival.NOT_AIMING
+## True once the rival has shot it.
+var stolen := false
 
 var _textures: Dictionary[String, Texture2D] = {}
 var _hold := 0.0
@@ -51,6 +60,7 @@ var _fall_speed := 0.0
 var _track_clock := 0.0
 
 @onready var _sprite: Sprite2D = $Sprite
+@onready var _reticle: Sprite2D = $Reticle
 
 
 ## Sets the bird up to fly from age 0; `fleeing` makes it flee at once (no shells left);
@@ -76,6 +86,7 @@ func _ready() -> void:
 		_textures[frame] = load(spec.texture_path(frame)) as Texture2D
 	_sprite.texture = _textures["fly_1"]
 	_sprite.scale = spec.size / _sprite.texture.get_size()
+	_reticle.scale = Vector2.ONE * RETICLE_SIZE / _reticle.texture.get_size().x
 	transform = _flight_transform()
 	_track()
 
@@ -117,6 +128,29 @@ func contains(point: Vector2) -> bool:
 	return Flight.hits(spec, transform, point)
 
 
+## True from the age its flight turns into the climb off the top (flee_time, or earlier
+## when told to flee).
+func is_fleeing() -> bool:
+	return age >= minf(spec.flee_time, flee_at)
+
+
+func is_cued() -> bool:
+	return cue_age != Rival.NOT_AIMING
+
+
+## Starts (from its current age) or ends the rival's aim cue: the reticle shows while it lasts.
+func set_cue(on: bool) -> void:
+	cue_age = age if on else Rival.NOT_AIMING
+	_reticle.visible = on
+
+
+## The rival shot it: no cue any more, and it drops like a kill (hit frame, then the fall).
+func steal() -> void:
+	stolen = true
+	set_cue(false)
+	_drop()
+
+
 func is_damaged() -> bool:
 	return hits_taken > 0
 
@@ -129,6 +163,12 @@ func hit() -> bool:
 	if hits_taken < spec.hp:
 		_sprite.texture = _textures[_flap_frame()]
 		return false
+	_drop()
+	return true
+
+
+## Stops it on its hit frame for HIT_HOLD seconds, after which it falls.
+func _drop() -> void:
 	state = State.HIT
 	_hold = HIT_HOLD
 	_sprite.texture = _textures["hit"]
@@ -136,7 +176,6 @@ func hit() -> bool:
 	# (Node2D stores it as rotation + PI with scale (1, -1)), so `rotation = 0` alone would
 	# turn a left-facing goose upside down and facing right.
 	transform = Transform2D(Vector2(signf(transform.determinant()), 0.0), Vector2(0.0, 1.0), position)
-	return true
 
 
 ## Makes a flying bird flee now (the wave's shells ran out).
