@@ -22,18 +22,28 @@
 //     require a rival line ("[Play] Heckle (<category>) #n: ..." or "[Play] Aim cue on ...":
 //     a miss, a combo, a steal or at the latest wave 1's end always brings one); then a
 //     visibilitychange with document.hidden true must log "[Play] Paused (page hidden)";
+//     then the page is reloaded to the title, Time Attack is tapped where it logs itself
+//     ("[Title] Time Attack button at ..."), requiring its press, "[Play] Run start: mode
+//     time_attack" and the play scene, and its first goose is shot as above; reloaded once
+//     more, Endless is tapped, requiring its press, "[Play] Run start: mode endless" and the
+//     play scene;
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Campaign is and Enter press nothing, turn the phone to landscape (844x390),
 //     require "[Game] Rotate overlay hidden ... unpaused", then tap Campaign and require the press;
-//   keyboard: Tab, Tab (back to Campaign, showing the focus ring) and Enter on the focused
-//     Campaign, Enter on the focused dawn chapter, Enter on the focused level 1, require each
-//     press and the play scene running dawn_1; Escape opens the pause menu, Enter on the
-//     focused Resume resumes, Escape opens it again, Down Down Enter quits to the title.
+//   keyboard: Tab, Tab, Tab (through Endless and Time Attack back to Campaign, showing the
+//     focus ring) and Enter on the focused Campaign, Enter on the focused dawn chapter, Enter
+//     on the focused level 1, require each press and the play scene running dawn_1; Escape
+//     opens the pause menu, Enter on the focused Resume resumes, Escape opens it again, Down
+//     Down Enter quits to the title; Tab, Tab, Enter starts Time Attack (its press, its run
+//     start, the play scene), Escape and Down Down Enter quit it to the title; Tab, Enter
+//     starts Endless (its press, its run start, the play scene).
 // Usage: node tools/smoke_web.mjs [buildDir]   (default: build/web)
 // Env:   SMOKE_BOOT_TIMEOUT_MS (default 30000), SMOKE_SETTLE_MS (default 2000),
 //        SMOKE_STEP_TIMEOUT_MS (each waited-for log line, default 20000)
 // Screenshots (next to buildDir): build/smoke-<run>.png (title) and build/smoke-<run>-play.png
-// (after the goose is hit; the run's start for keyboard; the title for portrait), plus
+// (after the goose is hit; the run's start for keyboard; the title for portrait),
+// build/smoke-<run>-time-attack.png (after Time Attack's goose is hit; its start for
+// keyboard), plus
 // build/smoke-mobile-portrait-rotate.png (the overlay), build/smoke-keyboard-focus.png (the
 // focus ring after Tab) and build/smoke-keyboard-pause.png (the pause menu).
 import { join, resolve } from 'node:path';
@@ -65,10 +75,15 @@ const BASE = { width: 960, height: 540 };
 const BLOCKED_WAIT_MS = 1500;
 // Where each screen logs the button the path taps (base units).
 const CAMPAIGN_RECT = /^\[Title\] Campaign button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const ENDLESS_RECT = /^\[Title\] Endless button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const TIME_ATTACK_RECT = /^\[Title\] Time Attack button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 const DAWN_RECT = /^\[ChapterSelect\] Chapter dawn at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 const LEVEL_RECT = /^\[LevelSelect\] Level dawn_1 at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 // The campaign level the path plays, logged by the play scene before it arrives.
 const LEVEL_RUN = /^\[Play\] Run start: level dawn_1 /;
+// The mode runs the title starts, logged by the play scene before it arrives.
+const TIME_ATTACK_RUN = /^\[Play\] Run start: mode time_attack, seed \d+ \(time limit 60\.00 s, no escape limit, /;
+const ENDLESS_RUN = /^\[Play\] Run start: mode endless, seed \d+ \(escape limit /;
 const FIRST_GOOSE = /^\[Bird\] goose #1 at \(([\d.-]+), ([\d.-]+)\) v \([\d.-]+, [\d.-]+\) age ([\d.]+) ahead (.*)$/;
 const FIRST_SPAWN = /^\[Play\] Spawned goose #1 \(.*\) at t ([\d.-]+)/;
 // The first wave's shell pool (logged by the play scene before it arrives).
@@ -231,16 +246,34 @@ async function shootFirstGoose(page, logs, logTimes, pointer, from) {
 }
 
 function pressCount(logs) {
-  return logs.filter((l) => /^\[Title\] (Campaign|Endless) pressed/.test(l)).length;
+  return logs.filter((l) => /^\[Title\] (Campaign|Endless|Time Attack) pressed/.test(l)).length;
+}
+
+// Reloads the page and waits for the title (the main scene) to arrive again.
+async function reloadToTitle(page, logs) {
+  const from = logs.length;
+  await page.reload({ timeout: bootTimeoutMs });
+  await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after a reload', from);
+  await page.waitForTimeout(settleMs);
+}
+
+// Taps a mode's title button where the title logs it (`rect`) and requires its press
+// ("[Title] <label> pressed (1)"), its run start (`run`) and the play scene; returns the
+// "[Game] Arrived at PLAY" match.
+async function startMode(page, logs, pointer, rect, label, run, how) {
+  const from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, rect, `the ${label} button layout`));
+  await waitForLog(page, logs, new RegExp(`^\\[Title\\] ${label} pressed \\(1\\)`), `${label} to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, run, `${label} to start`, from);
+  return waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, `the play scene (${label})`, from);
 }
 
 // The run's scripted path once the title is up; throws on a missing log line.
 async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.keyboard) {
-    // Tab is keyboard navigation, which shows the focus ring (hidden on arrival); Tab again
-    // wraps from Endless back to Campaign.
-    await page.keyboard.press('Tab');
-    await page.keyboard.press('Tab');
+    // Tab is keyboard navigation, which shows the focus ring (hidden on arrival); two more
+    // wrap through Endless and Time Attack back to Campaign.
+    for (const key of ['Tab', 'Tab', 'Tab']) await page.keyboard.press(key);
     await page.waitForTimeout(300);
     await shot('focus');
     let from = logs.length;
@@ -272,6 +305,26 @@ async function playPath(page, context, run, logs, logTimes, shot) {
     for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(key);
     await waitForLog(page, logs, /^\[Play\] Left the run \(Quit to title\)/, 'Down, Down, Enter to press Quit to title', from);
     await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after quitting', from);
+    // Campaign is focused again on arrival: Tab, Tab reach Time Attack.
+    await page.waitForTimeout(300);
+    from = logs.length;
+    for (const key of ['Tab', 'Tab', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Title\] Time Attack pressed \(1\)/, 'Time Attack to be pressed (Tab, Tab, Enter)', from);
+    await waitForLog(page, logs, TIME_ATTACK_RUN, 'Time Attack to start', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene (Time Attack)', from);
+    await shot('time-attack');
+    from = logs.length;
+    await page.keyboard.press('Escape');
+    await waitForLog(page, logs, /^\[Play\] Paused \(Escape\)/, 'Escape to pause Time Attack', from);
+    for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Play\] Left the run \(Quit to title\): mode time_attack/, 'Down, Down, Enter to quit Time Attack', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after quitting Time Attack', from);
+    await page.waitForTimeout(300);
+    from = logs.length;
+    for (const key of ['Tab', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Title\] Endless pressed \(1\)/, 'Endless to be pressed (Tab, Enter)', from);
+    await waitForLog(page, logs, ENDLESS_RUN, 'Endless to start', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene (Endless)', from);
     return [];
   }
   const pointer = await pointerFor(page, context, run);
@@ -282,7 +335,7 @@ async function playPath(page, context, run, logs, logTimes, shot) {
     await pointer.tap(await buttonPoint(page, logs, CAMPAIGN_RECT, 'the Campaign button layout'));
     await page.keyboard.press('Enter');
     await page.waitForTimeout(BLOCKED_WAIT_MS);
-    if (pressCount(logs) !== 0) failures.push('Campaign or Endless was pressed under the rotate overlay');
+    if (pressCount(logs) !== 0) failures.push('a title button was pressed under the rotate overlay');
     const turned = logs.length;
     await page.setViewportSize(LANDSCAPE_PHONE);
     await waitForLog(page, logs, /^\[Game\] Rotate overlay hidden .*unpaused/, 'the rotate overlay to hide (turned to landscape)', turned);
@@ -309,6 +362,14 @@ async function playPath(page, context, run, logs, logTimes, shot) {
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await waitForLog(page, logs, /^\[Play\] Paused \(page hidden\)/, 'the hidden page to pause the run', hiddenFrom);
+  const how = run.context.hasTouch ? 'touch' : 'mouse';
+  await reloadToTitle(page, logs);
+  const timed = await startMode(page, logs, pointer, TIME_ATTACK_RECT, 'Time Attack', TIME_ATTACK_RUN, how);
+  const timedOutcomes = await shootFirstGoose(page, logs, logTimes, pointer, timed.index + 1);
+  console.log(`[${run.name}] Time Attack shots at the first goose: ${timedOutcomes.join(', ')}`);
+  await shot('time-attack');
+  await reloadToTitle(page, logs);
+  await startMode(page, logs, pointer, ENDLESS_RECT, 'Endless', ENDLESS_RUN, how);
   return failures;
 }
 

@@ -2,18 +2,21 @@ class_name Results
 extends Control
 ## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
 ## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, rival_steals,
-## best, new_best, save_error; a campaign level adds level, stars, best_stars and
-## next_level): score, accuracy (hits / shots, a dash with no shots; a hit on the decoy
-## pigeon is a shot but not a hit; an armored bird's two hits are two), birds hit (kills:
-## an armored bird counts once), birds escaped (stolen ones included, their number in
-## brackets), the "you vs rival" verdict (score against the rival's score: win, lose or
-## tie) in every run with rival steals, pigeons hit (the decoy) and the best (Endless
-## best, or the level's best score and stars), the rival's parting line at the bottom,
+## best, new_best, save_error; a mode's run adds mode, a campaign level adds level, stars,
+## best_stars and next_level): score, accuracy (hits / shots, a dash with no shots; a hit
+## on the decoy pigeon is a shot but not a hit; an armored bird's two hits are two), birds
+## hit (kills: an armored bird counts once), birds escaped (stolen ones included, their
+## number in brackets in a run with rival steals), the "you vs rival" verdict (score
+## against the rival's score: win, lose or tie) in every run with rival steals, pigeons
+## hit (the decoy) and the best (the mode's: "Endless best 100", "Time Attack best 900";
+## or the level's best score and stars), the rival's parting line at the bottom,
 ## with "New best!" when the run beat it, and SaveError when saving failed (the run's
 ## save_error, or a later Game.save_failed: a web save that browser storage did not keep).
 ## A campaign level also shows the stars earned (0: not passed).
 ## Endless: Play again (focused on arrival, ring hidden until keyboard navigation) starts
-## a new Endless run; Title goes to the title. A campaign level: Next (only when the next
+## a new Endless run; Title goes to the title. Time Attack ("Time up", no verdict and no
+## stolen count: its rival never steals): Retry (focused, in Play again's place) starts a
+## new Time Attack run; Title goes to the title. A campaign level: Next (only when the next
 ## level exists and is unlocked; focused when shown) starts it, Retry plays the level
 ## again, Levels opens its chapter's level select with this level focused (Retry is focused
 ## without Next).
@@ -21,16 +24,20 @@ extends Control
 
 const NO_VALUE := "—"
 const STAT_KEYS: Array[String] = ["score", "shots", "hits", "kills", "pigeons", "escaped", "stolen", "rival_score", "rival_line", "rival_steals", "best", "new_best", "save_error"]
-## The keys a campaign level's stats add.
+## The keys a campaign level's stats add, and the key a mode's run adds.
 const LEVEL_KEYS: Array[String] = ["level", "stars", "best_stars", "next_level"]
+const MODE_KEYS: Array[String] = ["mode"]
 const RIVAL_LINE_TEXT := "Rival: \"%s\""
 const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for details."
 const PROGRESS_SAVE_ERROR_TEXT := "Your progress could not be saved: %s. See the log for details."
 const ENDLESS_HEADING := "Run over"
+const TIMED_HEADING := "Time up"
 
 var _game: GameState
-## The campaign level of these results, or null (Endless).
+## The campaign level of these results, or null (a mode's run).
 var _level: LevelSpec
+## The mode of these results (Endless, Time Attack), or null (a campaign level).
+var _mode: ModeSpec
 
 @onready var _safe: Control = $Safe
 @onready var _heading: Label = $Safe/Heading
@@ -88,25 +95,28 @@ static func stars_text(earned: int) -> String:
 
 func _show_stats(stats: Dictionary) -> void:
 	var keys: Array[String] = STAT_KEYS.duplicate()
-	if stats.has("level"):
-		keys.append_array(LEVEL_KEYS)
+	keys.append_array(LEVEL_KEYS if stats.has("level") else MODE_KEYS)
 	for key in keys:
 		if not stats.has(key):
 			# Opened without a finished run (the project check, the editor's Run Current Scene).
 			print("[Results] Opened without run stats (missing '%s')" % key)
 			for label: Label in [_score, _accuracy, _hits, _escaped, _pigeons]:
 				label.text += " " + NO_VALUE
-			_best.text = "Endless best %d" % _game.best_endless
+			_best.text = "Endless best %d" % _game.best(GameState.ENDLESS_MODE)
 			_new_best.hide()
 			_show_buttons([_play_again_button, _title_button])
 			return
 	_level = Content.level(str(stats["level"])) if stats.has("level") and Content.has_level(str(stats["level"])) else null
 	if stats.has("level") and _level == null:
 		_game.report_error("Results of an unknown level '%s'" % stats["level"])
+	if stats.has("mode"):
+		_mode = Content.mode(str(stats["mode"])) if Content.modes().any(func(spec: ModeSpec) -> bool: return spec.id == str(stats["mode"])) else null
+		if _mode == null:
+			_game.report_error("Results of an unknown mode '%s'" % stats["mode"])
 	_score.text += " %d" % stats["score"]
 	_accuracy.text += " " + accuracy_text(stats["hits"], stats["shots"])
 	_hits.text += " %d" % stats["kills"]
-	_escaped.text += " %d (%d stolen)" % [stats["escaped"], stats["stolen"]]
+	_escaped.text += " %d (%d stolen)" % [stats["escaped"], stats["stolen"]] if stats["rival_steals"] else " %d" % stats["escaped"]
 	_verdict.visible = stats["rival_steals"]
 	_verdict.text = verdict_text(stats["score"], stats["rival_score"])
 	_rival_line.text = RIVAL_LINE_TEXT % stats["rival_line"]
@@ -123,9 +133,16 @@ func _show_stats(stats: Dictionary) -> void:
 		if stats["next_level"] != "":
 			buttons.push_front(_next_button)
 		_show_buttons(buttons)
+	elif _mode != null and _mode.is_timed():
+		_heading.text = TIMED_HEADING
+		_best.text = "%s best %d" % [_mode.name, stats["best"]]
+		# Retry takes Play again's place beside Title.
+		_retry_button.offset_left = _play_again_button.offset_left
+		_retry_button.offset_right = _play_again_button.offset_right
+		_show_buttons([_retry_button, _title_button])
 	else:
 		_heading.text = ENDLESS_HEADING
-		_best.text = "Endless best %d" % stats["best"]
+		_best.text = "%s best %d" % [_mode.name if _mode != null else str(stats["mode"]), stats["best"]]
 		_show_buttons([_play_again_button, _title_button])
 	# A web save can fail during the fade here, before save_failed is connected.
 	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] or _level != null else "")
@@ -135,6 +152,8 @@ func _show_stats(stats: Dictionary) -> void:
 		stats["score"], accuracy_text(stats["hits"], stats["shots"]), stats["hits"], stats["shots"], stats["kills"], stats["escaped"], stats["stolen"], stats["rival_score"], stats["pigeons"], stats["best"], ", new best" if stats["new_best"] else "", stats["rival_line"]])
 	if stats["rival_steals"]:
 		print("[Results] Verdict: %s" % _verdict.text)
+	if _mode != null:
+		print("[Results] Mode %s: best %d%s" % [_mode.id, stats["best"], ", new best" if stats["new_best"] else ""])
 	if _level != null:
 		print("[Results] Level %s: %d stars, best %d (%d stars), next %s" % [_level.id, stats["stars"], stats["best"], stats["best_stars"], stats["next_level"] if stats["next_level"] != "" else "none open"])
 
@@ -186,6 +205,10 @@ func _on_next_pressed() -> void:
 
 
 func _on_retry_pressed() -> void:
+	if _level == null:
+		print("[Results] Retry pressed: starting %s again" % _mode.id)
+		_game.start_mode(_mode.id)
+		return
 	print("[Results] Retry pressed: starting %s again" % _level.id)
 	_game.start_level(_level.id)
 

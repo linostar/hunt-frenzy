@@ -1,8 +1,8 @@
 class_name Play
 extends Node2D
-## The play scene: one run of a mode (Endless: Game.flow_args {"mode": id, "seed": run
-## seed}) or of a campaign level ({"level": id}: the level's fixed seed).
-## Waves follow one another (Wave.endless, Wave.campaign): each starts WAVE_LEAD seconds before its
+## The play scene: one run of a mode (Endless or Time Attack: Game.flow_args {"mode": id,
+## "seed": run seed}) or of a campaign level ({"level": id}: the level's fixed seed).
+## Waves follow one another (Wave.for_mode, Wave.campaign): each starts WAVE_LEAD seconds before its
 ## first spawn with a fresh shell pool (Ammo). Every pressed touch on the ShotInput
 ## (below the HUD bar) is a shot: it uses a shell and hits the frontmost flying bird
 ## whose hitbox polygon holds the point, else it is a miss (combo reset); with no shells
@@ -21,6 +21,15 @@ extends Node2D
 ## last one is the boss flock) and then ends on the results screen, the level's stars and
 ## best recorded and saved at once (Game.record_level). In a level the sky takes the
 ## chapter's tint and the rival waits linger_time x the chapter's rival_linger_scale.
+## A timed mode (Time Attack: ModeSpec.is_timed) has no escape limit (an escape only loses
+## the bird's points) and ends after time_limit seconds of run_clock: game time from the
+## run's start, frozen while the tree is paused (the pause menu, the rotate overlay), each
+## wave's WAVE_LEAD lead-in included. The HUD shows the seconds left ("Time 42", rounded
+## up); the frame that reaches time_limit stops the clock exactly there and ends the run
+## (the score recorded, a new best saved at once, then the results screen). Its waves
+## follow one another as in Endless: the next starts as soon as the last is cleared or
+## lost, with a full pool of its own shells. Its rival never steals (rival_steals false),
+## so his tally is not on the HUD; he still heckles.
 ## The rival hunter (Rival, data/rival_lines.json) stands in the grass band (at or below
 ## GRASS_Y, so he never covers the field; he and his speech bubble ignore touches, so a
 ## shot anywhere hits as before). In a mode with rival_steals, every frame Play asks
@@ -42,7 +51,7 @@ extends Node2D
 ## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate
 ## overlay hiding after it showed during the run (or while the menu is open) open the
 ## pause menu with the tree paused; Resume (or Escape on the open menu) continues the run
-## unchanged, Restart starts the run again (a new Endless run, or the same level), Quit
+## unchanged, Restart starts the run again (a new run of the mode, or the same level), Quit
 ## goes to the title. The grass hides
 ## what is behind it: a shot on it (at or below GRASS_Y) hits no bird. Everything is logged with enough context
 ## (the run seed, wave times, shot positions) to replay the run.
@@ -73,7 +82,7 @@ const POPUP_TIME := 0.8
 const EMPTY_CUE_TIME := 0.6
 const SHELL_ICON_SIZE := Vector2(12, 28)
 ## The HUD shows a pool of up to this many shells as one icon per shell (hidden as used);
-## a bigger pool (Endless reaches 54) shows one icon and the shells left ("x36"), so the
+## a bigger pool (Endless reaches 72) shows one icon and the shells left ("x36"), so the
 ## bar never overflows whatever the pool.
 const SHELL_ICONS_MAX := 10
 const EMPTY_TINT := Color(1.0, 0.35, 0.3)
@@ -82,7 +91,7 @@ const COMBO_HECKLE_MIN := 3
 ## Seconds a heckle stays in the rival's bubble.
 const HECKLE_TIME := 2.5
 
-## The Endless mode, or null in a campaign level.
+## The mode (Endless, Time Attack), or null in a campaign level.
 var mode: ModeSpec
 ## The campaign level and its chapter, or null in Endless.
 var level: LevelSpec
@@ -101,7 +110,8 @@ var rival_score := 0
 var rival_lines: RivalLines
 ## Heckles shown this run (the next line's pick counter).
 var heckles := 0
-## Seconds since the run started (game time: frozen while paused); the heckle cooldown runs on it.
+## Seconds since the run started (game time: frozen while paused); the heckle cooldown and
+## a timed mode's clock run on it.
 var run_clock := 0.0
 ## Shots refused because the pool was empty.
 var refused := 0
@@ -141,6 +151,7 @@ var _last_heckle := -INF
 @onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Count
 @onready var _empty_label: Label = $Hud/Bar/Stats/Empty
 @onready var _combo_label: Label = $Hud/Bar/Stats/Combo
+@onready var _time_label: Label = $Hud/Bar/Stats/Time
 @onready var _rival_label: Label = $Hud/Bar/Stats/Rival
 @onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped
 @onready var _pause_button: Button = $Hud/Bar/PauseButton
@@ -182,8 +193,21 @@ func _notification(what: int) -> void:
 func _process(delta: float) -> void:
 	if _over or wave == null:
 		return
-	run_clock += delta
-	wave_clock += delta
+	var step := delta
+	var next := run_clock + delta
+	if is_timed() and (next >= mode.time_limit or is_equal_approx(next, mode.time_limit)):
+		# The clock stops exactly at the time limit, on the first frame that reaches it
+		# (frame times summed in floats may land a hair short of it): the run ends here.
+		step = mode.time_limit - run_clock
+		run_clock = mode.time_limit
+	else:
+		run_clock = next
+	wave_clock += step
+	if is_timed():
+		_time_label.text = "Time %d" % ceili(time_left())
+		if time_left() <= 0.0:
+			_end_run()
+			return
 	while _next_spawn < wave.spawns.size() and wave.spawns[_next_spawn].time <= wave_clock:
 		var spawn := wave.spawns[_next_spawn]
 		_next_spawn += 1
@@ -235,6 +259,16 @@ func bird_at(point: Vector2) -> Bird:
 	return null
 
 
+## True in a run of a timed mode (Time Attack), which ends after time_limit seconds.
+func is_timed() -> bool:
+	return mode != null and mode.is_timed()
+
+
+## The seconds a timed run has left (0 once its time is up); 0 in any other run.
+func time_left() -> float:
+	return maxf(mode.time_limit - run_clock, 0.0) if is_timed() else 0.0
+
+
 ## Opens the pause menu (focused on Resume) with the tree paused, for `cause`. While it
 ## is open the tree is kept paused (the rotate overlay may have unpaused it). Ignored
 ## once the run is over; during the transition into the run it opens once that is done.
@@ -251,7 +285,7 @@ func open_pause(cause: String) -> void:
 	_pause_menu.show()
 	_resume_button.grab_focus(true)
 	pause_log.append(cause)
-	print("[Play] Paused (%s): wave %d at t %.2f, score %d" % [cause, wave.index, wave_clock, scoring.score])
+	print("[Play] Paused (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
 
 
 ## Closes the pause menu and continues the run where it stopped (`cause`: "Resume" for
@@ -262,7 +296,7 @@ func resume(cause := "Resume") -> void:
 		return
 	_pause_menu.hide()
 	get_tree().paused = false
-	print("[Play] Resumed (%s): wave %d at t %.2f, score %d" % [cause, wave.index, wave_clock, scoring.score])
+	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
 
 
 func is_paused() -> bool:
@@ -313,8 +347,11 @@ func _start_run() -> void:
 			level.id, chapter.name, level.index, Content.LEVELS_PER_CHAPTER, run_seed, level.waves, ", the last a boss flock" if level.is_boss() else "", level.combo_cap, level.shells_per_hit,
 			linger_scale, rival_lines.aim_time, rival_lines.cooldown, chapter.sky_tint.to_html(false), chapter.weather])
 	else:
-		print("[Play] Run start: mode %s, seed %d (escape limit %d, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
-			mode.id, run_seed, mode.escape_limit, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
+		var ends := "time limit %.2f s, no escape limit" % mode.time_limit if mode.is_timed() else "escape limit %d" % mode.escape_limit
+		print("[Play] Run start: mode %s, seed %d (%s, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
+			mode.id, run_seed, ends, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
+		_time_label.visible = mode.is_timed()
+		_rival_label.visible = mode.rival_steals
 	_start_wave(1)
 
 
@@ -330,13 +367,13 @@ func _cannot_start(message: String) -> void:
 
 
 func _start_wave(index: int) -> void:
-	wave = Wave.campaign(level, index) if level != null else Wave.endless(mode, index, run_seed)
+	wave = Wave.campaign(level, index) if level != null else Wave.for_mode(mode, index, run_seed)
 	wave_clock = -WAVE_LEAD
 	_next_spawn = 0
 	var ids := PackedStringArray()
 	for spawn in wave.spawns:
 		ids.append(spawn.bird_id)
-	var of_level := " (wave %d of %d%s, level %s)" % [index, level.waves, ", boss flock" if wave.boss else "", level.id] if level != null else ""
+	var of_level := " (wave %d of %d%s, level %s)" % [index, level.waves, ", boss flock" if wave.boss else "", level.id] if level != null else _clock_note()
 	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f%s" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale, of_level])
 	set_shell_pool(wave.shells)
 
@@ -481,14 +518,20 @@ func steals_on() -> bool:
 
 
 ## The birds lost so far for the logs and the HUD: "E/limit" in Endless, "E" in a level
-## (no limit).
+## and in a timed mode (no limit).
 func _escapes() -> String:
-	return "%d/%d" % [escaped, mode.escape_limit] if mode != null else str(escaped)
+	return "%d/%d" % [escaped, mode.escape_limit] if mode != null and not mode.is_timed() else str(escaped)
 
 
-## True once an Endless run has lost escape_limit birds; a level never ends early.
+## True once an Endless run has lost escape_limit birds; a level or a timed run never ends
+## on escapes.
 func _escape_limit_reached() -> bool:
-	return mode != null and escaped >= mode.escape_limit
+	return mode != null and not mode.is_timed() and escaped >= mode.escape_limit
+
+
+## ", 42.10 s left" in a timed run's log lines, "" in any other.
+func _clock_note() -> String:
+	return ", %.2f s left" % time_left() if is_timed() else ""
 
 
 ## The rival raises his gun while any flying bird has an aim cue.
@@ -554,13 +597,14 @@ func _end_run() -> void:
 			level.id, run_seed, wave.index, level.waves, shots, stats["stars"], record.score, record.stars, " (new best)" if new_best else "",
 			", not saved: %s" % _game.save_error if _game.save_error != "" else ""])
 	else:
-		var new_best := _game.record_endless(scoring.score)
+		var new_best := _game.record_best(mode, scoring.score)
 		var save_error := _game.save_error if new_best else ""
-		stats.merge({"mode": mode.id, "best": _game.best_endless, "new_best": new_best, "save_error": save_error})
+		stats.merge({"mode": mode.id, "best": _game.best(mode.id), "new_best": new_best, "save_error": save_error})
 		var best_note := ""
 		if new_best:
 			best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
-		print("[Play] Run end: mode %s, seed %d, wave %d, %s, best %d%s" % [mode.id, run_seed, wave.index, shots, _game.best_endless, best_note])
+		var time_used := ", time used %.2f of %.2f s" % [run_clock, mode.time_limit] if mode.is_timed() else ""
+		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.best(mode.id), best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -578,7 +622,7 @@ func _restart() -> void:
 	if level != null:
 		_game.start_level(level.id)
 	else:
-		_game.start_endless()
+		_game.start_mode(mode.id)
 
 
 func _quit() -> void:
@@ -591,7 +635,7 @@ func _leave(cause: String) -> void:
 	if wave == null:
 		print("[Play] Left (%s): the run never started" % cause)
 		return
-	print("[Play] Left the run (%s): %s, seed %d, wave %d, score %d, %d escaped" % [cause, "level " + level.id if level != null else "mode " + mode.id, run_seed, wave.index, scoring.score, escaped])
+	print("[Play] Left the run (%s): %s, seed %d, wave %d, score %d, %d escaped%s; nothing recorded" % [cause, "level " + level.id if level != null else "mode " + mode.id, run_seed, wave.index, scoring.score, escaped, _clock_note()])
 
 
 ## Escape (CancelKey, which runs while paused too) opens the pause menu, or resumes the
@@ -655,6 +699,8 @@ func _update_hud() -> void:
 				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
 	_combo_label.text = "x%d" % scoring.multiplier
 	_rival_label.text = "Rival %d" % rival_score
+	if is_timed():
+		_time_label.text = "Time %d" % ceili(time_left())
 	_escaped_label.text = "Escaped " + _escapes()
 
 

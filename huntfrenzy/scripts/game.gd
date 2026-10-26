@@ -1,7 +1,7 @@
 class_name GameState
 extends Node
 ## Autoload "Game" (scenes/game.tscn): the app flow state machine and its scene
-## transitions, the save (the Endless best score, the campaign progress and the settings),
+## transitions, the save (the best score of each mode, the campaign progress and the settings),
 ## ScreenFit (the visible and safe-area rects in base units) and the rotate overlay.
 ## Every flow change goes through goto(), which fades a cover over the screen
 ## (touches blocked), swaps the scene, fades the cover away and logs the transition
@@ -54,18 +54,22 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.CHAPTER_SELECT: "res://scenes/chapter_select.tscn",
 	Flow.LEVEL_SELECT: "res://scenes/level_select.tscn",
 }
-## The Endless mode's id in data/modes.json.
+## The Endless and Time Attack modes' ids in data/modes.json.
 const ENDLESS_MODE := "endless"
+const TIME_ATTACK_MODE := "time_attack"
 const SAVE_PATH := "user://save.json"
 ## The save of tool runs (see _ready); tests delete it when they finish.
 const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one step to
 ## save_migrations(), so saves of older versions are upgraded, not discarded; a newer
 ## version is backed up and replaced.
-const SAVE_VERSION := 2
-## The keys of a save, each with the type its value must have. `levels` maps a level id to
-## {"stars", "score"} (its Campaign.Record); `settings` holds SETTINGS_KEYS.
-const SAVE_KEYS: Dictionary[String, Variant.Type] = {"version": TYPE_INT, "best_endless": TYPE_INT, "levels": TYPE_DICTIONARY, "settings": TYPE_DICTIONARY}
+const SAVE_VERSION := 3
+## The keys of a save, each with the type its value must have. `bests` maps each of
+## BEST_MODES to its best score; `levels` maps a level id to {"stars", "score"} (its
+## Campaign.Record); `settings` holds SETTINGS_KEYS.
+const SAVE_KEYS: Dictionary[String, Variant.Type] = {"version": TYPE_INT, "bests": TYPE_DICTIONARY, "levels": TYPE_DICTIONARY, "settings": TYPE_DICTIONARY}
+## The modes the save keeps a best score for (bests), exactly these.
+const BEST_MODES: Array[String] = [ENDLESS_MODE, TIME_ATTACK_MODE]
 const SAVE_SCORE_MAX := 999999999
 ## The most backups of saves with dropped campaign entries (dropped_backup_path).
 const DROPPED_BACKUPS_MAX := 20
@@ -145,8 +149,8 @@ var flow_args: Dictionary = {}
 var safe_area_override := Rect2()
 ## Where the save lives: SAVE_PATH, or TOOL_SAVE_PATH in tool runs.
 var save_path := SAVE_PATH
-## The best Endless score, persisted in the save.
-var best_endless := 0
+## The best score of each of BEST_MODES (mode id -> score), persisted in the save.
+var bests: Dictionary[String, int] = {}
 ## The campaign progress, persisted in the save: level id -> its best stars and score. A
 ## level without an entry was never finished.
 var progress: Dictionary[String, Campaign.Record] = {}
@@ -304,7 +308,17 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 
 ## Starts a new Endless run with a fresh seed (the title's Endless, Restart, Play again).
 func start_endless() -> void:
-	goto(Flow.PLAY, {"mode": ENDLESS_MODE, "seed": randi()})
+	start_mode(ENDLESS_MODE)
+
+
+## Starts a new Time Attack run with a fresh seed (the title's Time Attack, Restart, Retry).
+func start_time_attack() -> void:
+	start_mode(TIME_ATTACK_MODE)
+
+
+## Starts a new run of mode `mode_id` (modes.json) with a fresh seed.
+func start_mode(mode_id: String) -> void:
+	goto(Flow.PLAY, {"mode": mode_id, "seed": randi()})
 
 
 ## Starts campaign level `level_id` (level select, Restart, Next and Retry); the level's
@@ -323,27 +337,37 @@ func record_level(level: LevelSpec, score: int) -> bool:
 	var before: Campaign.Record = progress.get(level.id)
 	var next := Campaign.next_level(level)
 	var was_open := next != null and Campaign.is_unlocked(next, progress)
-	var best := Campaign.merge(before, earned, score)
-	progress[level.id] = best
+	var kept := Campaign.merge(before, earned, score)
+	progress[level.id] = kept
 	var new_best := score > (before.score if before != null else 0)
 	var unlocked := ""
 	if next != null and not was_open and Campaign.is_unlocked(next, progress):
 		unlocked = "; %s unlocked" % next.id
 	print("[Game] Level %s finished: score %d, %d stars (%s); best %d stars, score %d (was %s)%s" % [
-		level.id, score, earned, "passed" if Campaign.is_passed(earned) else "not passed", best.stars, best.score,
+		level.id, score, earned, "passed" if Campaign.is_passed(earned) else "not passed", kept.stars, kept.score,
 		"%d stars, score %d" % [before.stars, before.score] if before != null else "never finished", unlocked])
 	save_game()
 	return new_best
 
 
-## Records the score of a finished Endless run: a new best is saved at once (save_error
-## says why when that failed). Returns true when it is a new best.
-func record_endless(score: int) -> bool:
-	if score <= best_endless:
-		print("[Game] Endless score %d does not beat the best %d" % [score, best_endless])
+## The best score of mode `mode_id` (0 before any run of it beat 0).
+func best(mode_id: String) -> int:
+	return bests.get(mode_id, 0)
+
+
+## Records the score of a finished run of `mode` (Endless, Time Attack): a new best is saved
+## at once (save_error says why when that failed). Returns true when it is a new best. A
+## mode the save keeps no best for (not in BEST_MODES) is reported and records nothing.
+func record_best(mode: ModeSpec, score: int) -> bool:
+	if not mode.id in BEST_MODES:
+		report_error("Cannot record a best for mode '%s': the save keeps bests only for %s" % [mode.id, BEST_MODES])
 		return false
-	print("[Game] New Endless best: %d (was %d)" % [score, best_endless])
-	best_endless = score
+	var before := best(mode.id)
+	if score <= before:
+		print("[Game] %s score %d does not beat the best %d" % [mode.name, score, before])
+		return false
+	print("[Game] New %s best: %d (was %d)" % [mode.name, score, before])
+	bests[mode.id] = score
 	save_game()
 	return true
 
@@ -360,7 +384,7 @@ func save_game() -> bool:
 	for id in progress:
 		levels[id] = {"stars": progress[id].stars, "score": progress[id].score}
 	var text := JSON.stringify({
-		"version": SAVE_VERSION, "best_endless": best_endless, "levels": levels,
+		"version": SAVE_VERSION, "bests": bests.duplicate(), "levels": levels,
 		"settings": {"music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
 	}, "  ")
 	var temp := save_path + ".tmp"
@@ -443,14 +467,14 @@ func _save_failed(message: String, reason: String) -> void:
 	save_failed.emit(reason)
 
 
-## What the save holds, for log lines: the Endless best, the levels finished with their
-## stars, and the settings.
+## What the save holds, for log lines: the Endless and Time Attack bests, the levels
+## finished with their stars, and the settings.
 func save_summary() -> String:
 	var earned := 0
 	for id in progress:
 		earned += progress[id].stars
-	return "Endless best %d, %d levels finished (%d stars), music %d%s, sfx %d%s" % [
-		best_endless, progress.size(), earned, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""]
+	return "Endless best %d, Time Attack best %d, %d levels finished (%d stars), music %d%s, sfx %d%s" % [
+		best(ENDLESS_MODE), best(TIME_ATTACK_MODE), progress.size(), earned, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""]
 
 
 ## Loads save_path. A missing save starts fresh (a log line only); an older version is
@@ -514,7 +538,9 @@ func _write_back_without_dropped() -> void:
 
 
 func _reset_save_data() -> void:
-	best_endless = 0
+	bests = {}
+	for mode_id in BEST_MODES:
+		bests[mode_id] = 0
 	progress = {}
 	music_volume = DEFAULT_MUSIC_VOLUME
 	sfx_volume = DEFAULT_SFX_VOLUME
@@ -559,9 +585,12 @@ func _apply_save(data: Variant) -> String:
 		var ok := _is_whole(value) if SAVE_KEYS[key] == TYPE_INT else typeof(value) == SAVE_KEYS[key]
 		if not ok:
 			return "'%s' is not %s" % [key, "a whole number" if SAVE_KEYS[key] == TYPE_INT else "an object"]
-	var best := int(saved["best_endless"])
-	if best < 0 or best > SAVE_SCORE_MAX:
-		return "best_endless %d is outside 0..%d" % [best, SAVE_SCORE_MAX]
+	var saved_bests: Dictionary = saved["bests"]
+	if saved_bests.size() != BEST_MODES.size() or not BEST_MODES.all(func(key: String) -> bool: return saved_bests.has(key)):
+		return "bests must be exactly %s (got %s)" % [BEST_MODES, saved_bests.keys()]
+	for key in BEST_MODES:
+		if not _is_whole(saved_bests[key]) or int(saved_bests[key]) < 0 or int(saved_bests[key]) > SAVE_SCORE_MAX:
+			return "bests.%s %s is not a whole number 0..%d" % [key, _number_text(saved_bests[key]), SAVE_SCORE_MAX]
 	var settings: Dictionary = saved["settings"]
 	if settings.size() != SETTINGS_KEYS.size() or not SETTINGS_KEYS.all(func(key: String) -> bool: return settings.has(key)):
 		return "settings must be exactly %s" % [SETTINGS_KEYS]
@@ -585,7 +614,8 @@ func _apply_save(data: Variant) -> String:
 			continue
 		var entry: Dictionary = levels[id]
 		loaded[str(id)] = Campaign.Record.new(int(entry["stars"]), int(entry["score"]))
-	best_endless = best
+	for key in BEST_MODES:
+		bests[key] = int(saved_bests[key])
 	progress = loaded
 	music_volume = int(settings["music"])
 	sfx_volume = int(settings["sfx"])
@@ -654,7 +684,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## Steps run before the save is validated, so they must read keys with get() and leave
 ## anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2]
+	return [_save_v1_to_v2, _save_v2_to_v3]
 
 
 ## Version 1 -> 2: the campaign arrives (no level finished yet) and the settings are saved,
@@ -663,6 +693,18 @@ static func _save_v1_to_v2(saved: Dictionary) -> void:
 	saved["levels"] = {}
 	saved["settings"] = {"music": DEFAULT_MUSIC_VOLUME, "sfx": DEFAULT_SFX_VOLUME, "music_muted": false, "sfx_muted": false}
 	print("[Game] Save upgrade 1 -> 2: Endless best %s kept, no campaign levels finished yet, default settings" % _number_text(saved.get("best_endless")))
+
+
+## Version 2 -> 3: a best score per mode (bests) replaces best_endless, which becomes the
+## Endless best; Time Attack arrives with a best of 0. A save without best_endless gets no
+## bests, so the validation reports it missing.
+static func _save_v2_to_v3(saved: Dictionary) -> void:
+	if not saved.has("best_endless"):
+		print("[Game] Save upgrade 2 -> 3: no best_endless to keep")
+		return
+	saved["bests"] = {ENDLESS_MODE: saved["best_endless"], TIME_ATTACK_MODE: 0}
+	saved.erase("best_endless")
+	print("[Game] Save upgrade 2 -> 3: Endless best %s kept as bests.%s, Time Attack best 0" % [_number_text(saved["bests"][ENDLESS_MODE]), ENDLESS_MODE])
 
 
 func _discard_save(problem: String) -> void:

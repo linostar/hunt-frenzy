@@ -1,9 +1,9 @@
 class_name Wave
 extends RefCounted
 ## Wave schedules. Static only: a wave's spawns and shells are a pure function of the
-## mode, the wave's index (1 for the first) and the run's seed (Endless), or of the level
-## and the wave's index (Campaign: the level's fixed seed).
-## Endless: wave n holds min(start_birds + (n - 1) x bird_growth, max_birds) birds, one
+## mode, the wave's index (1 for the first) and the run's seed (Endless and Time Attack:
+## for_mode), or of the level and the wave's index (Campaign: the level's fixed seed).
+## A mode (Endless, Time Attack; each with its own modes.json numbers): wave n holds min(start_birds + (n - 1) x bird_growth, max_birds) birds, one
 ## every spawn_interval seconds from 0, each with its own seed. Each spawn slot is the
 ## mode's golden_bird with chance golden_chance from golden_from_wave on; otherwise it is a
 ## weighted pick among the mix's birds whose from_wave <= n. The speed scale is
@@ -34,7 +34,10 @@ class Plan:
 	var boss := false
 
 
-static func endless(mode: ModeSpec, wave_index: int, run_seed: int) -> Plan:
+## Wave `wave_index` of a run of `mode` (Endless or Time Attack) with `run_seed`: the same
+## mode, index and seed always give the same spawns, shells and speed. Every wave has its
+## own full shell pool (Play refills it at each wave's start).
+static func for_mode(mode: ModeSpec, wave_index: int, run_seed: int) -> Plan:
 	var plan := Plan.new()
 	plan.index = wave_index
 	plan.speed_scale = speed_scale(mode, wave_index)
@@ -80,7 +83,7 @@ static func campaign(level: LevelSpec, wave_index: int) -> Plan:
 	var hits := 0
 	for i in count:
 		var spawn := Spawn.new()
-		# Every slot rolls for golden first, as in Endless.
+		# Every slot rolls for golden first, as in a mode's waves.
 		if rng.randf() < level.golden_chance:
 			spawn.bird_id = level.golden_bird
 		else:

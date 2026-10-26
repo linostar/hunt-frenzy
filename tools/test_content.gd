@@ -1,8 +1,8 @@
 extends SceneTree
 ## Headless content tests: loads huntfrenzy/data/*.json through Content and checks every
-## invariant of huntfrenzy/data/SCHEMA.md (I1..I19) against the real data, then proves
+## invariant of huntfrenzy/data/SCHEMA.md (I1..I20) against the real data, then proves
 ## each one fires on a malformed copy of it (the loader's I1-I4, I13, I14 and I15 with the
-## exact error lines; I5-I12 and I16-I19 with the exact problems their checks report).
+## exact error lines; I5-I12 and I16-I20 with the exact problems their checks report).
 ##   "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/test_content.gd"
 ## Prints "test_content: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func that reports through _check(), and append it to
@@ -29,6 +29,16 @@ const SILHOUETTE_GRID := Vector2i(48, 36)
 ## I12: the shortest side a hitbox's bounding box may have, in base units: the game's
 ## smallest touch target (CLAUDE.md, every interactive Control is at least 44x44).
 const HITBOX_SIDE_MIN := 44.0
+## I20, the simulated fairness check: the run seeds it plays (0..SIM_SEEDS - 1), the Endless
+## waves it covers (1..SIM_UNTIMED_WAVES; a timed mode: every wave its time_limit can
+## reach), and the perfect player: one shot every SIM_SHOT_GAP seconds, each bird shot the
+## moment its whole hitbox is above the grass (found to SIM_FRAME, after a coarse search
+## in SIM_COARSE_STEP steps), in the order the birds come into the field.
+const SIM_SEEDS := 60
+const SIM_UNTIMED_WAVES := 10
+const SIM_SHOT_GAP := 0.35
+const SIM_FRAME := 1.0 / 60.0
+const SIM_COARSE_STEP := 0.1
 
 var _failures: Array[String] = []
 var _passed := 0
@@ -76,6 +86,7 @@ func _tests() -> Array[Callable]:
 		_test_i17_shells_fit_hits,
 		_test_i18_boss_last_and_shaped,
 		_test_i19_chapters_introduce_birds,
+		_test_i20_modes_are_fair,
 	]
 
 
@@ -119,7 +130,15 @@ func _test_lookup_api() -> void:
 	var mix := endless.birds.map(func(e: ModeSpec.Entry) -> String: return "%s@%d" % [e.bird, e.from_wave])
 	_check(mix == ["goose@1", "armored@3", "splitter@5", "decoy@5", "zigzag@7"], "the Endless mix unlocks by wave", str(mix))
 	_check(endless.golden_bird == "golden" and endless.golden_from_wave == 2 and is_equal_approx(endless.golden_chance, 0.08), "Endless's golden bird from wave 2", "%s %d %.2f" % [endless.golden_bird, endless.golden_from_wave, endless.golden_chance])
-	_check(Content.modes().size() == 1, "modes() lists the modes", str(Content.modes().size()))
+	var mode_ids := Content.modes().map(func(spec: ModeSpec) -> String: return spec.id)
+	_check(mode_ids == [GameState.ENDLESS_MODE, GameState.TIME_ATTACK_MODE], "modes() lists Endless and Time Attack in data order", str(mode_ids))
+	_check(not endless.is_timed() and endless.escape_limit == 10 and endless.time_limit == 0.0, "Endless ends at its escape limit and has no time limit", "escape limit %d, time limit %.1f" % [endless.escape_limit, endless.time_limit])
+	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
+	var time_attack_mix := time_attack.birds.map(func(e: ModeSpec.Entry) -> String: return "%s@%d" % [e.bird, e.from_wave])
+	_check(time_attack.is_timed() and time_attack.time_limit == 60.0 and time_attack.escape_limit == 0 and not time_attack.rival_steals and time_attack.name == "Time Attack", "Time Attack lasts 60 s with no escape limit and no steals",
+		"time limit %.1f, escape limit %d, steals %s" % [time_attack.time_limit, time_attack.escape_limit, time_attack.rival_steals])
+	_check(time_attack_mix == ["goose@1", "armored@2", "zigzag@3", "decoy@3", "splitter@4"] and time_attack.shells_per_hit == 2 and time_attack.combo_cap == 8 and is_equal_approx(time_attack.spawn_interval, 0.9),
+		"Time Attack has its own mix, shells per hit, combo cap and spawn interval", "%s, %d, x%d, %.2f s" % [time_attack_mix, time_attack.shells_per_hit, time_attack.combo_cap, time_attack.spawn_interval])
 	var lingers := Content.birds().map(func(spec: BirdSpec) -> float: return spec.linger_time)
 	_check(lingers == [3.5, 4.0, 3.5, 1.5, 3.5, 2.5, 4.0], "every bird has its linger_time", str(lingers))
 	_check(endless.rival_steals, "Endless has the rival's steals on", str(endless.rival_steals))
@@ -178,6 +197,12 @@ func _test_i1_files_ids_and_keys() -> void:
 		["data/birds.json [goose] linger_time: missing key"])
 	_expect_load_errors("I1 missing rival_steals", _mutated("modes.json", func(data: Array) -> void: (data[0] as Dictionary).erase("rival_steals")),
 		["data/modes.json [endless] rival_steals: missing key"])
+	_expect_load_errors("I1 a mode with both escape_limit and time_limit", _mutated("modes.json", func(data: Array) -> void: data[1]["escape_limit"] = 10),
+		["data/modes.json [time_attack] time_limit: not allowed with escape_limit (a mode's run ends at escape_limit lost birds or after time_limit seconds, not both)"])
+	_expect_load_errors("I1 a mode with neither escape_limit nor time_limit", _mutated("modes.json", func(data: Array) -> void: (data[0] as Dictionary).erase("escape_limit")),
+		["data/modes.json [endless] escape_limit: missing key (a mode needs escape_limit or time_limit: how its run ends)"])
+	_expect_load_errors("I1 a timed mode without its time_limit", _mutated("modes.json", func(data: Array) -> void: (data[1] as Dictionary).erase("time_limit")),
+		["data/modes.json [time_attack] escape_limit: missing key (a mode needs escape_limit or time_limit: how its run ends)"])
 	_expect_load_errors("I1 rival lines missing a category", _mutated("rival_lines.json", func(data: Dictionary) -> void: (data["lines"] as Dictionary).erase("steal")),
 		["data/rival_lines.json [steal] lines: missing category"])
 	_expect_load_errors("I1 rival lines with an unknown category", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["lines"]["boast"] = ["Watch this."]),
@@ -256,6 +281,14 @@ func _test_i2_types_and_ranges() -> void:
 		["data/birds.json [goose] linger_time: expected float, got String"])
 	_expect_load_errors("I2 rival_steals not a bool", _mutated("modes.json", func(data: Array) -> void: data[0]["rival_steals"] = 1),
 		["data/modes.json [endless] rival_steals: expected bool, got float"])
+	_expect_load_errors("I2 time_limit under 10 s", _mutated("modes.json", func(data: Array) -> void: data[1]["time_limit"] = 5),
+		["data/modes.json [time_attack] time_limit: 5.0 is outside 10.0..600.0"])
+	_expect_load_errors("I2 time_limit over 600 s", _mutated("modes.json", func(data: Array) -> void: data[1]["time_limit"] = 601),
+		["data/modes.json [time_attack] time_limit: 601.0 is outside 10.0..600.0"])
+	_expect_load_errors("I2 time_limit not a number", _mutated("modes.json", func(data: Array) -> void: data[1]["time_limit"] = "a minute"),
+		["data/modes.json [time_attack] time_limit: expected float, got String"])
+	_expect_load_errors("I2 escape_limit out of range", _mutated("modes.json", func(data: Array) -> void: data[0]["escape_limit"] = 0),
+		["data/modes.json [endless] escape_limit: 0 is outside 1..100"])
 	_expect_load_errors("I2 aim_time under 0.5 s", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["aim_time"] = 0.4),
 		["data/rival_lines.json [-] aim_time: 0.4 is outside 0.5..10.0"])
 	_expect_load_errors("I2 cooldown negative", _mutated("rival_lines.json", func(data: Dictionary) -> void: data["cooldown"] = -1),
@@ -426,17 +459,17 @@ func _test_i7_split() -> void:
 ## and is faster and worth more points than every bird of the mix.
 func _test_i8_golden_and_mix() -> void:
 	_check(_i8_problems().is_empty(), "I8 the golden bird rules hold", "\n".join(_i8_problems()))
-	# Endless and every night level (the ones with zigzags) share the golden bird.
+	# Endless, Time Attack and every night level (the ones with zigzags) share the golden bird.
 	_expect_problems("I8 a slow golden bird", _mutated("birds.json", func(data: Array) -> void: data[5]["speed"] = 150), _i8_problems,
-		_per_owner(["endless", "night_1", "night_2", "night_3", "night_4", "night_5", "night_6"], "golden bird golden (speed 150.0) is not faster than zigzag (speed 175.0)"))
+		_per_owner(["endless", "time_attack", "night_1", "night_2", "night_3", "night_4", "night_5", "night_6"], "golden bird golden (speed 150.0) is not faster than zigzag (speed 175.0)"))
 	_expect_problems("I8 a cheap golden bird", _mutated("birds.json", func(data: Array) -> void: data[5]["points"] = 180), _i8_problems,
-		_per_owner(["endless", "night_1", "night_2", "night_3", "night_4", "night_5", "night_6"], "golden bird golden (180 points) is not worth more than zigzag (200 points)"))
+		_per_owner(["endless", "time_attack", "night_1", "night_2", "night_3", "night_4", "night_5", "night_6"], "golden bird golden (180 points) is not worth more than zigzag (200 points)"))
 	_expect_problems("I8 the golden bird in the mix", _mutated("modes.json", func(data: Array) -> void: data[0]["birds"].append({"bird": "golden", "from_wave": 9, "weight": 1})), _i8_problems,
 		["endless: golden bird golden is also in the mix"])
 	_expect_problems("I8 a golden decoy", _mutated("birds.json", func(data: Array) -> void:
 		data[5]["penalty"] = 10
 		data[5]["escape_counts"] = false), _i8_problems,
-		_per_owner(["endless"] + Campaign.levels().map(func(level: LevelSpec) -> String: return level.id), "golden bird golden must have hp 1, no split and no penalty"))
+		_per_owner(["endless", "time_attack"] + Campaign.levels().map(func(level: LevelSpec) -> String: return level.id), "golden bird golden must have hp 1, no split and no penalty"))
 	_expect_problems("I8 a level's golden bird in its mix", _mutated("levels.json", func(data: Array) -> void: data[1]["mix"].append({"bird": "golden", "weight": 1})), _i8_problems,
 		["dawn_2: golden bird golden is also in the mix"])
 
@@ -471,9 +504,11 @@ func _test_i10_roster_and_chapters() -> void:
 		["no armored bird (hp 2 or more)"])
 	_expect_problems("I10 a chapter introducing nothing", _mutated("birds.json", func(data: Array) -> void: data[4]["chapter"] = "sunset"), _i10_problems,
 		["chapter night introduces no bird"])
-	# Out of Endless's mix and every level's: the zigzag can no longer appear anywhere.
+	# Out of every mode's mix and every level's: the zigzag can no longer appear anywhere.
 	_expect_problems("I10 a bird that never appears", _mutated_files({
-		"modes.json": func(data: Array) -> void: (data[0]["birds"] as Array).pop_back(),
+		"modes.json": func(data: Array) -> void:
+			for mode: Dictionary in data:
+				mode["birds"] = (mode["birds"] as Array).filter(func(e: Dictionary) -> bool: return e["bird"] != "zigzag"),
 		"levels.json": func(data: Array) -> void:
 			for level: Dictionary in data:
 				level["mix"] = (level["mix"] as Array).filter(func(e: Dictionary) -> bool: return e["bird"] != "zigzag")
@@ -644,6 +679,188 @@ func _test_i19_chapters_introduce_birds() -> void:
 			if level["chapter"] == "noon":
 				level["golden_chance"] = 0), _i19_problems,
 		["chapter noon: none of its levels spawns a golden bird"])
+
+
+## I20: the modes are fair, by simulation against the real data (Wave.for_mode, Ammo and
+## Flight, as in play), over SIM_SEEDS run seeds: Endless's waves 1..SIM_UNTIMED_WAVES and
+## every wave a timed mode's time_limit can reach never lose birds or speed from one wave
+## to the next, give the shells for every hit their birds need, and let a perfect player
+## kill every bird but the decoy before the rival's cue (modes with steals) and before it
+## flees. Each part is shown to fire: a stand-in schedule drops birds, speed or a shell; a
+## bird whose linger_time is shorter than it takes to come into the field fails Endless; a
+## Time Attack flock too dense for one gun fails it.
+func _test_i20_modes_are_fair() -> void:
+	var sim := _i20_sim(Wave.for_mode)
+	_check((sim["problems"] as Array).is_empty(), "I20 Endless and Time Attack are fair to a perfect player", "\n".join(sim["problems"]))
+	_check(sim["waves"] == {"endless": SIM_UNTIMED_WAVES, "time_attack": 11}, "I20 covers Endless's waves 1-10 and the 11 waves a 60 s Time Attack can reach", str(sim["waves"]))
+	_check(sim["kills"] > 1000, "I20 the perfect player kills every simulated bird", "%d kills" % sim["kills"])
+	print("test_content: I20 tightest margins (s before the cue or the flee): %s" % sim["margins"])
+	var fewer := func(mode: ModeSpec, wave_index: int, run_seed: int) -> Wave.Plan:
+		var plan := Wave.for_mode(mode, wave_index, run_seed)
+		if mode.id == "endless" and wave_index == 4:
+			plan.spawns.resize(Wave.for_mode(mode, 3, run_seed).spawns.size() - 1)
+		return plan
+	_check(_matches(_i20_sim(fewer)["problems"], ["endless wave 4: fewer birds than wave 3 in %d of %d seeds" % [SIM_SEEDS, SIM_SEEDS]]), "I20 a wave with fewer birds than the one before fires", "\n".join(_i20_sim(fewer)["problems"]))
+	var slower := func(mode: ModeSpec, wave_index: int, run_seed: int) -> Wave.Plan:
+		var plan := Wave.for_mode(mode, wave_index, run_seed)
+		if mode.id == "time_attack" and wave_index == 6:
+			plan.speed_scale = Wave.speed_scale(mode, 5) - 0.01
+		return plan
+	_check(_matches(_i20_sim(slower)["problems"], ["time_attack wave 6: slower than wave 5 in %d of %d seeds" % [SIM_SEEDS, SIM_SEEDS]]), "I20 a wave slower than the one before fires", "\n".join(_i20_sim(slower)["problems"]))
+	var short := func(mode: ModeSpec, wave_index: int, run_seed: int) -> Wave.Plan:
+		var plan := Wave.for_mode(mode, wave_index, run_seed)
+		if mode.id == "time_attack" and wave_index == 2:
+			# One shell fewer than the hits its birds need.
+			plan.shells = -1
+			for spawn in plan.spawns:
+				plan.shells += Wave.hits_needed(Content.bird(spawn.bird_id))
+		return plan
+	_check(_matches(_i20_sim(short)["problems"], ["time_attack wave 2: fewer shells than the hits its birds need (the perfect player runs out) in %d of %d seeds" % [SIM_SEEDS, SIM_SEEDS]]), "I20 a wave short of shells fires", "\n".join(_i20_sim(short)["problems"]))
+	# The goose is in the field only a while after it spawns: a 0.1 s linger lets the rival
+	# aim at every goose first (Endless steals; Time Attack does not, so it is unaffected).
+	_expect_problems("I20 a bird the rival aims at before it is in the field", _mutated("birds.json", func(data: Array) -> void: data[0]["linger_time"] = 0.1), func() -> Array[String]: return _i20_sim(Wave.for_mode)["problems"],
+		["endless: a perfect player kills goose only after the rival's cue (at 0.10 s) in waves 1-10"])
+	# 30 geese 0.1 s apart (no other bird): one gun cannot kill them all before they flee.
+	_expect_problems("I20 a flock too dense for one gun", _mutated("modes.json", func(data: Array) -> void:
+		data[1]["birds"] = [{"bird": "goose", "from_wave": 1, "weight": 1}]
+		data[1]["golden_chance"] = 0
+		data[1]["start_birds"] = 30
+		data[1]["max_birds"] = 30
+		data[1]["spawn_interval"] = 0.1), func() -> Array[String]: return _i20_sim(Wave.for_mode)["problems"],
+		["time_attack: a perfect player kills goose only after it flees (at 6.00 s) in waves 1-16"])
+
+
+## The I20 simulation with `plan_of` (Wave.for_mode, or a stand-in) giving each mode's
+## waves: {"problems": the problems, one line per mode, wave and part (and per bird type
+## for the perfect player, listing the waves), "waves": the waves covered per mode,
+## "kills": the birds the perfect player killed, "margins": per mode the least time
+## between a kill and its bird's deadline}.
+func _i20_sim(plan_of: Callable) -> Dictionary:
+	var counted: Dictionary[String, int] = {}
+	var late: Dictionary[String, Array] = {}
+	var waves: Dictionary[String, int] = {}
+	var margins: Dictionary[String, float] = {}
+	var kills := 0
+	for mode in Content.modes():
+		margins[mode.id] = INF
+		for run_seed in SIM_SEEDS:
+			var previous: Wave.Plan = null
+			var start := 0.0
+			var index := 1
+			while (mode.is_timed() and start < mode.time_limit) or (not mode.is_timed() and index <= SIM_UNTIMED_WAVES):
+				var plan: Wave.Plan = plan_of.call(mode, index, run_seed)
+				waves[mode.id] = maxi(waves.get(mode.id, 0), index)
+				if previous != null and plan.spawns.size() < previous.spawns.size():
+					_count(counted, "%s wave %d: fewer birds than wave %d" % [mode.id, index, index - 1])
+				if previous != null and plan.speed_scale < previous.speed_scale:
+					_count(counted, "%s wave %d: slower than wave %d" % [mode.id, index, index - 1])
+				var played := _perfect_player(mode, plan)
+				kills += played["kills"]
+				margins[mode.id] = minf(margins[mode.id], played["margin"])
+				if played["out_of_shells"]:
+					_count(counted, "%s wave %d: fewer shells than the hits its birds need (the perfect player runs out)" % [mode.id, index])
+				for key: String in played["late"]:
+					if not late.has(key):
+						late[key] = []
+					if not index in late[key]:
+						late[key].append(index)
+				# No player can end a wave before its last bird spawns, so a timed run
+				# reaches at most the waves that start before time_limit at this pace.
+				start += Play.WAVE_LEAD + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
+				previous = plan
+				index += 1
+	var problems: Array[String] = []
+	for key in counted:
+		problems.append("%s in %d of %d seeds" % [key, counted[key], SIM_SEEDS])
+	for key in late:
+		var found: Array = late[key]
+		found.sort()
+		problems.append("%s in waves %s" % [key, _ranges(found)])
+	return {"problems": problems, "waves": waves, "kills": kills, "margins": margins}
+
+
+func _count(counted: Dictionary[String, int], key: String) -> void:
+	counted[key] = counted.get(key, 0) + 1
+
+
+## "1-10" for [1, 2, ..., 10]; "3, 5-6" for [3, 5, 6].
+func _ranges(values: Array) -> String:
+	var parts := PackedStringArray()
+	var i := 0
+	while i < values.size():
+		var j := i
+		while j + 1 < values.size() and int(values[j + 1]) == int(values[j]) + 1:
+			j += 1
+		parts.append(str(values[i]) if i == j else "%d-%d" % [values[i], values[j]])
+		i = j + 1
+	return ", ".join(parts)
+
+
+## One wave of `mode` played by the I20 perfect player: one shot every SIM_SHOT_GAP
+## seconds from an Ammo of the wave's shells, always at the bird that came into the field
+## first among those still alive, the decoy never shot; a splitter's children come into the
+## field where it was killed. Returns {"kills", "out_of_shells", "late": the keys of the
+## birds killed at or after their deadline (the rival's cue at linger_time x 1 in a mode
+## with steals, and flee_time), "margin": the least time left before a deadline}.
+func _perfect_player(mode: ModeSpec, plan: Wave.Plan) -> Dictionary:
+	var result := {"kills": 0, "out_of_shells": false, "late": [], "margin": INF}
+	var ammo := Ammo.new(plan.shells)
+	# Each target: [spec, born (s from the wave's first spawn), in the field from, hits left].
+	var targets: Array[Array] = []
+	for spawn in plan.spawns:
+		var spec := Content.bird(spawn.bird_id)
+		if spec.penalty == 0:
+			targets.append([spec, spawn.time, spawn.time + _field_entry_age(spec, spawn.bird_seed, plan.speed_scale), spec.hp])
+	var free := -INF
+	while not targets.is_empty():
+		var next := 0
+		for i in targets.size():
+			if targets[i][2] < targets[next][2]:
+				next = i
+		var target := targets[next]
+		var shot := maxf(free, target[2])
+		free = shot + SIM_SHOT_GAP
+		if not ammo.use():
+			result["out_of_shells"] = true
+			return result
+		target[3] -= 1
+		if target[3] > 0:
+			continue
+		targets.remove_at(next)
+		var spec: BirdSpec = target[0]
+		var age: float = shot - target[1]
+		result["kills"] += 1
+		var cue := spec.linger_time if mode.rival_steals else INF
+		result["margin"] = minf(result["margin"], minf(cue, spec.flee_time) - age)
+		if age >= cue:
+			result["late"].append("%s: a perfect player kills %s only after the rival's cue (at %.2f s)" % [mode.id, spec.id, cue])
+		elif age >= spec.flee_time:
+			result["late"].append("%s: a perfect player kills %s only after it flees (at %.2f s)" % [mode.id, spec.id, spec.flee_time])
+		for i in spec.split_count:
+			var child := Content.bird(spec.splits_into)
+			targets.append([child, shot, shot, child.hp])
+	return result
+
+
+## The first age (to SIM_FRAME) at which the bird's whole hitbox is above the grass line
+## (Play.GRASS_Y): a shot can hit any part of it from then on. INF if never before it flees.
+func _field_entry_age(spec: BirdSpec, bird_seed: int, speed_scale: float) -> float:
+	var age := 0.0
+	while age <= spec.flee_time:
+		if _in_field(spec, bird_seed, age, speed_scale):
+			while age - SIM_FRAME >= 0.0 and _in_field(spec, bird_seed, age - SIM_FRAME, speed_scale):
+				age -= SIM_FRAME
+			return age
+		age += SIM_COARSE_STEP
+	return INF
+
+
+func _in_field(spec: BirdSpec, bird_seed: int, age: float, speed_scale: float) -> bool:
+	var placed := Flight.transform_at(spec, bird_seed, age, Play.FIELD, speed_scale)
+	for point in spec.hitbox:
+		if (placed * point).y >= Play.GRASS_Y:
+			return false
+	return true
 
 
 func _i16_problems() -> Array[String]:

@@ -161,6 +161,14 @@ theme_override_font_sizes/font_size = 20
 text = "Wave 1"
 vertical_alignment = 1
 
+[node name="Time" type="Label" parent="Hud/Bar/Stats"]
+visible = false
+layout_mode = 2
+theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
+theme_override_font_sizes/font_size = 20
+text = "Time 60"
+vertical_alignment = 1
+
 [node name="Shells" type="HBoxContainer" parent="Hud/Bar/Stats"]
 layout_mode = 2
 mouse_filter = 2

@@ -7,7 +7,8 @@ extends RefCounted
 ## Every problem (unreadable file, bad JSON, a file with no entries, missing or unknown key,
 ## wrong type, non-integer int, out-of-range value, unknown enum value, duplicate id,
 ## unknown reference, a sprite missing a frame, a hitbox outside its sprite or crossing
-## itself, a split field without its pair, a wave mix with nothing from wave 1, a missing,
+## itself, a split field without its pair, a wave mix with nothing from wave 1, a mode with
+## both or neither of escape_limit and time_limit, a missing,
 ## unknown or empty rival line category, a rival line too long for the bubble, not exactly
 ## CHAPTER_COUNT chapters, a chapter whose rival_linger_scale rises above the one before's,
 ## a chapter without exactly its levels 1..LEVELS_PER_CHAPTER, a boss on any level but the
@@ -75,6 +76,9 @@ const SPAWN_INTERVAL_MAX := 10.0
 const SHELLS_PER_HIT_MAX := 10
 const COMBO_CAP_MAX := 20
 const ESCAPE_LIMIT_MAX := 100
+## A timed mode's run lasts TIME_LIMIT_MIN..TIME_LIMIT_MAX seconds.
+const TIME_LIMIT_MIN := 10.0
+const TIME_LIMIT_MAX := 600.0
 ## The latest wave a mode's bird or golden bird can unlock in, and the largest mix weight.
 const WAVE_MAX := 1000
 const WEIGHT_MAX := 100
@@ -432,7 +436,8 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 static func _load_modes(entries: Array[Dictionary]) -> void:
 	for entry in entries:
 		var item := ModeSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "escape_limit", "rival_steals"], _modes)
+		item.id = _begin_entry(entry, ["id", "name", "birds", "golden_bird", "golden_from_wave", "golden_chance", "start_birds", "bird_growth", "max_birds", "speed_growth", "speed_cap", "spawn_interval", "shells_per_hit", "combo_cap", "rival_steals"], _modes,
+			["escape_limit", "time_limit"])
 		item.name = _string(entry, "name", NAME_MAX)
 		item.birds = _mix(entry, "birds")
 		item.golden_bird = _reference(entry, "golden_bird", _birds, "bird")
@@ -446,7 +451,16 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 		item.spawn_interval = _float(entry, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
 		item.shells_per_hit = _int(entry, "shells_per_hit", 1, SHELLS_PER_HIT_MAX)
 		item.combo_cap = _int(entry, "combo_cap", 1, COMBO_CAP_MAX)
-		item.escape_limit = _int(entry, "escape_limit", 1, ESCAPE_LIMIT_MAX)
+		# How a run ends: exactly one of escape_limit (Endless: at that many lost birds) and
+		# time_limit (Time Attack: after that many seconds); the other does not apply.
+		if entry.has("escape_limit") and entry.has("time_limit"):
+			_error("time_limit", "not allowed with escape_limit (a mode's run ends at escape_limit lost birds or after time_limit seconds, not both)")
+		elif not entry.has("escape_limit") and not entry.has("time_limit"):
+			_error("escape_limit", "missing key (a mode needs escape_limit or time_limit: how its run ends)")
+		if entry.has("escape_limit"):
+			item.escape_limit = _int(entry, "escape_limit", 1, ESCAPE_LIMIT_MAX)
+		if entry.has("time_limit"):
+			item.time_limit = _float(entry, "time_limit", TIME_LIMIT_MIN, TIME_LIMIT_MAX)
 		if entry.has("rival_steals"):
 			item.rival_steals = _bool(entry, "rival_steals")
 		if item.id != "":

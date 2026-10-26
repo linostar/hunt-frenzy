@@ -32,8 +32,18 @@ var spawn_interval := 0.0
 var shells_per_hit := 0
 ## The highest combo multiplier.
 var combo_cap := 0
-## Escaped birds that end a run.
+## How a run ends: a mode has exactly one of escape_limit and time_limit (Content rejects
+## both and neither), and the other stays 0 here, meaning "does not apply".
+## Lost birds (counted escapes and stolen birds) that end a run (Endless); 0 in a timed mode.
 var escape_limit := 0
+## Seconds a run lasts (Time Attack); 0 in a mode that ends at escape_limit.
+var time_limit := 0.0
 ## Whether the rival steals birds left flying past their linger_time (Rival); when false he
 ## only heckles.
 var rival_steals := false
+
+
+## True for a mode whose run ends after time_limit seconds (Time Attack); false for one
+## that ends at escape_limit lost birds (Endless).
+func is_timed() -> bool:
+	return time_limit > 0.0
