@@ -1,0 +1,58 @@
+{
+  "title": {
+    "samples": 1459862,
+    "seconds": 33.103,
+    "sha256": "5da375888dadb3ff5998c0d1641ff8de7602d7f8bad4a04f251d9e05f15f1e3b",
+    "mp3_sha256": "f3c670479f8a9a3cd30f97a595ce036fe24cc2e056033632cfb1013716fd772f",
+    "mp3_bytes": 398106
+  },
+  "campaign_dawn": {
+    "samples": 2016000,
+    "seconds": 45.714,
+    "sha256": "45804a2a24961d12d898afbf334c3442084b753f541aa97c30a9d38201d1fcb3",
+    "mp3_sha256": "1d49d0f78d91a0caee47389bdc24919eb0ee67916f69fc18a126f9e7844ba212",
+    "mp3_bytes": 549198
+  },
+  "campaign_noon": {
+    "samples": 1282909,
+    "seconds": 29.091,
+    "sha256": "d3478b32ce07833f09f1ea10d49177276e00ded0c73db1b5fb4fbd81174f6e67",
+    "mp3_sha256": "8ed9aee8928a5dc1858bb64dc23b505e52124579d1d145f4bcfb1b237b7e4ac4",
+    "mp3_bytes": 349831
+  },
+  "campaign_sunset": {
+    "samples": 1628308,
+    "seconds": 36.923,
+    "sha256": "603b7205e41116384632578c580c03f43b09165082984b50cb404cb8a88eb8c6",
+    "mp3_sha256": "08dfd810993ef4eafa1a57eb482aecb0c7952b3c095b506eb002058d88c5685d",
+    "mp3_bytes": 443872
+  },
+  "campaign_night": {
+    "samples": 2228211,
+    "seconds": 50.526,
+    "sha256": "5bb0874fbac68f9c9aec2c6f9a29acdc8efe6338950d96d9ac019759a617cf55",
+    "mp3_sha256": "c8dfd25c3035e8f44acf4c99070edf45b6da3d730836e710261c19dc5dbe719d",
+    "mp3_bytes": 607190
+  },
+  "endless": {
+    "samples": 2352000,
+    "seconds": 53.333,
+    "sha256": "90352d7776cbdd6e8b3bae351e2c6a76e744e2946128ae9fd3d2a7a6586c5796",
+    "mp3_sha256": "bba972dd269a80999711cb51754f2adf2ac13d4ef4dc8faa1cfaec64ea7943c4",
+    "mp3_bytes": 640731
+  },
+  "time_attack": {
+    "samples": 2016000,
+    "seconds": 45.714,
+    "sha256": "d6048e91985e939ef301ef0ba73f1422ae85be4d83c8a3136761c7b5d55c838c",
+    "mp3_sha256": "ed7f34eba9990cf67ac16c53c1e5c3d0c554e75da7f2768aa2ffa2898d809533",
+    "mp3_bytes": 549198
+  },
+  "results": {
+    "samples": 1764000,
+    "seconds": 40.0,
+    "sha256": "1288f5ff1f336e630108e9ac0b87a712b46f8e74d72b703e348d40a51e2b9fd2",
+    "mp3_sha256": "7b4e50c988194e5b01cda2df739ece9e9b933a60563fc68d70219bfd65430424",
+    "mp3_bytes": 480862
+  }
+}

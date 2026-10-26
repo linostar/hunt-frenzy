@@ -50,13 +50,43 @@ run_script() {
   fi
 }
 
-# On a fresh clone (no import cache) the first import can report errors for
-# resources loaded at startup (a project font or theme) before they are imported.
-# A priming import fills the cache; the checked import below then must be clean.
-# Only cache-miss errors (a not-yet-imported file and the loads that fail because of it)
-# are tolerated there; any other problem (a script or scene parse error) still fails.
+# On a fresh clone (no import cache), and in an existing checkout after new or changed
+# assets arrive (a pull, a branch switch), the first import can report errors for
+# resources loaded at startup (a project font or theme, a scene's texture or sound) before
+# they are imported. A priming import fills the cache; the checked import below then must
+# be clean. Only cache-miss errors (a not-yet-imported file and the loads that fail because
+# of it) are tolerated there; any other problem (a script or scene parse error) still fails.
 CACHE_MISS="Cannot open file 'res://\.godot/imported/|Unable to open file: res://\.godot/imported/|Failed loading resource: res://|referenced non-existent resource at: res://|Error loading custom project (font|theme) 'res://"
-if [ ! -d huntfrenzy/.godot/imported ]; then
+
+# Prints why the import cache is stale and returns 0 when it is: no cache at all, or a
+# tracked asset (a file with a committed .import) whose imported file is missing or older
+# than the asset itself. Returns 1 when every asset's import is in place and up to date.
+import_cache_stale() {
+  if [ ! -d huntfrenzy/.godot/imported ]; then
+    echo "no import cache"
+    return 0
+  fi
+  local import source dest
+  while IFS= read -r -d '' import; do
+    source="${import%.import}"
+    [ -f "$source" ] || continue
+    while IFS= read -r dest; do
+      dest="huntfrenzy/${dest#res://}"
+      if [ ! -f "$dest" ]; then
+        echo "${source#huntfrenzy/} is not imported yet"
+        return 0
+      fi
+      if [ "$source" -nt "$dest" ]; then
+        echo "${source#huntfrenzy/} is newer than its import"
+        return 0
+      fi
+    done < <(sed -n 's/^dest_files=\[\(.*\)\]$/\1/p' "$import" | tr ',' '\n' | sed -n 's/^ *"\(res:\/\/[^"]*\)"$/\1/p')
+  done < <(find huntfrenzy -path huntfrenzy/.godot -prune -o -name '*.import' -type f -print0)
+  return 1
+}
+
+if stale="$(import_cache_stale)"; then
+  echo "Import cache is stale ($stale): running the priming import"
   godot "$LOG_DIR/import_prime.log" --headless --path huntfrenzy --import || true
   if grep -E "ERROR|WARNING" "$LOG_DIR/import_prime.log" | grep -qvE "$CACHE_MISS"; then
     fail "priming import reported problems besides import-cache misses" "$LOG_DIR/import_prime.log"
