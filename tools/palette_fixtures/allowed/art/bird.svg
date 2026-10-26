@@ -5,4 +5,6 @@
   <circle cx="10" cy="10" r="4" fill="white" stroke="rgb(100%, 100%, 100%)"/>
   <path d="M0 0 L4 4" style="fill: #1f1a2e80; stroke: currentColor" fill-opacity="0.3"/>
   <path d="M0 0 L4 4" fill="transparent" stroke="#ffff"/>
+  <feFlood flood-color="#fff"/>
+  <feDiffuseLighting lighting-color="rgba(240, 138, 36, 0.2)" style="color: #fff8"/>
 </svg>

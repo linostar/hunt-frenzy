@@ -4,10 +4,25 @@ art/bird.svg:4: stroke 'rgb(0, 128, 0)' (#008000) is not in art/palette.hex
 art/bird.svg:5: fill 'red' (#ff0000) is not in art/palette.hex
 art/bird.svg:6: fill '#00f' (#0000ff) is not in art/palette.hex
 art/bird.svg:8: fill 'hsl(0, 100%, 50%)' is not a colour this check reads
+art/bird.svg:9: flood-color '#00ff00' (#00ff00) is not in art/palette.hex
+art/bird.svg:10: lighting-color 'rgba(0, 0, 255, 0.5)' (#0000ff) is not in art/palette.hex
+art/bird.svg:11: color '#f0f8' (#ff00ff) is not in art/palette.hex
+art/bird.svg:12: fill '#12345680' (#123456) is not in art/palette.hex
 scenes/part.tscn:4: PackedColorArray colour 2 '0, 0, 1, 1' (#0000ff) is not in art/palette.hex
 scenes/part.tscn:7: 'Color(0.5, 0.5, 0.5, 1)' (#808080) is not in art/palette.hex
 scripts/colours.gd:3: 'Color(1, 0, 0)' (#ff0000) is not in art/palette.hex
 scripts/colours.gd:4: '#00ff00' (#00ff00) is not in art/palette.hex
 scripts/colours.gd:5: 'Color.RED' (#ff0000) is not in art/palette.hex
+scripts/colours.gd:7: 'Color8(0, 255, 0)' (#00ff00) is not in art/palette.hex
+scripts/colours.gd:8: 'Color.from_rgba8(0, 0, 255, 128)' (#0000ff) is not in art/palette.hex
+scripts/colours.gd:9: 'Color.hex(0x00ff00ff)' (#00ff00) is not in art/palette.hex
+scripts/colours.gd:10: 'Color(0x0000ffff)' (#0000ff) is not in art/palette.hex
+scripts/colours.gd:11: Color.html string 'ff00ff' (#ff00ff) is not in art/palette.hex
+scripts/colours.gd:12: Color string '00ffff' (#00ffff) is not in art/palette.hex
+scripts/colours.gd:13: Color string 'red' (#ff0000) is not in art/palette.hex
+scripts/colours.gd:14: 'Color.from_hsv(0.5, 1.0, 1.0)' is not a colour this check reads
+scripts/colours.gd:15: 'Color(0xff0000)' is not a colour this check reads
+scripts/colours.gd:16: Color string '#12345' is not a colour this check reads
+scripts/colours.gd:17: 'Color8(300, 0, 0)' has a channel outside 0..255
 ui/theme.tres:4: 'Color(0, 1, 1, 1)' (#00ffff) is not in art/palette.hex
 project.godot:9: 'Color(0.2, 0.2, 0.2, 1)' (#333333) is not in art/palette.hex

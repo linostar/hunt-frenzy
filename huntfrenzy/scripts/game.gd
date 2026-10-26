@@ -30,8 +30,8 @@ extends Node
 ## at start (OS.is_userfs_persistent() false) is reported at once.
 ## At start the UI theme (project.godot gui/theme/custom) and its fonts are checked: a theme
 ## or font file that is missing or cannot be loaded is reported (log and error label) with
-## the file named (theme_problems), never left to a silent fallback; a scene that fails to
-## load names its missing files too (missing_dependencies).
+## the file named (theme_problems), never left to a silent fallback; goto() reports a scene
+## that needs a missing file by name before loading it (missing_dependencies).
 
 ## Emitted when a goto() has finished: the new scene is in place and the cover is gone.
 signal transition_finished(state: Flow)
@@ -173,6 +173,8 @@ var save_error := ""
 var storage_persistent := true
 ## The number of the latest web save check; an answer to an older one is ignored.
 var persist_check := 0
+## The UI theme check_ui_theme last checked ("" before any; at start, the project's).
+var checked_theme := ""
 
 var _transitioning := false
 ## The campaign entries the last load dropped, one log message each (load_game backs the
@@ -200,7 +202,7 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		check_storage(OS.is_userfs_persistent())
 	load_game()
-	_check_ui_theme()
+	check_ui_theme(ProjectSettings.get_setting(THEME_SETTING, ""))
 	_watch_page_visibility()
 	_fit_window()
 	get_viewport().size_changed.connect(_update_screen_fit)
@@ -280,7 +282,9 @@ static func fit_window_rect(base: Vector2i, density: float, usable: Rect2i, fram
 ## Fades to the scene of `new_state`, passing `args` through flow_args: the cover
 ## fades in (FADE_TIME), the scene changes, then the cover fades out, and
 ## transition_finished fires. Touches are blocked until then. Ignored (with a log
-## line) while a transition is running.
+## line) while a transition is running. A scene that does not exist, or that needs a file
+## that does not exist (missing_dependencies: checked before anything is loaded), is
+## reported with the file named and nothing changes.
 func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	var path: String = scene_paths[new_state]
 	var from_name: String = Flow.keys()[state]
@@ -291,6 +295,10 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	if not ResourceLoader.exists(path):
 		report_error("Cannot go to %s: scene '%s' does not exist" % [to_name, path])
 		return
+	var missing := missing_dependencies(path)
+	if not missing.is_empty():
+		report_error("Cannot go to %s: scene '%s' needs %s, which %s missing" % [to_name, path, ", ".join(missing), "is" if missing.size() == 1 else "are"])
+		return
 	_transitioning = true
 	_log_transition("%s -> %s (%s) args=%s" % [from_name, to_name, path, args])
 	_error_label.hide()
@@ -299,8 +307,7 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	await _fade_to(1.0)
 	var error := get_tree().change_scene_to_file(path)
 	if error != OK:
-		var missing := missing_dependencies(path)
-		report_error("Failed to load scene '%s' for %s: %s%s" % [path, to_name, error_string(error), "; missing: %s" % ", ".join(missing) if not missing.is_empty() else ""])
+		report_error("Failed to load scene '%s' for %s: %s" % [path, to_name, error_string(error)])
 		await _fade_to(0.0)
 		_end_fade()
 		return
@@ -314,15 +321,17 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	transition_finished.emit(new_state)
 
 
-## Reports every problem with the project's UI theme and its fonts (theme_problems), or
-## logs the fonts it uses.
-func _check_ui_theme() -> void:
-	var path: String = ProjectSettings.get_setting(THEME_SETTING, "")
+## Reports every problem with the UI theme at `path` and its fonts (theme_problems: the log
+## and the error label), or logs the fonts it uses; returns whether it had none. Run at
+## start for the project's theme (THEME_SETTING); public for tests.
+func check_ui_theme(path: String) -> bool:
+	checked_theme = path
 	var problems := theme_problems(path)
 	for problem in problems:
 		report_error(problem)
 	if problems.is_empty():
 		print("[Game] UI theme %s loaded with its fonts: %s" % [path, ", ".join(theme_font_files(load(path) as Theme))])
+	return problems.is_empty()
 
 
 ## What is wrong with the UI theme at `path` (empty when nothing is): no theme set, no such

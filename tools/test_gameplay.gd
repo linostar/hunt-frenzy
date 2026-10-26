@@ -122,6 +122,9 @@ func _initialize() -> void:
 
 func _process(_delta: float) -> bool:
 	if Time.get_ticks_msec() > _deadline_msec:
+		# The checks that failed before the stuck test (it may hang because of one of them).
+		for failure in _failures:
+			printerr("test_gameplay: FAIL " + failure)
 		printerr("test_gameplay: FAILED watchdog: tests did not finish within %d ms" % WATCHDOG_MSEC)
 		quit(1)
 	return false
@@ -195,6 +198,8 @@ func _tests() -> Array[Callable]:
 		_test_missing_backdrop_is_reported,
 		_test_ui_theme_and_fonts,
 		_test_menu_texts_fit_largest_values,
+		_test_load_errors_reach_the_screen,
+		_test_grass_draws_over_birds,
 		_test_pause_causes_and_resume,
 		_test_pause_menu_keyboard,
 		_test_pause_touches_are_not_shots,
@@ -2786,6 +2791,7 @@ func _test_missing_backdrop_is_reported() -> void:
 func _test_ui_theme_and_fonts() -> void:
 	var path: String = ProjectSettings.get_setting(GameState.THEME_SETTING, "")
 	_check(path == "res://ui/theme.tres" and GameState.theme_problems(path).is_empty(), "project.godot sets the UI theme, which loads without problems", "%s: %s" % [path, GameState.theme_problems(path)])
+	_check(_game.checked_theme == path, "Game checked the project's UI theme at start", _game.checked_theme)
 	_check(not _game.reported_errors.any(func(message: String) -> bool: return "UI theme" in message), "nothing about the theme was reported at start", str(_game.reported_errors))
 	var theme := load(path) as Theme
 	var body := theme.default_font as FontVariation
@@ -2867,6 +2873,103 @@ func _test_menu_texts_fit_largest_values() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	_clear_tool_save()
+
+
+## Missing files reach the player (AC 11), end to end: Game.check_ui_theme (what Game runs
+## at start for the project's theme) puts a theme whose font file is missing, and a theme
+## that does not exist, in reported_errors and on the error label with the file named,
+## and passes the real theme; goto() into a scene that needs a missing file reports it
+## (scene and file named, on the label) before loading anything, and nothing changes.
+func _test_load_errors_reach_the_screen() -> void:
+	var label := _game.get_node("Fade/ErrorLabel") as Label
+	var broken := "user://broken_theme.tres"
+	var file := FileAccess.open(broken, FileAccess.WRITE)
+	file.store_string('[gd_resource type="Theme" load_steps=2 format=3]\n\n[ext_resource type="FontFile" path="res://ui/fonts/Missing.ttf" id="1_font"]\n\n[resource]\ndefault_font = ExtResource("1_font")\n')
+	file.close()
+	for case: Array in [[broken, "res://ui/fonts/Missing.ttf"], ["res://ui/no_theme.tres", "res://ui/no_theme.tres"]]:
+		_game.quiet_errors = true
+		var errors := _game.reported_errors.size()
+		var passed := _game.check_ui_theme(case[0])
+		_game.quiet_errors = false
+		var shown: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+		_check(not passed and _game.reported_errors.size() == errors + 1 and case[1] in shown, "a UI theme problem (%s) is reported with the file named" % case[1], str(_game.reported_errors.slice(errors)))
+		_check(label.visible and label.text == shown, "the theme problem (%s) shows on the error label" % case[1], label.text)
+		label.hide()
+	DirAccess.remove_absolute(broken)
+	var from := _log.size()
+	_check(_game.check_ui_theme(ProjectSettings.get_setting(GameState.THEME_SETTING, "")), "the project's theme passes the check Game runs at start", "")
+	_check_logged(from, "^\\[Game\\] UI theme res://ui/theme\\.tres loaded with its fonts: Nunito-wght\\.ttf, LilitaOne-Regular\\.ttf$", "the theme's fonts are logged")
+	var scene := "user://broken_scene.tscn"
+	file = FileAccess.open(scene, FileAccess.WRITE)
+	file.store_string('[gd_scene load_steps=2 format=3]\n\n[ext_resource type="Texture2D" path="res://art/no_such_bird.svg" id="1_art"]\n\n[node name="Broken" type="Sprite2D"]\ntexture = ExtResource("1_art")\n')
+	file.close()
+	var real_path: String = _game.scene_paths[GameState.Flow.TITLE]
+	_game.scene_paths[GameState.Flow.TITLE] = scene
+	_game.quiet_errors = true
+	var reported := _game.reported_errors.size()
+	var logged := _game.transition_log.size()
+	var scene_before := current_scene
+	_game.goto(GameState.Flow.TITLE)
+	await process_frame
+	_game.quiet_errors = false
+	_game.scene_paths[GameState.Flow.TITLE] = real_path
+	var loading := _game.is_transitioning()
+	if loading:
+		# The broken scene is being loaded (no check stopped it): let that transition end and
+		# go back to the real title, so this test fails on its own checks below.
+		await _game.transition_finished
+		await _open_title()
+	var message: String = _game.reported_errors.back() if _game.reported_errors.size() > reported else ""
+	_check(_game.reported_errors.size() == reported + 1 and scene in message and "res://art/no_such_bird.svg" in message, "a scene that needs a missing file is reported with the scene and the file named", message)
+	_check(label.visible and label.text == message, "the missing scene file shows on the error label", label.text)
+	_check(not loading and current_scene == scene_before and _game.transition_log.size() == logged, "nothing is loaded or changed", str(current_scene))
+	label.hide()
+	DirAccess.remove_absolute(scene)
+
+
+## The grass hides the birds rising from behind it (the visual half of a shot on the grass
+## missing): in one canvas, items draw by effective z_index (summed up the tree while
+## z_as_relative) and then in tree order. In the play scene every backdrop's grass draws
+## after a flying bird's sprite, and the rival, his speech bubble and the pop-ups after
+## the grass.
+func _test_grass_draws_over_birds() -> void:
+	var play := await _start_run(77)
+	var bird := play.spawn_bird("goose", 5)
+	await process_frame
+	var sprite := bird.get_node("Sprite") as CanvasItem
+	var grasses: Array[CanvasItem] = []
+	for child in play.get_node("World").get_children():
+		if child is Backdrop:
+			grasses.append(child.get_node("Grass") as CanvasItem)
+	_check(not grasses.is_empty() and grasses.all(func(grass: CanvasItem) -> bool: return grass.get_canvas() == sprite.get_canvas() and _draws_after(grass, sprite) and not _draws_after(sprite, grass)),
+		"the grass draws over the birds", "grass z %s, bird z %d" % [grasses.map(_effective_z), _effective_z(sprite)])
+	var late: Array[String] = []
+	for over: String in ["World/Rival", "World/Bubble", "World/Popups"]:
+		var item := play.get_node(over) as CanvasItem
+		for grass in grasses:
+			if item.get_canvas() != grass.get_canvas() or not _draws_after(item, grass):
+				late.append("%s (z %d)" % [over, _effective_z(item)])
+	_check(late.is_empty(), "the rival, his bubble and the pop-ups draw over the grass", str(late))
+
+
+## Whether canvas item `a` draws after (over) `b` in the same canvas: a higher effective
+## z_index, or the same one and later in the tree.
+func _draws_after(a: CanvasItem, b: CanvasItem) -> bool:
+	var za := _effective_z(a)
+	var zb := _effective_z(b)
+	return za > zb if za != zb else a.is_greater_than(b)
+
+
+## A canvas item's z_index plus its ancestors' while z_as_relative.
+func _effective_z(item: CanvasItem) -> int:
+	var z := 0
+	var node: Node = item
+	while node is CanvasItem:
+		z += (node as CanvasItem).z_index
+		if not (node as CanvasItem).z_as_relative:
+			break
+		node = node.get_parent()
+	return z
 
 
 ## Campaign waves (Wave.campaign) are a pure function of the level and the wave index (the

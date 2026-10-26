@@ -6,17 +6,25 @@ extends SceneTree
 ##   color, as attributes or in style/CSS text, gradient stops included; written as
 ##   #rgb, #rgba, #rrggbb, #rrggbbaa, rgb(), rgba() or a CSS colour name),
 ## - every Color literal in a script, scene, resource (the UI Theme) or project.godot:
-##   Color(r, g, b[, a]), a PackedColorArray, a Color.NAMED constant and every "#hex"
-##   string,
+##   Color(r, g, b[, a]), Color8(...) and Color.from_rgba8(...) with 0..255 channels,
+##   Color(0xRRGGBBAA) and Color.hex(0xRRGGBBAA), a string argument of Color(...),
+##   Color.html(...) or Color.from_string(...) (hex with or without '#', or a Godot colour
+##   name), a PackedColorArray, a Color.NAMED constant and every "#hex" string,
 ## is one of the palette's colours; only the alpha may differ. "none", "transparent",
-## "currentColor", "inherit" and url(#...) references are not colours.
+## "currentColor", "inherit" and url(#...) references are not colours. A colour written
+## in a form this check cannot read exactly (SVG hsl(), Color.from_hsv(),
+## Color.from_ok_hsl(), Color.hex64(), Color8(...) or Color.from_rgba8(...) with other than
+## literal whole numbers, Color(0x...) or Color.hex(0x...) without the 8 digits of
+## RRGGBBAA, a string that is neither hex nor a colour name) is reported as one it does not
+## read, and a colour with a channel outside 0..255 as such.
 ## Usage (from repo root): "$GODOT" --headless --path huntfrenzy --script "$PWD/tools/check_palette.gd"
 ## Prints "check_palette: OK" on success; exits 1 and prints every violation otherwise,
 ## each naming the file, the line and the colour as written.
 ##
-## Limits: this is a text scan, line by line. It does not see colours built at runtime
-## (Color.from_hsv, a colour computed from numbers, a Color("name") string, a modulate
-## multiplying two palette colours) or a literal split across lines.
+## Limits: this is a text scan, line by line. It does not see colours computed at runtime
+## (Color(r, g, b) or a colour method given variables rather than literals, lerp() or
+## arithmetic on colours, a modulate multiplying two palette colours) or a literal split
+## across lines.
 
 const PALETTE_PATH := "res://art/palette.hex"
 const PALETTE_MAX := 40
@@ -28,6 +36,15 @@ const SVG_CSS_PATTERN := "\\b(fill|stroke|stop-color|flood-color|lighting-color|
 const COLOR_LITERAL_PATTERN := "\\bColor\\(\\s*([-+0-9.eE]+)\\s*,\\s*([-+0-9.eE]+)\\s*,\\s*([-+0-9.eE]+)\\s*(?:,\\s*([-+0-9.eE]+)\\s*)?\\)"
 const PACKED_COLORS_PATTERN := "\\bPackedColorArray\\(([^)]*)\\)"
 const COLOR_CONSTANT_PATTERN := "\\bColor\\.([A-Z][A-Z0-9_]*)\\b"
+## Color8(r, g, b[, a]) and Color.from_rgba8(r, g, b[, a]) with literal whole 0..255 channels.
+const COLOR_BYTES_PATTERN := "\\b(?:Color8|Color\\.from_rgba8)\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)\\s*(?:,\\s*(\\d+)\\s*)?\\)"
+## Color(0x...) and Color.hex(0x...): read when the number has the 8 digits of RRGGBBAA.
+const COLOR_HEX_INT_PATTERN := "\\bColor(?:\\.hex)?\\(\\s*0x([0-9a-fA-F]+)\\s*\\)"
+## A string argument of Color(...), Color.html(...) or Color.from_string(...).
+const COLOR_STRING_PATTERN := "\\b(Color(?:\\.html|\\.from_string)?)\\(\\s*[\"']([^\"']*)[\"']"
+## Every colour call whose argument forms this check reads only in part; a call not read
+## by one of the patterns above is reported as one this check does not read.
+const COLOR_CALL_PATTERN := "\\b(Color8|Color\\.(?:from_rgba8|from_hsv|from_ok_hsl|hex64|hex))\\([^)]*\\)"
 const HEX_STRING_PATTERN := "[\"']#([0-9a-fA-F]+)[\"']"
 const RGB_PATTERN := "^rgba?\\(([^)]*)\\)$"
 ## Values that are not colours.
@@ -46,6 +63,10 @@ var _color_literal := RegEx.create_from_string(COLOR_LITERAL_PATTERN)
 var _packed_colors := RegEx.create_from_string(PACKED_COLORS_PATTERN)
 var _color_constant := RegEx.create_from_string(COLOR_CONSTANT_PATTERN)
 var _hex_string := RegEx.create_from_string(HEX_STRING_PATTERN)
+var _color_bytes := RegEx.create_from_string(COLOR_BYTES_PATTERN)
+var _color_hex_int := RegEx.create_from_string(COLOR_HEX_INT_PATTERN)
+var _color_string := RegEx.create_from_string(COLOR_STRING_PATTERN)
+var _color_call := RegEx.create_from_string(COLOR_CALL_PATTERN)
 var _rgb := RegEx.create_from_string(RGB_PATTERN)
 var _palette_line := RegEx.create_from_string("^[0-9a-f]{6}$")
 
@@ -171,6 +192,33 @@ func _check_code_line(path: String, line_number: int, line: String) -> void:
 		if not digits.length() in [3, 4, 6, 8]:
 			continue
 		_check_colour(path, line_number, "'#%s'" % digits, _hex_rgb(digits.to_lower()))
+	# The calls read exactly, by where they start on the line; any other colour call is
+	# reported as one this check does not read.
+	var read: Dictionary[int, bool] = {}
+	for found in _color_bytes.search_all(line):
+		read[found.get_start()] = true
+		var channels: Array[int] = []
+		for i in range(1, 4):
+			channels.append(found.get_string(i).to_int())
+		_check_colour(path, line_number, "'%s'" % found.get_string(), _channels_hex(channels))
+	for found in _color_hex_int.search_all(line):
+		read[found.get_start()] = true
+		var digits := found.get_string(1).to_lower()
+		_check_colour(path, line_number, "'%s'" % found.get_string(), digits.substr(0, 6) if digits.length() == 8 else "")
+	for found in _color_call.search_all(line):
+		if not read.has(found.get_start()):
+			_check_colour(path, line_number, "'%s'" % found.get_string(), "")
+	for found in _color_string.search_all(line):
+		var text := found.get_string(2)
+		# A well-formed "#hex" string is checked above; any other "#..." is reported here.
+		if text.begins_with("#") and _hex_rgb(text.substr(1).to_lower()) != "":
+			continue
+		var rgb := _hex_rgb(text.to_lower()) if text.length() in [3, 4, 6, 8] else ""
+		if rgb == "" and not text.begins_with("#"):
+			# A Godot colour name ("red", "dark_blue"), as Color(String) reads it.
+			var named := Color.from_string(text, Color(-1, -1, -1, -1))
+			rgb = named.to_html(false) if named.r >= 0.0 else ""
+		_check_colour(path, line_number, "%s string '%s'" % [found.get_string(1), text], rgb)
 
 
 ## "rrggbb" from 3, 4, 6 or 8 lowercase hex digits (the alpha is dropped), or "".
@@ -196,6 +244,8 @@ func _check_colour(path: String, line_number: int, what: String, rgb: String) ->
 	_colours_checked += 1
 	if rgb == "":
 		_violations.append("%s:%d: %s is not a colour this check reads (use #rrggbb from %s)" % [_short(path), line_number, what, _short(PALETTE_PATH)])
+	elif rgb == "out of range":
+		_violations.append("%s:%d: %s has a channel outside 0..255, so it is no colour of %s" % [_short(path), line_number, what, _short(PALETTE_PATH)])
 	elif not _palette.has(rgb):
 		_violations.append("%s:%d: %s (#%s) is not in %s" % [_short(path), line_number, what, rgb, _short(PALETTE_PATH)])
 
