@@ -213,7 +213,7 @@ def fx_empty_click(rng):
 
 
 def fx_refused(rng):
-    """A locked chapter or level pressed: a dull, short double buzz."""
+    """The last shell fired (the gun refuses any more shots, the birds flee): a dull double buzz."""
     one = lowpass(sweep(150.0, 140.0, 0.08, square, 0.004, 0.03), [800.0] * int(0.08 * RATE))
     return place(list(one), one, 0.11)
 

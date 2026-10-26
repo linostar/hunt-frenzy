@@ -237,6 +237,15 @@ func _tests() -> Array[Callable]:
 		_test_level_select,
 		_test_save_dropped_backup_failure,
 		_test_select_focus_returns,
+		_test_audio_buses_follow_settings,
+		_test_audio_files_match_ids,
+		_test_audio_music_per_screen,
+		_test_audio_every_event_sound,
+		_test_audio_heckle_blurts,
+		_test_time_attack_countdown,
+		_test_pause_menu_mutes,
+		_test_pause_holds_sounds_and_ducks_music,
+		_test_audio_missing_files_reported,
 	]
 
 
@@ -1077,12 +1086,20 @@ func _test_pause_menu_keyboard() -> void:
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == buttons[1] and buttons[1].has_focus(true), "Tab moves to Restart and shows the ring", str(root.gui_get_focus_owner()))
 	var order := []
-	for i in 3:
+	for i in 4:
 		await _key(KEY_DOWN)
 		order.append((root.gui_get_focus_owner() as Button).text)
-	_check(order == ["Quit to title", "Resume", "Restart"], "Down cycles through the menu", str(order))
+	_check(order == ["Quit to title", "Music: on", "Resume", "Restart"], "Down cycles through the menu and its Music toggle", str(order))
 	await _key(KEY_UP)
 	_check(root.gui_get_focus_owner() == buttons[0], "Up moves back", str(root.gui_get_focus_owner()))
+	await _key(KEY_UP)
+	var music_toggle := panel.get_node("MusicToggle") as Button
+	var sfx_toggle := panel.get_node("SfxToggle") as Button
+	_check(root.gui_get_focus_owner() == music_toggle, "Up from Resume reaches the Music toggle", str(root.gui_get_focus_owner()))
+	await _key(KEY_RIGHT)
+	_check(root.gui_get_focus_owner() == sfx_toggle, "Right reaches the SFX toggle", str(root.gui_get_focus_owner()))
+	await _key(KEY_TAB)
+	_check(root.gui_get_focus_owner() == buttons[0], "Tab from the SFX toggle wraps to Resume", str(root.gui_get_focus_owner()))
 	play.resume()
 
 
@@ -3817,3 +3834,471 @@ func _check(condition: bool, test_name: String, detail: String) -> void:
 		print("test_gameplay: pass " + test_name)
 	else:
 		_failures.append("%s: %s" % [test_name, detail])
+
+
+## The Music and SFX buses exist and send to Master; every sound player is on SFX and every
+## music player on Music; the volumes and mutes set the buses at 0, a middle value,
+## VOLUME_MAX and muted, and a loaded save applies its settings (plan AC 5).
+func _test_audio_buses_follow_settings() -> void:
+	var names: Array[String] = []
+	for i in AudioServer.bus_count:
+		names.append(AudioServer.get_bus_name(i))
+	_check(names == ["Master", "Music", "SFX"], "the buses are Master, Music and SFX", str(names))
+	var music_bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	var sfx_bus := AudioServer.get_bus_index(GameState.SFX_BUS)
+	for bus: int in [music_bus, sfx_bus]:
+		_check(bus > 0 and AudioServer.get_bus_send(bus) == &"Master", "bus %s sends to Master" % AudioServer.get_bus_name(bus), str(AudioServer.get_bus_send(bus)))
+	_check(_game.sfx_players().size() == GameState.SFX_VOICES and _game.sfx_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.SFX_BUS),
+		"every sound effect player is on the SFX bus", str(_game.sfx_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
+	_check(_game.music_players().size() == 2 and _game.music_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.MUSIC_BUS),
+		"every music player is on the Music bus", str(_game.music_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
+	var kept := [_game.music_volume, _game.sfx_volume, _game.music_muted, _game.sfx_muted]
+	# Volume -> the bus level it must give: silent at 0, -6.02 dB at half, 0 dB at full.
+	var levels := {0: GameState.SILENT_VOLUME_DB, 50: -6.0206, GameState.VOLUME_MAX: 0.0}
+	for volume: int in levels:
+		_game.set_music_volume(volume)
+		_game.set_sfx_volume(volume)
+		for bus: int in [music_bus, sfx_bus]:
+			_check(absf(AudioServer.get_bus_volume_db(bus) - float(levels[volume])) < 0.01 and AudioServer.is_bus_mute(bus) == (volume == 0),
+				"volume %d sets bus %s to %.2f dB%s" % [volume, AudioServer.get_bus_name(bus), levels[volume], ", muted" if volume == 0 else ""],
+				"%.3f dB, mute %s" % [AudioServer.get_bus_volume_db(bus), AudioServer.is_bus_mute(bus)])
+	_game.set_music_volume(70)
+	_game.set_sfx_volume(80)
+	_game.set_music_muted(true)
+	_game.set_sfx_muted(true)
+	for bus: int in [music_bus, sfx_bus]:
+		var volume := 70 if bus == music_bus else 80
+		_check(AudioServer.is_bus_mute(bus) and absf(AudioServer.get_bus_volume_db(bus) - linear_to_db(volume / 100.0)) < 0.01,
+			"muting bus %s mutes it and keeps its volume" % AudioServer.get_bus_name(bus), "mute %s, %.3f dB" % [AudioServer.is_bus_mute(bus), AudioServer.get_bus_volume_db(bus)])
+	# A save's settings reach the buses on load (the game's start runs load_game).
+	_game.set_music_volume(30)
+	_game.set_sfx_muted(false)
+	for bus: int in [music_bus, sfx_bus]:
+		AudioServer.set_bus_volume_db(bus, 0.0)
+		AudioServer.set_bus_mute(bus, false)
+	_game.load_game()
+	_check(AudioServer.is_bus_mute(music_bus) and absf(AudioServer.get_bus_volume_db(music_bus) - linear_to_db(0.3)) < 0.01, "a loaded save's music volume and mute reach the Music bus",
+		"mute %s, %.3f dB" % [AudioServer.is_bus_mute(music_bus), AudioServer.get_bus_volume_db(music_bus)])
+	_check(not AudioServer.is_bus_mute(sfx_bus) and absf(AudioServer.get_bus_volume_db(sfx_bus) - linear_to_db(0.8)) < 0.01, "a loaded save's sound volume reaches the SFX bus",
+		"mute %s, %.3f dB" % [AudioServer.is_bus_mute(sfx_bus), AudioServer.get_bus_volume_db(sfx_bus)])
+	_game.music_volume = kept[0]
+	_game.sfx_volume = kept[1]
+	_game.music_muted = kept[2]
+	_game.set_sfx_muted(kept[3])
+
+
+## Every sound effect id and syllable has its WAV (and no other WAV exists), each loads
+## without a loop; every loop the game names (title, results, each chapter's and mode's)
+## is an MP3 that loads looping, and no other exists; the crossfade is at most 0.5 s; the
+## rival has a voice for every heckle category.
+func _test_audio_files_match_ids() -> void:
+	var expected: Array[String] = []
+	for id: StringName in GameState.SFX_IDS + GameState.blurt_ids():
+		expected.append("%s.wav" % id)
+	expected.sort()
+	var found: Array[String] = []
+	for file in DirAccess.get_files_at("res://audio/sfx"):
+		if file.ends_with(".wav"):
+			found.append(file)
+	found.sort()
+	_check(found == expected, "every sound effect and syllable has its WAV, and no other WAV exists", "found %s, expected %s" % [found, expected])
+	for file in found:
+		var stream := load("res://audio/sfx/" + file) as AudioStreamWAV
+		_check(stream != null and stream.loop_mode == AudioStreamWAV.LOOP_DISABLED and stream.get_length() > 0.0, "sound %s loads and does not loop" % file, str(stream))
+	var tracks: Array[String] = [GameState.TITLE_TRACK, GameState.RESULTS_TRACK]
+	for spec in Content.chapters():
+		tracks.append(spec.music)
+	for spec in Content.modes():
+		tracks.append(spec.music)
+	tracks.sort()
+	var loops: Array[String] = []
+	for file in DirAccess.get_files_at("res://audio/music"):
+		if file.ends_with(".mp3"):
+			loops.append(file.get_basename())
+	loops.sort()
+	_check(loops == tracks, "the music loops are exactly the title's, the results', each chapter's and each mode's", "found %s, expected %s" % [loops, tracks])
+	for track in loops:
+		var stream := load(Content.music_path(track)) as AudioStreamMP3
+		_check(stream != null and stream.loop and stream.get_length() > 20.0, "loop %s loads and loops" % track, str(stream))
+	_check(GameState.CROSSFADE_TIME > 0.0 and GameState.CROSSFADE_TIME <= 0.5, "the crossfade takes at most 0.5 s", str(GameState.CROSSFADE_TIME))
+	var categories: Array[String] = []
+	categories.assign(GameState.HECKLE_VOICES.keys())
+	_check(categories == RivalLines.CATEGORIES and GameState.HECKLE_VOICES.values().all(func(voice: Array) -> bool: return voice[0] in GameState.BLURT_TIMBRES),
+		"the rival has a voice for every heckle category", str(GameState.HECKLE_VOICES))
+
+
+## The music per screen: the title loop on the title and both selects (left playing, never
+## restarted), the chapter's in a level, the mode's in Endless and Time Attack, the
+## results' on results; each change crossfades and is logged (plan AC 7).
+func _test_audio_music_per_screen() -> void:
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_check(_game.music_track == GameState.TITLE_TRACK and _game.music_player().stream.resource_path == Content.music_path("title"), "the title plays the title loop", _game.music_track)
+	var title_player := _game.music_player()
+	var changes := _game.music_changes
+	_game.goto(GameState.Flow.CHAPTER_SELECT)
+	await _game.transition_finished
+	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.transition_finished
+	_check(_game.music_track == GameState.TITLE_TRACK and _game.music_changes == changes and _game.music_player() == title_player and is_equal_approx(title_player.volume_linear, 1.0),
+		"the chapter and level selects keep the title loop playing untouched", "%s, %d changes" % [_game.music_track, _game.music_changes - changes])
+	var from := _log.size()
+	_game.start_level("dawn_1")
+	await process_frame
+	var fading_in := _game.music_player()
+	_check(_game.music_track == "campaign_dawn" and fading_in != title_player and fading_in.volume_linear < 1.0, "a dawn level crossfades to the dawn loop", "%s, %.2f" % [_game.music_track, fading_in.volume_linear])
+	_check_logged(from, "^\\[Audio\\] Music campaign_dawn \\(crossfading from title over 0\\.40 s\\)$", "the change of loop is logged")
+	for i in ceili(GameState.CROSSFADE_TIME / FRAME) + 2:
+		await process_frame
+	_check(is_equal_approx(fading_in.volume_linear, 1.0) and is_zero_approx(title_player.volume_linear), "the crossfade is over within CROSSFADE_TIME", "%.2f in, %.2f out" % [fading_in.volume_linear, title_player.volume_linear])
+	while _game.is_transitioning():
+		await process_frame
+	var expected := {"noon_1": "campaign_noon", "sunset_1": "campaign_sunset", "night_1": "campaign_night"}
+	for level_id: String in expected:
+		_game.start_level(level_id)
+		await _game.transition_finished
+		_check(_game.music_track == expected[level_id], "level %s plays %s" % [level_id, expected[level_id]], _game.music_track)
+	_game.goto(GameState.Flow.RESULTS)
+	await _game.transition_finished
+	_check(_game.music_track == GameState.RESULTS_TRACK, "results play the results loop", _game.music_track)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_check(_game.music_track == GameState.TITLE_TRACK, "back on the title the title loop plays", _game.music_track)
+	await _start_run(83)
+	_check(_game.music_track == "endless", "Endless plays its loop", _game.music_track)
+	changes = _game.music_changes
+	(current_scene as Play).open_pause("test")
+	(current_scene.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).pressed.emit()
+	await _game.transition_finished
+	_check(_game.music_track == "endless" and _game.music_changes == changes, "restarting Endless keeps its loop playing", "%s, %d changes" % [_game.music_track, _game.music_changes - changes])
+	await _start_run(84, GameState.TIME_ATTACK_MODE)
+	_check(_game.music_track == "time_attack", "Time Attack plays its loop", _game.music_track)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Every game event plays its sound through Game.play_sfx, exactly as listed (plan AC 8):
+## the shot and what it did, the empty click alone, the waves, the rival, the pause, the
+## buttons, the results.
+func _test_audio_every_event_sound() -> void:
+	var play := await _start_run(85)
+	var cooldown := play.rival_lines.cooldown
+	# Only the first heckle shows, so each shot's sounds are exact.
+	play.rival_lines.cooldown = 1000.0
+	var heard: Array[StringName] = []
+	for i in 120:
+		_game.sfx_log.clear()
+		await process_frame
+		if not play.flying_birds().is_empty():
+			heard = _game.sfx_log.duplicate()
+			break
+	_check(heard == [&"wave_start"], "the wave's first spawn plays wave_start", str(heard))
+	var shot := (play.get_node("ShotInput") as ShotInput).shot
+	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
+	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
+		["splitter", [&"shot", &"split_pop", &"combo_up"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
+	var armored: Bird = null
+	for entry: Array in cases:
+		var bird := armored
+		if entry[0] != "armored" or armored == null:
+			bird = await _spawn_flying(play, 40 + cases.find(entry), IN_FIELD_AGE, entry[0])
+		if entry[0] == "armored":
+			armored = bird
+		bird.set_process(false)
+		play.set_shell_pool(5)
+		var at := _global(play, bird.transform * LOCAL_BODY)
+		_check(_sounds_of(func() -> void: shot.emit(at)) == entry[1], "a shot at a %s plays %s" % [entry[0], entry[1]], "%s (combo x%d)" % [_game.sfx_log, play.scoring.multiplier])
+		bird.set_process(true)
+	play.set_shell_pool(0)
+	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[1]))) == [&"empty_click"], "a shot with an empty pool plays the empty click and nothing else", str(_game.sfx_log))
+	play.set_shell_pool(5)
+	_game.sfx_log.clear()
+	var escaping := await _spawn_flying(play, 47, Content.bird("goose").flee_time - 0.5)
+	var before := play.escaped
+	await _escape_counts(play, escaping)
+	_check(_game.sfx_log.count(&"escape") == play.escaped - before and play.escaped > before, "each counted escape plays escape", "%d escape sounds for %d escapes" % [_game.sfx_log.count(&"escape"), play.escaped - before])
+	_game.sfx_log.clear()
+	var cued := await _cued_bird(play, 48, "goose")
+	_check(cued.is_cued() and _game.sfx_log.count(&"rival_aim") >= 1, "the rival's aim cue plays rival_aim", str(_game.sfx_log))
+	_game.sfx_log.clear()
+	for i in 120:
+		if cued.stolen:
+			break
+		await process_frame
+	_check(cued.stolen and _game.sfx_log.count(&"rival_steal") >= 1 and &"heckle_steal" in _game.sfx_log, "the rival's steal plays rival_steal and his steal heckle", str(_game.sfx_log))
+	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
+	_game.sfx_log.clear()
+	await _tap(pause_button)
+	_check(_game.sfx_log.count(&"pause") == 1 and not &"ui_tap" in _game.sfx_log, "the pause button plays pause (no tap)", str(_game.sfx_log))
+	_game.sfx_log.clear()
+	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Control)
+	_check(_game.sfx_log.count(&"resume") == 1 and not &"ui_tap" in _game.sfx_log, "Resume plays resume (no tap)", str(_game.sfx_log))
+	play.rival_lines.cooldown = cooldown
+	# A wave cleared: wave 1 of a new run, both geese shot as soon as they rise.
+	play = await _start_run(86)
+	var cleared := false
+	for i in 400:
+		for bird in play.flying_birds():
+			if bird.wave_index == 1 and play.ammo.shells > 0:
+				bird.age = maxf(bird.age, IN_FIELD_AGE)
+		await process_frame
+		for bird in play.flying_birds():
+			if bird.wave_index == 1 and bird.age >= IN_FIELD_AGE:
+				bird.set_process(false)
+				shot.emit(_global(play, bird.transform * LOCAL_BODY))
+				bird.set_process(true)
+		if play.wave.index == 2:
+			cleared = true
+			break
+		_game.sfx_log.clear()
+	_check(cleared and _game.sfx_log.count(&"wave_clear") == 1, "a cleared wave plays wave_clear", "%s, wave %d" % [_game.sfx_log, play.wave.index])
+	# A Time Attack wave lost to an empty pool.
+	play = await _start_run(87, GameState.TIME_ATTACK_MODE)
+	play.set_shell_pool(1)
+	shot = (play.get_node("ShotInput") as ShotInput).shot
+	var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
+	_check(last_shot.slice(0, 2) == [&"shot", &"heckle_miss"] and last_shot.count(&"refused") == 1 and last_shot.find(&"refused") < last_shot.find(&"wave_lost"),
+		"the shot that uses the last shell plays refused: the gun takes no more", str(last_shot))
+	_check(last_shot.count(&"wave_lost") == 1 and play.wave.index == 2, "a lost Time Attack wave plays wave_lost", str(last_shot))
+	# A button press plays the tap; the results play the rival's blurt, a sound per star and the new best.
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	await process_frame
+	_game.sfx_log.clear()
+	var chapters := (current_scene as Title).get_node("Safe/CampaignButton") as Button
+	await _tap(chapters)
+	_check(_game.sfx_log == [&"ui_tap"], "a button press plays ui_tap", str(_game.sfx_log))
+	await _game.transition_finished
+	var level := Content.level("dawn_1")
+	var stats := {"seed": 1, "score": level.stars[1], "shots": 4, "hits": 3, "kills": 3, "pigeons": 0, "escaped": 0, "stolen": 0, "rival_score": 0,
+		"rival_line": "Beginner's luck, kid.", "rival_steals": true, "best": level.stars[1], "new_best": true, "save_error": "", "level": "dawn_1", "stars": 2,
+		"best_stars": 2, "next_level": "dawn_2"}
+	_game.sfx_log.clear()
+	_game.goto(GameState.Flow.RESULTS, stats)
+	await _game.transition_finished
+	for i in ceili(4 * Results.STAR_SOUND_GAP / FRAME) + 2:
+		await process_frame
+	_check(_game.sfx_log == [&"heckle_results", &"star", &"star", &"new_best"], "the results play the rival's blurt, one sound per star and the new best", str(_game.sfx_log))
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## A heckle's blurt: one syllable per word (at most BLURT_SYLLABLES_MAX), the same line
+## always the same blurt, the category setting the timbre and pitch; in a run each heckle
+## shown plays its blurt, whose syllables start one after another (plan AC 9).
+func _test_audio_heckle_blurts() -> void:
+	var line := "Nice shot... at the clouds!"
+	var plan := GameState.blurt_plan("miss", line)
+	var again := GameState.blurt_plan("miss", line)
+	_check(plan.size() == 5 and _plan_text(plan) == _plan_text(again), "the same line always gives the same blurt, a syllable per word", _plan_text(plan))
+	_check(GameState.blurt_plan("miss", "Hey").size() == 1 and GameState.blurt_plan("miss", "one two three four five six seven eight nine").size() == GameState.BLURT_SYLLABLES_MAX,
+		"a blurt has one syllable per word, at most BLURT_SYLLABLES_MAX", "%d, %d" % [GameState.blurt_plan("miss", "Hey").size(), GameState.blurt_plan("miss", "one two three four five six seven eight nine").size()])
+	_check(_plan_text(plan) != _plan_text(GameState.blurt_plan("miss", "Nice shot... at the ducks!")), "another line gives another blurt", _plan_text(plan))
+	var texts: Array[String] = []
+	for category in RivalLines.CATEGORIES:
+		var voiced := GameState.blurt_plan(category, line)
+		var voice: Array = GameState.HECKLE_VOICES[category]
+		_check(voiced.size() == plan.size() and voiced.all(func(syllable: GameState.Syllable) -> bool: return String(syllable.sound).begins_with("blurt_%s_" % voice[0]) and syllable.sound in GameState.blurt_ids()),
+			"a %s heckle speaks in the %s voice" % [category, voice[0]], _plan_text(voiced))
+		for i in voiced.size():
+			if not is_equal_approx(voiced[i].pitch / float(voice[1]), plan[i].pitch / float(GameState.HECKLE_VOICES["miss"][1])) or voiced[i].at != plan[i].at:
+				_check(false, "a %s heckle keeps the line's rhythm and melody at its own pitch" % category, _plan_text(voiced))
+				break
+		texts.append(_plan_text(voiced))
+	_check(texts.size() == RivalLines.CATEGORIES.size() and texts.all(func(text: String) -> bool: return texts.count(text) == 1), "every category sounds different", str(texts))
+	_check(GameState.blurt_plan("whistle", line).is_empty(), "an unknown category has no blurt", "")
+	var play := await _start_run(88)
+	var from := _log.size()
+	_game.sfx_log.clear()
+	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, SKY_POINTS[0]))
+	var shown := play.heckle_shown()
+	var words := mini(shown.split(" ", false).size(), GameState.BLURT_SYLLABLES_MAX)
+	_check(shown != "" and &"heckle_miss" in _game.sfx_log and _game.blurt_syllables_waiting() == words, "a miss heckle plays its blurt, one syllable per word", "%s, %d waiting for \"%s\"" % [_game.sfx_log, _game.blurt_syllables_waiting(), shown])
+	var blurt_lines := Array(_log.since(from)).filter(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_miss: %d syllables (nasal_" % words) and entry.ends_with(" for \"%s\"" % shown))
+	_check(blurt_lines.size() == 1, "the blurt is logged with its syllables and line", str(blurt_lines))
+	play.open_pause("test")
+	for i in 30:
+		await process_frame
+	_check(_game.blurt_syllables_waiting() == words, "the blurt waits while the game is paused", "%d waiting" % _game.blurt_syllables_waiting())
+	play.resume()
+	for i in ceili(GameState.BLURT_SYLLABLES_MAX * GameState.BLURT_GAP * 1.2 / FRAME) + 2:
+		await process_frame
+	_check(_game.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.blurt_syllables_waiting())
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Time Attack's last 10 s tick once each and the end sounds the buzzer once; a pause stops
+## the countdown (plan AC 10).
+func _test_time_attack_countdown() -> void:
+	var play := await _start_run(89, GameState.TIME_ATTACK_MODE)
+	var limit := play.mode.time_limit
+	play.mode.time_limit = 13.0
+	_game.sfx_log.clear()
+	var ticks: Array[float] = []
+	var paused_ticks := -1
+	var paused_clock := -1.0
+	Engine.time_scale = 4.0
+	for i in 600:
+		if not is_instance_valid(play) or current_scene != play:
+			break
+		var count := play.countdown_ticks
+		await process_frame
+		if not is_instance_valid(play) or current_scene != play:
+			break
+		if play.countdown_ticks > count:
+			ticks.append(play.run_clock)
+		if play.countdown_ticks == 4 and paused_ticks < 0:
+			play.open_pause("test")
+			paused_clock = play.run_clock
+			for j in 60:
+				await process_frame
+			paused_ticks = play.countdown_ticks
+			_check(paused_ticks == 4 and play.run_clock == paused_clock, "a pause stops the countdown", "%d ticks, clock %.2f -> %.2f" % [paused_ticks, paused_clock, play.run_clock])
+			play.resume()
+	Engine.time_scale = 1.0
+	Content.mode(GameState.TIME_ATTACK_MODE).time_limit = limit
+	_check(ticks.size() == Play.COUNTDOWN_SECONDS and _game.sfx_log.count(&"countdown_tick") == Play.COUNTDOWN_SECONDS, "the last 10 s tick 10 times", "%d ticks at %s, %d sounds" % [ticks.size(), ticks, _game.sfx_log.count(&"countdown_tick")])
+	for k in ticks.size():
+		var due := 13.0 - (Play.COUNTDOWN_SECONDS - k)
+		_check(ticks[k] >= due - 0.001 and ticks[k] < due + 4.0 * FRAME + 0.001, "tick %d sounds as %d s are left" % [k + 1, Play.COUNTDOWN_SECONDS - k], "at run clock %.3f, due %.3f" % [ticks[k], due])
+	_check(_game.sfx_log.count(&"time_up") == 1 and _game.sfx_log.find(&"time_up") > _game.sfx_log.rfind(&"countdown_tick"), "time running out sounds the buzzer once, after the last tick", str(_game.sfx_log.count(&"time_up")))
+	await _game.transition_finished
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## The pause menu's Music and SFX toggles: focusable, at least 44x44 and inside the safe
+## area at three aspects and under a notch, showing their state; a press mutes the bus at
+## once, saves, logs and survives a reload (plan AC 11).
+func _test_pause_menu_mutes() -> void:
+	var play := await _start_run(90)
+	play.open_pause("test")
+	await process_frame
+	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
+	var toggles: Array[Button] = [panel.get_node("MusicToggle"), panel.get_node("SfxToggle")]
+	for window in LANDSCAPE_WINDOWS:
+		root.size = window
+		await process_frame
+		for toggle in toggles:
+			var rect := toggle.get_global_rect()
+			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and _game.safe_rect().encloses(rect), "%s is >= 44x44 inside the safe area at %s" % [toggle.name, window], "%s in %s" % [rect, _game.safe_rect()])
+	_game.safe_area_override = NOTCHED_SAFE_RECT
+	root.size = LANDSCAPE_19_5_9
+	await process_frame
+	for toggle in toggles:
+		_check(_game.safe_rect().encloses(toggle.get_global_rect()), "%s is inside a notched safe area" % toggle.name, "%s in %s" % [toggle.get_global_rect(), _game.safe_rect()])
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+	for toggle in toggles:
+		var style := toggle.get_theme_stylebox(&"focus")
+		_check(toggle.toggle_mode and toggle.button_pressed and toggle.text.ends_with(": on") and toggle.focus_mode == Control.FOCUS_ALL and style != null and not (style is StyleBoxEmpty),
+			"%s shows it is on and is focusable with a visible focus style" % toggle.name, toggle.text)
+	var buses := [GameState.MUSIC_BUS, GameState.SFX_BUS]
+	for i in toggles.size():
+		var toggle := toggles[i]
+		var bus := AudioServer.get_bus_index(buses[i])
+		var from := _log.size()
+		await _tap(toggle)
+		var muted := _game.music_muted if i == 0 else _game.sfx_muted
+		_check(muted and AudioServer.is_bus_mute(bus) and not toggle.button_pressed and toggle.text.ends_with(": off"), "a press on %s mutes its bus at once and shows it off" % toggle.name, "%s, bus mute %s" % [toggle.text, AudioServer.is_bus_mute(bus)])
+		_check_logged(from, "^\\[Audio\\] %s muted$" % ["Music", "SFX"][i], "%s's mute is logged" % toggle.name)
+		var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		var key := "music_muted" if i == 0 else "sfx_muted"
+		_check(saved is Dictionary and (saved as Dictionary)["settings"][key] == true, "%s's mute is saved" % toggle.name, str(saved))
+		_game.load_game()
+		_check((_game.music_muted if i == 0 else _game.sfx_muted) and AudioServer.is_bus_mute(bus) and toggle.text.ends_with(": off"), "%s's mute survives a reload" % toggle.name, toggle.text)
+		await _tap(toggle)
+		_check(not (_game.music_muted if i == 0 else _game.sfx_muted) and not AudioServer.is_bus_mute(bus) and toggle.button_pressed and toggle.text.ends_with(": on"), "a second press on %s unmutes it" % toggle.name, toggle.text)
+	play.resume()
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Pausing holds the sounds in flight (the pause's own sound plays) and ducks the music;
+## resuming restores both; the rotate overlay's pause does the same (plan AC 12).
+func _test_pause_holds_sounds_and_ducks_music() -> void:
+	var play := await _start_run(91)
+	var music_bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	var full := AudioServer.get_bus_volume_db(music_bus)
+	_game.play_sfx(&"time_up")
+	_check(_game.sounds_in_flight() >= 1 and not _game.audio_paused, "a sound is in flight while the run plays", str(_game.sounds_in_flight()))
+	var from := _log.size()
+	play.open_pause("test")
+	var held := _game.held_players()
+	var pause_sound := _game.sfx_players().filter(func(player: AudioStreamPlayer) -> bool: return player.stream != null and player.stream.resource_path.ends_with("/pause.wav"))
+	_check(_game.audio_paused and _game.held_sounds >= 1 and held.size() == _game.held_sounds and held.any(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"pausing holds the sound in flight", "held %d: %s" % [_game.held_sounds, held.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path)])
+	_check(pause_sound.size() == 1 and not pause_sound[0] in held, "the pause's own sound plays", str(pause_sound))
+	_check(absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01 and _game.music_track == "endless", "pausing ducks the music, which keeps playing",
+		"%.2f dB (full %.2f), %s" % [AudioServer.get_bus_volume_db(music_bus), full, _game.music_track])
+	_check_logged(from, "^\\[Audio\\] Paused: \\d+ sounds held, \\d+ blurt syllables waiting, music ducked by 12 dB$", "the audio pause is logged")
+	for i in 60:
+		await process_frame
+	_check(_game.held_players() == held and _game.sounds_in_flight() >= held.size(), "the held sound stays held while paused", str(_game.sounds_in_flight()))
+	play.resume()
+	_check(not _game.audio_paused and _game.held_players().is_empty() and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming continues the sound and the music",
+		"%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
+	_check_logged(from, "^\\[Audio\\] Resumed after [\\d.]+ s: \\d+ sounds continue, the music is back to full$", "the audio resume is logged")
+	_game.play_sfx(&"time_up")
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.audio_paused and _game.held_sounds >= 1 and absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01, "the rotate overlay holds the sounds and ducks the music",
+		"held %d, %.2f dB" % [_game.held_sounds, AudioServer.get_bus_volume_db(music_bus)])
+	root.size = BASE_WINDOW
+	await process_frame
+	_check(play.is_paused() and _game.audio_paused and absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01, "back in landscape the menu keeps the audio paused", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
+	play.resume()
+	_check(not _game.audio_paused and _game.held_sounds == 0 and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming after the overlay restores the audio", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## A missing or unknown sound, a missing loop and a screen whose loop is missing are each
+## reported with the path (log and error label), never skipped quietly (plan AC 13).
+func _test_audio_missing_files_reported() -> void:
+	var label := _game.get_node("Fade/ErrorLabel") as Label
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	_game.sfx_path = "res://audio/sfx/missing_%s.wav"
+	_game.sfx_log.clear()
+	_game.play_sfx(&"shot")
+	_check(_game.reported_errors.slice(errors) == ["Sound effect 'shot' is missing: res://audio/sfx/missing_shot.wav (run python3 tools/sfx.py)"] and label.visible and label.text.contains("missing_shot.wav") and _game.sfx_log.is_empty(),
+		"a missing sound effect is reported with its path, on screen", str(_game.reported_errors.slice(errors)))
+	errors = _game.reported_errors.size()
+	_check(not _game.check_audio() and _game.reported_errors.size() - errors == GameState.SFX_IDS.size() + GameState.blurt_ids().size(), "the start-up check reports every missing sound", str(_game.reported_errors.size() - errors))
+	_game.sfx_path = GameState.SFX_PATH
+	errors = _game.reported_errors.size()
+	_game.play_sfx(&"trumpet")
+	_check(_game.reported_errors.slice(errors) == ["Unknown sound effect 'trumpet' (not in GameState.SFX_IDS)"], "an unknown sound effect is reported", str(_game.reported_errors.slice(errors)))
+	errors = _game.reported_errors.size()
+	var track := _game.music_track
+	_game.play_music("banjo_solo")
+	_check(_game.reported_errors.slice(errors) == ["Music track 'banjo_solo' is missing: res://audio/music/banjo_solo.mp3 (run python3 tools/music.py)"] and _game.music_track == track,
+		"a missing loop is reported with its path and the music stays", str(_game.reported_errors.slice(errors)))
+	var dawn := Content.chapter("dawn")
+	var real := dawn.music
+	dawn.music = "campaign_dusk"
+	errors = _game.reported_errors.size()
+	var scene := current_scene
+	_game.start_level("dawn_1")
+	await process_frame
+	dawn.music = real
+	_check(_game.reported_errors.slice(errors) == ["Cannot go to PLAY: scene 'res://scenes/play.tscn' needs res://audio/music/campaign_dusk.mp3, which is missing"]
+		and current_scene == scene and not _game.is_transitioning() and _game.state == GameState.Flow.TITLE, "goto refuses a screen whose loop is missing and names it", str(_game.reported_errors.slice(errors)))
+	_check(_game.check_audio(), "with every file back the audio check passes", "")
+	_game.quiet_errors = false
+	label.hide()
+
+
+## The sounds `action` plays, at once (it is called with sfx_log cleared).
+func _sounds_of(action: Callable) -> Array[StringName]:
+	_game.sfx_log.clear()
+	action.call()
+	return _game.sfx_log.duplicate()
+
+
+## "sound xpitch @at, ..." of a blurt, for comparing and failure messages.
+func _plan_text(plan: Array[GameState.Syllable]) -> String:
+	return ", ".join(plan.map(func(syllable: GameState.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
