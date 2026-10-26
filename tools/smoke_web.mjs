@@ -36,6 +36,14 @@
 //     (the chapter's or the mode's first stage); a screenshot is taken once the first bird
 //     has been in the air for BACKDROP_SHOT_DELAY_MS, and Escape, Down, Down, Enter quits
 //     to the title;
+//   desktop, mobile-landscape, audio: every AudioContext the page creates is recorded and held
+//     to a phone browser's autoplay rule by an init script (AUDIO_RECORDER: it starts
+//     suspended and resume() works only once the page has had a user gesture; Chrome under
+//     Playwright lets audio start without one, whatever its --autoplay-policy); before the
+//     first input none may be running, after the first tap (Campaign) one
+//     must be running (keyboard: after the first key), and the log must hold "[Audio] Music title" (the title loop asked for
+//     at boot, audible from that tap on); an audio error or warning in the console fails the
+//     run (Chrome's own note that audio waits for a gesture is expected);
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Campaign is and Enter press nothing, turn the phone to landscape (844x390),
 //     require "[Game] Rotate overlay hidden ... unpaused", then tap Campaign and require the press;
@@ -100,6 +108,34 @@ const FIRST_SPAWN = /^\[Play\] Spawned goose #1 \(.*\) at t ([\d.-]+)/;
 const FIRST_WAVE = /^\[Play\] Wave 1 start: \d+ birds \(.*\), (\d+) shells/;
 // Shot outcomes the play scene logs for a shot, with the wave time it was handled at.
 const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused).* at t ([\d.-]+)/;
+// The title loop, asked for when the title (the main scene) arrives (Game.play_music).
+const TITLE_MUSIC = /^\[Audio\] Music title /;
+// Console lines about audio that are not a failure: Chrome's note that an AudioContext waits
+// for a user gesture (the autoplay policy), the behaviour the test checks.
+const AUDIO_EXPECTED = /The AudioContext was not allowed to start/;
+// Records every AudioContext the page creates (window.__huntFrenzyAudio), before any page
+// script runs, and holds it to the autoplay rule of iOS Safari and Android Chrome: a context
+// starts suspended, and resume() leaves it suspended until the page has had a user gesture
+// (navigator.userActivation), so only the engine resuming it on the first touch or key starts
+// the audio.
+const AUDIO_RECORDER = `(() => {
+  window.__huntFrenzyAudio = [];
+  const activated = () => navigator.userActivation === undefined || navigator.userActivation.hasBeenActive;
+  for (const name of ['AudioContext', 'webkitAudioContext']) {
+    const Original = window[name];
+    if (typeof Original !== 'function') continue;
+    window[name] = class extends Original {
+      constructor(...args) {
+        super(...args);
+        window.__huntFrenzyAudio.push(this);
+        if (!activated()) super.suspend();
+      }
+      resume() {
+        return activated() ? super.resume() : Promise.resolve();
+      }
+    };
+  }
+})();`;
 // The rival speaking or aiming (Play logs every heckle shown and every aim cue started).
 const RIVAL_LINE = /^\[Play\] (Heckle \(\w+\) #\d+: |Aim cue on )/;
 // Seconds between two "ahead" points of a [Bird] line (Bird.TRACK_AHEAD_STEP).
@@ -197,12 +233,36 @@ async function buttonPoint(page, logs, pattern, what, from = 0) {
   return pagePoint(page, x + w / 2, y + h / 2);
 }
 
+// The states of the page's AudioContexts (AUDIO_RECORDER), oldest first.
+function audioStates(page) {
+  return page.evaluate(() => (window.__huntFrenzyAudio ?? []).map((ctx) => ctx.state));
+}
+
+// Waits until one of the page's AudioContexts is running; returns the states seen.
+async function waitForAudioRunning(page, what) {
+  const deadline = Date.now() + STEP_TIMEOUT_MS;
+  let states = [];
+  while (Date.now() < deadline) {
+    states = await audioStates(page);
+    if (states.includes('running')) return states;
+    await page.waitForTimeout(50);
+  }
+  throw new Error(`timed out after ${STEP_TIMEOUT_MS} ms waiting for audio to run ${what} (AudioContext states: ${JSON.stringify(states)})`);
+}
+
 // Taps Campaign, the dawn chapter and level 1 where their screens log them, requiring each
-// press and screen; returns the "[Game] Arrived at PLAY" match.
+// press and screen; the first tap must start the audio (an AudioContext running, the title
+// loop logged). Returns the "[Game] Arrived at PLAY" match.
 async function reachFirstLevel(page, logs, pointer, how) {
   let from = logs.length;
+  const before = await audioStates(page);
+  if (before.length === 0) throw new Error('the page created no AudioContext');
+  if (before.includes('running')) throw new Error(`audio ran before any input (AudioContext states: ${JSON.stringify(before)})`);
   await pointer.tap(await buttonPoint(page, logs, CAMPAIGN_RECT, 'the Campaign button layout'));
   await waitForLog(page, logs, /^\[Title\] Campaign pressed \(1\)/, `Campaign to be pressed (${how} tap)`, from);
+  const after = await waitForAudioRunning(page, `after the first ${how} tap`);
+  await waitForLog(page, logs, TITLE_MUSIC, 'the title loop ("[Audio] Music title")');
+  console.log(`[${how}] audio: AudioContext ${JSON.stringify(before)} before the first tap, ${JSON.stringify(after)} after it`);
   await waitForLog(page, logs, /^\[Game\] Arrived at CHAPTER_SELECT/, 'the chapter select', from);
   from = logs.length;
   await pointer.tap(await buttonPoint(page, logs, DAWN_RECT, 'the dawn chapter button layout'));
@@ -373,7 +433,12 @@ async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.keyboard) {
     // Tab is keyboard navigation, which shows the focus ring (hidden on arrival); two more
     // wrap through Endless and Time Attack back to Campaign.
+    const before = await audioStates(page);
+    if (before.length === 0 || before.includes('running')) throw new Error(`audio must wait for the first key (AudioContext states: ${JSON.stringify(before)})`);
     for (const key of ['Tab', 'Tab', 'Tab']) await page.keyboard.press(key);
+    const after = await waitForAudioRunning(page, 'after the first key press');
+    await waitForLog(page, logs, TITLE_MUSIC, 'the title loop ("[Audio] Music title")');
+    console.log(`[${run.name}] audio: AudioContext ${JSON.stringify(before)} before the first key, ${JSON.stringify(after)} after it`);
     await page.waitForTimeout(300);
     await shot('focus');
     let from = logs.length;
@@ -481,6 +546,7 @@ async function smoke(browser, url, run) {
   const logTimes = [];
   const context = await browser.newContext(run.context);
   try {
+    await context.addInitScript(AUDIO_RECORDER);
     const page = await context.newPage();
     page.on('pageerror', (e) => failures.push(`page error: ${e.message}`));
     page.on('requestfailed', (r) => failures.push(`request failed: ${r.url()} ${r.failure()?.errorText}`));
@@ -488,6 +554,7 @@ async function smoke(browser, url, run) {
     page.on('console', (m) => {
       // SwiftShader emits GPU performance warnings; only real errors fail the test.
       if (m.type() === 'error') failures.push(`console error: ${m.text()}`);
+      else if (m.type() === 'warning' && /audio/i.test(m.text()) && !AUDIO_EXPECTED.test(m.text())) failures.push(`console audio warning: ${m.text()}`);
       logs.push(m.text());
       logTimes.push(Date.now());
     });
@@ -545,7 +612,7 @@ async function smoke(browser, url, run) {
     }, png.toString('base64'));
     if (distinctColors < 2) failures.push('screenshot is a single flat colour (nothing rendered)');
     if (failures.length === 0) failures.push(...await playPath(page, context, run, logs, logTimes, shot));
-    for (const line of logs.filter((l) => /^\[(Game|Title|ChapterSelect|LevelSelect|Play|Results)\]/.test(l))) console.log(`[${run.name}] ${line}`);
+    for (const line of logs.filter((l) => /^\[(Game|Title|ChapterSelect|LevelSelect|Play|Results|Audio)\]/.test(l))) console.log(`[${run.name}] ${line}`);
   } catch (err) {
     failures.push(`smoke test aborted: ${err.message}`);
     // The game's last log lines show where the run got stuck.

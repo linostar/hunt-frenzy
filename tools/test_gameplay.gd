@@ -3994,7 +3994,9 @@ func _test_audio_every_event_sound() -> void:
 			break
 	_check(heard == [&"wave_start"], "the wave's first spawn plays wave_start", str(heard))
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
+	var from := _log.size()
 	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
+	_check_logged(from, "^\\[Audio\\] SFX shot$", "every sound is logged by the one entry point")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
 		["splitter", [&"shot", &"split_pop", &"combo_up"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
 	var armored: Bird = null
