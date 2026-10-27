@@ -1,14 +1,18 @@
 class_name Title
 extends Control
-## Title screen (placeholder until the art pass): the game's name, a tagline and the
-## Campaign, Endless and Time Attack buttons side by side (the two modes' buttons show
-## that mode's best score from the save), laid out in the safe area (Game ScreenFit) and
-## refitted whenever it changes. Campaign is focused on arrival (without drawing the focus
-## ring until the player navigates by keyboard), so Enter presses it; left/right and Tab
-## cycle through the three. Campaign opens the chapter select, Endless starts an Endless
-## run (Game.start_endless), Time Attack a Time Attack run (Game.start_time_attack). When
-## Content reports errors in data/*.json, the ContentErrorBanner says so and all three
-## buttons are disabled.
+## Title screen: the game's name, a tagline, the Campaign, Endless and Time Attack buttons
+## side by side (the two modes' buttons show that mode's best score from the save) and
+## below them Settings and Credits, laid out in the safe area (Game ScreenFit) and refitted
+## whenever it changes. Campaign is focused on arrival (without drawing the focus ring
+## until the player navigates by keyboard), so Enter presses it; coming back from Settings
+## or Credits (Game.flow_args {"focus": "settings" | "credits"}) focuses that button
+## instead. Left/right cycle along a row, up/down move between the rows, Tab runs through
+## all five. Campaign opens the chapter select, Endless starts an Endless run
+## (Game.start_endless), Time Attack a Time Attack run (Game.start_time_attack), Settings
+## the settings screen, Credits the credits screen. When Content reports errors in
+## data/*.json, the ContentErrorBanner says so and Campaign, Endless, Time Attack and
+## Settings are disabled (the save is left unread then, and saving settings would replace
+## it); Credits stays.
 
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. Play is disabled."
 
@@ -20,6 +24,8 @@ const MODE_BUTTON_TEXT := "%s\nBest %d"
 var campaign_presses := 0
 var endless_presses := 0
 var time_attack_presses := 0
+var settings_presses := 0
+var credits_presses := 0
 
 var _game: GameState
 
@@ -27,6 +33,8 @@ var _game: GameState
 @onready var _campaign_button: Button = $Safe/CampaignButton
 @onready var _endless_button: Button = $Safe/EndlessButton
 @onready var _time_attack_button: Button = $Safe/TimeAttackButton
+@onready var _settings_button: Button = $Safe/SettingsButton
+@onready var _credits_button: Button = $Safe/CreditsButton
 @onready var _banner: Label = $Safe/ContentErrorBanner
 
 
@@ -37,18 +45,27 @@ func _ready() -> void:
 	_campaign_button.pressed.connect(_on_campaign_pressed)
 	_endless_button.pressed.connect(_on_endless_pressed)
 	_time_attack_button.pressed.connect(_on_time_attack_pressed)
+	_settings_button.pressed.connect(_on_settings_pressed)
+	_credits_button.pressed.connect(_on_credits_pressed)
 	_endless_button.text = MODE_BUTTON_TEXT % ["Endless", _game.best(GameState.ENDLESS_MODE)]
 	_time_attack_button.text = MODE_BUTTON_TEXT % ["Time Attack", _game.best(GameState.TIME_ATTACK_MODE)]
 	print("[Title] Bests: Endless %d, Time Attack %d" % [_game.best(GameState.ENDLESS_MODE), _game.best(GameState.TIME_ATTACK_MODE)])
 	var content_errors := Content.errors()
 	if not content_errors.is_empty():
-		print("[Title] Content has %d problem(s); Campaign, Endless and Time Attack are disabled" % content_errors.size())
+		print("[Title] Content has %d problem(s); Campaign, Endless, Time Attack and Settings are disabled" % content_errors.size())
 		_banner.text = CONTENT_ERROR_MESSAGE % content_errors.size()
 		_banner.show()
 		_campaign_button.disabled = true
 		_endless_button.disabled = true
 		_time_attack_button.disabled = true
-	_campaign_button.grab_focus(true)
+		_settings_button.disabled = true
+	match str(_game.flow_args.get("focus", "")):
+		Settings.TITLE_FOCUS:
+			_settings_button.grab_focus(true)
+		Credits.TITLE_FOCUS:
+			_credits_button.grab_focus(true)
+		_:
+			_campaign_button.grab_focus(true)
 
 
 func _fit() -> void:
@@ -64,6 +81,8 @@ func _log_layout() -> void:
 	print("[Title] Campaign button at %s" % _campaign_button.get_global_rect())
 	print("[Title] Endless button at %s" % _endless_button.get_global_rect())
 	print("[Title] Time Attack button at %s" % _time_attack_button.get_global_rect())
+	print("[Title] Settings button at %s" % _settings_button.get_global_rect())
+	print("[Title] Credits button at %s" % _credits_button.get_global_rect())
 
 
 func _on_campaign_pressed() -> void:
@@ -82,3 +101,15 @@ func _on_time_attack_pressed() -> void:
 	time_attack_presses += 1
 	print("[Title] Time Attack pressed (%d); starting Time Attack" % time_attack_presses)
 	_game.start_time_attack()
+
+
+func _on_settings_pressed() -> void:
+	settings_presses += 1
+	print("[Title] Settings pressed (%d); opening the settings" % settings_presses)
+	_game.goto(GameState.Flow.SETTINGS)
+
+
+func _on_credits_pressed() -> void:
+	credits_presses += 1
+	print("[Title] Credits pressed (%d); opening the credits" % credits_presses)
+	_game.goto(GameState.Flow.CREDITS)

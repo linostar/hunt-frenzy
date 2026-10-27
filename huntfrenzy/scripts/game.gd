@@ -69,7 +69,7 @@ signal audio_settings_changed
 ## Emitted when the reduce motion setting changes (the settings screen follows it).
 signal reduce_motion_changed(on: bool)
 
-enum Flow { TITLE, PLAY, RESULTS, CHAPTER_SELECT, LEVEL_SELECT }
+enum Flow { TITLE, PLAY, RESULTS, CHAPTER_SELECT, LEVEL_SELECT, SETTINGS, CREDITS }
 
 ## Absolute path of this autoload, for nodes inside the tree.
 const AUTOLOAD_PATH := ^"/root/Game"
@@ -79,6 +79,8 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.RESULTS: "res://scenes/results.tscn",
 	Flow.CHAPTER_SELECT: "res://scenes/chapter_select.tscn",
 	Flow.LEVEL_SELECT: "res://scenes/level_select.tscn",
+	Flow.SETTINGS: "res://scenes/settings.tscn",
+	Flow.CREDITS: "res://scenes/credits.tscn",
 }
 ## The Endless and Time Attack modes' ids in data/modes.json.
 const ENDLESS_MODE := "endless"

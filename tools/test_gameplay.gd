@@ -252,6 +252,9 @@ func _tests() -> Array[Callable]:
 		_test_pause_keeps_every_held_sound,
 		_test_frequent_sounds_vary_in_pitch,
 		_test_audio_unloadable_files_reported,
+		_test_settings_screen,
+		_test_settings_over_paused_run,
+		_test_credits_screen,
 	]
 
 
@@ -407,17 +410,21 @@ func _test_fit_window_rect() -> void:
 	_check(full_hd.size == base, "fit_window_rect leaves a roomy 1x screen unchanged", str(full_hd))
 
 
-## The title's Campaign, Endless and Time Attack buttons: in a row, at least 44x44, their
-## text inside them, inside the safe area, with a visible focus style, at 16:9, 19.5:9 and
-## 4:3; Campaign is focused on arrival (no ring), Tab and right move Campaign -> Endless ->
-## Time Attack -> Campaign, left goes the other way.
+## The title's Campaign, Endless and Time Attack buttons in a row and Settings and Credits
+## in a row below them: at least 44x44, their text inside them, inside the safe area, with
+## a visible focus style, at 16:9, 19.5:9 and 4:3; Campaign is focused on arrival (no ring),
+## right moves Campaign -> Endless -> Time Attack -> Campaign, left goes the other way, Tab
+## runs Campaign -> Endless -> Time Attack -> Settings -> Credits -> Campaign, Down from the
+## first row reaches the second and Up returns.
 func _test_title_button_layout() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var buttons := _title_buttons(title)
 	var campaign := buttons[0]
+	var second_row: Array[Button] = [title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button]
 	_check(campaign.has_focus(), "title focuses Campaign on arrival", str(root.gui_get_focus_owner()))
-	for button: Button in buttons:
+	_check(second_row.map(func(button: Button) -> String: return button.text) == ["Settings", "Credits"], "the title offers Settings and Credits", str(second_row.map(func(button: Button) -> String: return button.text)))
+	for button: Button in buttons + second_row:
 		var focus_style := button.get_theme_stylebox(&"focus")
 		_check(focus_style != null and not (focus_style is StyleBoxEmpty), "%s has a visible focus style" % button.name, str(focus_style))
 		_check(button.focus_mode == Control.FOCUS_ALL, "%s takes keyboard focus" % button.name, str(button.focus_mode))
@@ -426,17 +433,28 @@ func _test_title_button_layout() -> void:
 	_check(not campaign.has_focus(true), "the focus ring is hidden on arrival (no stray ring on phones)", "focus visible")
 	for key: Key in [KEY_TAB, KEY_RIGHT, KEY_LEFT]:
 		var order: Array[Button] = []
-		order.assign([buttons[1], buttons[2], buttons[0]] if key != KEY_LEFT else [buttons[2], buttons[1], buttons[0]])
+		match key:
+			KEY_TAB:
+				order.assign([buttons[1], buttons[2], second_row[0], second_row[1], buttons[0]])
+			KEY_RIGHT:
+				order.assign([buttons[1], buttons[2], buttons[0]])
+			_:
+				order.assign([buttons[2], buttons[1], buttons[0]])
 		var reached: Array[String] = []
 		for i in order.size():
 			await _key(key)
 			reached.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
-		_check(reached == order.map(func(button: Button) -> String: return str(button.name)) and campaign.has_focus(true), "%s cycles the focus through the three buttons, the ring shown" % OS.get_keycode_string(key), str(reached))
+		_check(reached == order.map(func(button: Button) -> String: return str(button.name)) and campaign.has_focus(true), "%s cycles the focus through %d buttons, the ring shown" % [OS.get_keycode_string(key), order.size()], str(reached))
+	var vertical: Array[String] = []
+	for key: Key in [KEY_DOWN, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_DOWN]:
+		await _key(key)
+		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+	_check(vertical == ["SettingsButton", "CreditsButton", "TimeAttackButton", "CreditsButton", "TimeAttackButton"], "Down and Up move between the two rows, Right along the second", str(vertical))
 	for window in LANDSCAPE_WINDOWS:
 		root.size = window
 		await process_frame
 		await process_frame
-		for button: Button in buttons:
+		for button: Button in buttons + second_row:
 			var label := "%dx%d %s" % [window.x, window.y, button.name]
 			var rect := button.get_global_rect()
 			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and button.get_combined_minimum_size().x <= rect.size.x + 0.5 and button.get_combined_minimum_size().y <= rect.size.y + 0.5, label + " size, its text inside", "%s, text needs %s" % [rect.size, button.get_combined_minimum_size()])
@@ -477,7 +495,8 @@ func _test_title_follows_notched_safe_area() -> void:
 	await process_frame
 	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
 	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
-	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless and Time Attack are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
+	buttons.append_array([title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button])
+	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless, Time Attack, Settings and Credits are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -1076,14 +1095,14 @@ func _test_pause_causes_and_resume() -> void:
 
 
 ## The menu's buttons: >= 44x44, focusable with a visible focus style, the ring shown
-## after Tab, Up/Down cycling Resume, Restart and Quit.
+## after Tab, Up/Down cycling Resume, Restart, Quit, Settings and the Music toggle.
 func _test_pause_menu_keyboard() -> void:
 	var play := await _start_run(32)
 	play.open_pause("test")
 	await process_frame
 	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
-	var buttons: Array[Button] = [panel.get_node("ResumeButton"), panel.get_node("RestartButton"), panel.get_node("QuitButton")]
-	_check(buttons.map(func(b: Button) -> String: return b.text) == ["Resume", "Restart", "Quit to title"], "the menu holds Resume, Restart and Quit to title", str(buttons.map(func(b: Button) -> String: return b.text)))
+	var buttons: Array[Button] = [panel.get_node("ResumeButton"), panel.get_node("RestartButton"), panel.get_node("QuitButton"), panel.get_node("SettingsButton")]
+	_check(buttons.map(func(b: Button) -> String: return b.text) == ["Resume", "Restart", "Quit to title", "Settings"], "the menu holds Resume, Restart, Quit to title and Settings", str(buttons.map(func(b: Button) -> String: return b.text)))
 	for button in buttons:
 		var rect := button.get_global_rect()
 		var style := button.get_theme_stylebox(&"focus")
@@ -1092,10 +1111,10 @@ func _test_pause_menu_keyboard() -> void:
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == buttons[1] and buttons[1].has_focus(true), "Tab moves to Restart and shows the ring", str(root.gui_get_focus_owner()))
 	var order := []
-	for i in 4:
+	for i in 5:
 		await _key(KEY_DOWN)
 		order.append((root.gui_get_focus_owner() as Button).text)
-	_check(order == ["Quit to title", "Music: on", "Resume", "Restart"], "Down cycles through the menu and its Music toggle", str(order))
+	_check(order == ["Quit to title", "Settings", "Music: on", "Resume", "Restart"], "Down cycles through the menu, Settings and its Music toggle", str(order))
 	await _key(KEY_UP)
 	_check(root.gui_get_focus_owner() == buttons[0], "Up moves back", str(root.gui_get_focus_owner()))
 	await _key(KEY_UP)
@@ -1104,6 +1123,10 @@ func _test_pause_menu_keyboard() -> void:
 	_check(root.gui_get_focus_owner() == music_toggle, "Up from Resume reaches the Music toggle", str(root.gui_get_focus_owner()))
 	await _key(KEY_RIGHT)
 	_check(root.gui_get_focus_owner() == sfx_toggle, "Right reaches the SFX toggle", str(root.gui_get_focus_owner()))
+	await _key(KEY_UP)
+	_check(root.gui_get_focus_owner() == buttons[3], "Up from the SFX toggle reaches Settings", str(root.gui_get_focus_owner()))
+	await _key(KEY_DOWN)
+	await _key(KEY_RIGHT)
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == buttons[0], "Tab from the SFX toggle wraps to Resume", str(root.gui_get_focus_owner()))
 	play.resume()
@@ -3728,6 +3751,44 @@ func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
 	await process_frame
 
 
+## A screen's `controls` (buttons and sliders) and `labels` at 16:9, 19.5:9, 4:3, under a
+## notch and at a safe height of RESULTS_MIN_SAFE_HEIGHT: every control at least 44x44,
+## focusable with a visible focus ring (a Button's focus style; a TouchSlider draws the
+## Button one), inside the safe area, below the top HUD bar, apart from the others; every
+## label inside the safe area with all its text inside its rect (every wrapped line).
+func _check_screen_layout(screen: Control, controls: Array[Control], labels: Array[Label]) -> void:
+	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
+	for i in windows.size():
+		_game.safe_area_override = safes[i]
+		root.size = windows[i]
+		await process_frame
+		await process_frame
+		var safe := _game.safe_rect()
+		var problems: Array[String] = []
+		for control in controls:
+			var rect := control.get_global_rect()
+			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Play.HUD_BAR_HEIGHT:
+				problems.append("%s %s" % [control.name, rect])
+			for other in controls:
+				if other != control and rect.intersection(other.get_global_rect()).get_area() > 0.25:
+					problems.append("%s overlaps %s" % [control.name, other.name])
+			var style := control.get_theme_stylebox(&"focus", &"Button") if control is TouchSlider else control.get_theme_stylebox(&"focus")
+			if control.focus_mode != Control.FOCUS_ALL or style == null or style is StyleBoxEmpty:
+				problems.append("%s has no visible keyboard focus" % control.name)
+			if control is Button and (control as Button).get_combined_minimum_size().x > rect.size.x + 0.5:
+				problems.append("%s's text is wider than it" % control.name)
+		for label in labels:
+			var rect := label.get_global_rect()
+			var needed := label.get_line_count() * label.get_line_height() if label.autowrap_mode != TextServer.AUTOWRAP_OFF else int(label.get_combined_minimum_size().y)
+			if not safe.grow(0.5).encloses(rect) or needed > rect.size.y + 0.5 or (label.autowrap_mode == TextServer.AUTOWRAP_OFF and label.get_combined_minimum_size().x > rect.size.x + 0.5):
+				problems.append("%s %s needs %d high for %d lines" % [label.name, rect, needed, label.get_line_count()])
+		_check(problems.is_empty(), "%s %dx%d, safe %s: every control >= 44x44, focusable, inside the safe area, apart; every text inside its label" % [screen.name, windows[i].x, windows[i].y, safe], "; ".join(problems))
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+
+
 ## Starts campaign level `level_id` and waits until it is on screen.
 func _start_level(level_id: String) -> Play:
 	_game.start_level(level_id)
@@ -4543,3 +4604,255 @@ func _sounds_of(action: Callable) -> Array[StringName]:
 ## "sound xpitch @at, ..." of a blurt, for comparing and failure messages.
 func _plan_text(plan: Array[GameState.Syllable]) -> String:
 	return ", ".join(plan.map(func(syllable: GameState.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
+
+
+## The settings screen from the title's Settings button: its sliders, toggles and Back fit
+## (sizes, focus, safe area at every aspect, a notch and a short safe area), each setting
+## shows its state in text, the music slider is focused on arrival; Tab, Up and Down move
+## through it and Left/Right step a slider: the bus follows at once, it is logged, saved
+## and plays the UI tap; a touch and a drag set a slider live and save once, on release; the
+## toggles mute their bus or turn reduce motion on (saved, logged, shown); Back and Escape
+## return to the title with Settings focused (plan ACs 10, 11).
+func _test_settings_screen() -> void:
+	_clear_tool_save()
+	_game.load_game()
+	await _open_title()
+	var title := current_scene as Title
+	var from := _log.size()
+	await _tap(title.get_node("Safe/SettingsButton") as Control)
+	_check(title.settings_presses == 1 and _game.transition_log.back().begins_with("TITLE -> SETTINGS (res://scenes/settings.tscn)"), "a tap on Settings opens the settings through goto", str(_game.transition_log.back()))
+	_check_logged(from, "^\\[Title\\] Settings pressed \\(1\\); opening the settings$", "the Settings press is logged")
+	await _game.transition_finished
+	await process_frame
+	var settings := current_scene as Settings
+	_check(settings != null and _game.state == GameState.Flow.SETTINGS and not settings.overlay, "the settings screen shows", str(current_scene))
+	if settings == null:
+		return
+	_check_logged(from, "^\\[Settings\\] Opened from the title: music 70, sfx 80, reduce motion off$", "the settings' arrival is logged with every setting")
+	var music := settings.get_node("Safe/MusicSlider") as TouchSlider
+	var music_toggle := settings.get_node("Safe/MusicToggle") as Button
+	var sfx := settings.get_node("Safe/SfxSlider") as TouchSlider
+	var sfx_toggle := settings.get_node("Safe/SfxToggle") as Button
+	var reduce := settings.get_node("Safe/ReduceMotionToggle") as Button
+	var back := settings.get_node("Safe/BackButton") as Button
+	var controls: Array[Control] = [music, music_toggle, sfx, sfx_toggle, reduce, back]
+	var labels: Array[Label] = [settings.get_node("Safe/Heading") as Label, settings.get_node("Safe/MusicLabel") as Label, settings.get_node("Safe/SfxLabel") as Label, settings.get_node("Safe/ReduceMotionHint") as Label]
+	_check(music.has_focus() and not music.has_focus(true), "the music slider is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
+	_check(_text_of(settings, "MusicLabel") == "Music 70" and _text_of(settings, "SfxLabel") == "SFX 80" and music_toggle.text == "Music: on" and sfx_toggle.text == "SFX: on" and reduce.text == "Reduce motion: off" and is_equal_approx(music.value, 70) and is_equal_approx(sfx.value, 80) and music.max_value == GameState.VOLUME_MAX and music.min_value == 0,
+		"every setting shows its state in text, the sliders run 0..VOLUME_MAX", "%s | %s | %s | %s | %s" % [_text_of(settings, "MusicLabel"), _text_of(settings, "SfxLabel"), music_toggle.text, sfx_toggle.text, reduce.text])
+	await _check_screen_layout(settings, controls, labels)
+	var reached: Array[String] = []
+	for i in controls.size():
+		await _key(KEY_TAB)
+		reached.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+	_check(reached == ["MusicToggle", "SfxSlider", "SfxToggle", "ReduceMotionToggle", "BackButton", "MusicSlider"] and music.has_focus(true), "Tab cycles through every control, the ring shown", str(reached))
+	var vertical: Array[String] = []
+	for key: Key in [KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_UP, KEY_UP]:
+		await _key(key)
+		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+	_check(vertical == ["SfxSlider", "ReduceMotionToggle", "BackButton", "MusicSlider", "BackButton", "ReduceMotionToggle"], "Down and Up move between the rows (wrapping)", str(vertical))
+	music.grab_focus()
+	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	from = _log.size()
+	var sounds := _game.sfx_log.size()
+	await _key(KEY_RIGHT)
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(_game.music_volume == 71 and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(71)) and _text_of(settings, "MusicLabel") == "Music 71" and saved is Dictionary and (saved as Dictionary)["settings"]["music"] == 71.0,
+		"Right steps the focused music slider: the bus follows, the label shows it, it is saved", "volume %d, label %s, save %s" % [_game.music_volume, _text_of(settings, "MusicLabel"), saved])
+	_check(_game.sfx_log.slice(sounds) == [&"ui_tap"], "a slider step plays the UI tap", str(_game.sfx_log.slice(sounds)))
+	_check_logged(from, "^\\[Settings\\] Music slider moved to 71$", "the slider step is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, .*music 71, sfx 80$", "the step is saved at once")
+	await _key(KEY_LEFT)
+	_check(_game.music_volume == 70 and music.has_focus(), "Left steps it back and keeps the focus on the slider", "volume %d" % _game.music_volume)
+	# A finger: the press sets the value under it, the drag follows, the lift saves once.
+	var grabber := float(music.get_theme_icon(&"grabber").get_width())
+	var rect := music.get_global_rect()
+	var at_quarter := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.25, rect.get_center().y)
+	var at_three_quarters := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.75, rect.get_center().y)
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	var press := InputEventScreenTouch.new()
+	press.index = TOUCH_INDEX
+	press.position = root.get_final_transform() * at_quarter
+	press.pressed = true
+	Input.parse_input_event(press)
+	await process_frame
+	var drag := InputEventScreenDrag.new()
+	drag.index = TOUCH_INDEX
+	drag.position = root.get_final_transform() * at_three_quarters
+	Input.parse_input_event(drag)
+	await process_frame
+	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(_game.music_volume == 75 and music.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(75)) and (saved as Dictionary)["settings"]["music"] == 70.0 and _game.sfx_log.size() == sounds,
+		"a touch and a drag set the music volume live (bus and label), unsaved and silent while the finger is down", "volume %d, held %s, saved %s, sounds %s" % [_game.music_volume, music.is_held(), (saved as Dictionary)["settings"]["music"], _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] Music slider moved to 25 \\(held\\)$", "the touch is logged as held")
+	var lift := press.duplicate() as InputEventScreenTouch
+	lift.position = drag.position
+	lift.pressed = false
+	Input.parse_input_event(lift)
+	await process_frame
+	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(not music.is_held() and (saved as Dictionary)["settings"]["music"] == 75.0 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "lifting the finger saves the volume once and plays the UI tap", "saved %s, sounds %s" % [(saved as Dictionary)["settings"]["music"], _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] Music slider released at 75; saving$", "the release is logged")
+	_check(Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size() == 1, "a drag saves exactly once", "%d saves" % Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size())
+	sfx.grab_focus()
+	await _key(KEY_LEFT)
+	_check(_game.sfx_volume == 79 and is_equal_approx(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(GameState.SFX_BUS)), GameState.bus_volume_db(79)) and _text_of(settings, "SfxLabel") == "SFX 79", "Left steps the SFX slider and its bus", "sfx %d" % _game.sfx_volume)
+	var toggles: Array[Button] = [music_toggle, sfx_toggle]
+	var buses: Array[StringName] = [GameState.MUSIC_BUS, GameState.SFX_BUS]
+	for i in toggles.size():
+		from = _log.size()
+		await _tap(toggles[i])
+		saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		var key := "music_muted" if i == 0 else "sfx_muted"
+		_check(AudioServer.is_bus_mute(AudioServer.get_bus_index(buses[i])) and toggles[i].text.ends_with(": off") and not toggles[i].button_pressed and (saved as Dictionary)["settings"][key] == true, "a tap on %s mutes its bus, shows off and saves" % toggles[i].name, toggles[i].text)
+		_check_logged(from, "^\\[Settings\\] %s toggle pressed: %s off$" % [["Music", "SFX"][i], ["music", "sound effects"][i]], "%s is logged" % toggles[i].name)
+		await _tap(toggles[i])
+		_check(not AudioServer.is_bus_mute(AudioServer.get_bus_index(buses[i])) and toggles[i].text.ends_with(": on"), "a second tap on %s unmutes it" % toggles[i].name, toggles[i].text)
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	await _tap(reduce)
+	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(_game.reduce_motion and reduce.button_pressed and reduce.text == "Reduce motion: on" and (saved as Dictionary)["settings"]["reduce_motion"] == true and _game.sfx_log.slice(sounds) == [&"ui_tap"], "Reduce motion turns on, shows it, is saved and taps", "%s, %s" % [reduce.text, _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] Reduce motion toggle pressed: on$", "the reduce motion press is logged")
+	_check_logged(from, "^\\[Game\\] Reduce motion on: no screen shake, plain fades, steady pop-ups and title$", "Game logs reduce motion")
+	_game.set_reduce_motion(false)
+	_check(reduce.text == "Reduce motion: off" and not reduce.button_pressed, "the screen follows a change made elsewhere", reduce.text)
+	back.grab_focus()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	title = current_scene as Title
+	_check(title != null and (title.get_node("Safe/SettingsButton") as Button).has_focus(), "Back returns to the title with Settings focused", str(root.gui_get_focus_owner()))
+	await _tap(title.get_node("Safe/SettingsButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	from = _log.size()
+	await _key(KEY_ESCAPE)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/SettingsButton") as Button).has_focus(), "Escape on the settings screen returns to the title too", str(current_scene))
+	_check_logged(from, "^\\[Settings\\] Back pressed; returning to the title$", "Back is logged")
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	_clear_tool_save()
+
+
+## The pause menu's Settings opens the settings over the paused run: the tree stays paused,
+## the run's clock still, the sounds held and the music ducked; a slider applies at once
+## (the duck kept); a mute set there shows on the pause menu's toggle; touches on it are no
+## shots; Escape and Back close it (not the run's pause) and focus Settings again; the
+## menu's toggles stay in sync both ways (plan AC 11).
+func _test_settings_over_paused_run() -> void:
+	_clear_tool_save()
+	_game.load_game()
+	var play := await _start_run(55)
+	await _spawn_flying(play, 7)
+	_game.play_sfx(&"wave_start")
+	play.open_pause("test")
+	await process_frame
+	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
+	var settings_button := panel.get_node("SettingsButton") as Button
+	var from := _log.size()
+	await _tap(settings_button)
+	var settings := play.settings_overlay()
+	_check(settings != null and settings.overlay and settings.is_inside_tree() and paused and play.is_paused() and _game.audio_paused, "Settings opens the settings over the paused run", "overlay %s, paused %s" % [settings, paused])
+	_check(not (panel as Control).visible and (play.get_node("PauseLayer/PauseMenu") as Control).visible, "the pause menu's panel hides under the settings, its dim stays", "panel %s" % (panel as Control).visible)
+	if settings == null:
+		play.resume()
+		return
+	_check_logged(from, "^\\[Play\\] Settings opened over the paused run \\(wave 1 at t ", "opening it is logged")
+	_check_logged(from, "^\\[Settings\\] Opened over the paused run: ", "the settings log their arrival over the run")
+	var clock := play.run_clock
+	var held := _game.held_players().size()
+	for i in 30:
+		await process_frame
+	_check(play.run_clock == clock and paused and _game.held_players().size() == held and held >= 1, "the run stays frozen with its sounds held under the settings", "clock %.3f -> %.3f, held %d" % [clock, play.run_clock, _game.held_players().size()])
+	var music := settings.get_node("Safe/MusicSlider") as TouchSlider
+	_check(music.has_focus(), "the overlay focuses its music slider", str(root.gui_get_focus_owner()))
+	await _key(KEY_LEFT)
+	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	_check(_game.music_volume == 69 and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(69, GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
+	var shots := play.scoring.shots()
+	await _tap(settings.get_node("Safe/ReduceMotionHint") as Control)
+	_check(play.scoring.shots() == shots and play.refused == 0, "a touch on the overlay is no shot", "%d shots" % play.scoring.shots())
+	await _tap(settings.get_node("Safe/MusicToggle") as Control)
+	var menu_toggle := panel.get_node("MusicToggle") as Button
+	_check(_game.music_muted and menu_toggle.text == "Music: off" and not menu_toggle.button_pressed, "a mute set in the settings shows on the pause menu's toggle", menu_toggle.text)
+	from = _log.size()
+	await _key(KEY_ESCAPE)
+	_check(play.settings_overlay() == null and play.is_paused() and paused and settings_button.has_focus(), "Escape closes the settings, the run stays paused, Settings is focused", "overlay %s, paused %s, focus %s" % [play.settings_overlay(), paused, root.gui_get_focus_owner()])
+	_check((panel as Control).visible, "the pause menu's panel shows again", "hidden")
+	_check_logged(from, "^\\[Play\\] Settings closed; back to the pause menu$", "closing is logged")
+	await _tap(menu_toggle)
+	_check(not _game.music_muted and menu_toggle.text == "Music: on", "the pause menu's toggle still works", menu_toggle.text)
+	await _tap(settings_button)
+	settings = play.settings_overlay()
+	_check(settings != null and (settings.get_node("Safe/MusicToggle") as Button).text == "Music: on", "the settings show the mute the pause menu set", str(settings))
+	if settings != null:
+		await _tap(settings.get_node("Safe/BackButton") as Control)
+		await process_frame
+	_check(play.settings_overlay() == null and play.is_paused() and settings_button.has_focus(), "Back closes the settings and focuses Settings", str(root.gui_get_focus_owner()))
+	await _tap(settings_button)
+	play.resume()
+	await process_frame
+	_check(play.settings_overlay() == null and not paused and not _game.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_clear_tool_save()
+
+
+## The credits screen from the title's Credits button: who made it, the engine and its
+## licence, both fonts with the OFL 1.1 and the copyright lines of their shipped OFL files,
+## that the art and audio are original and generated as code, nothing naming Nintendo or
+## Duck Hunt; it fits at every aspect, a notch and a short safe area; Back (focused) and
+## Escape return to the title with Credits focused (plan AC 12).
+func _test_credits_screen() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var from := _log.size()
+	await _tap(title.get_node("Safe/CreditsButton") as Control)
+	_check(title.credits_presses == 1 and _game.transition_log.back().begins_with("TITLE -> CREDITS (res://scenes/credits.tscn)"), "a tap on Credits opens the credits through goto", str(_game.transition_log.back()))
+	_check_logged(from, "^\\[Title\\] Credits pressed \\(1\\); opening the credits$", "the Credits press is logged")
+	await _game.transition_finished
+	await process_frame
+	var credits := current_scene as Credits
+	_check(credits != null and _game.state == GameState.Flow.CREDITS, "the credits screen shows", str(current_scene))
+	if credits == null:
+		return
+	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), _text_of(credits, "Lines")]
+	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code"]:
+		_check(needed in text, "the credits say " + needed, text)
+	for font: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
+		var notice := FileAccess.get_file_as_string(font).get_slice("\n\n", 0).replace("\n", " ")
+		while "  " in notice:
+			notice = notice.replace("  ", " ")
+		notice = notice.strip_edges()
+		_check(notice.begins_with("Copyright") and notice in text, "the credits carry the copyright line of " + font, notice)
+	var scene_text := FileAccess.get_file_as_string("res://scenes/credits.tscn") + FileAccess.get_file_as_string("res://scripts/credits.gd")
+	for banned: String in ["nintendo", "duck hunt"]:
+		_check(not banned in text.to_lower() and not banned in scene_text.to_lower(), "nothing in the credits names " + banned, text)
+	var back := credits.get_node("Safe/BackButton") as Button
+	_check(back.has_focus() and not back.has_focus(true), "Back is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
+	var controls: Array[Control] = [back]
+	var labels: Array[Label] = [credits.get_node("Safe/Heading") as Label, credits.get_node("Safe/MadeBy") as Label, credits.get_node("Safe/Lines") as Label]
+	await _check_screen_layout(credits, controls, labels)
+	from = _log.size()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Back returns to the title with Credits focused", str(root.gui_get_focus_owner()))
+	_check_logged(from, "^\\[Credits\\] Back pressed; returning to the title$", "Back is logged")
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	await _key(KEY_ESCAPE)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Escape on the credits returns to the title too", str(current_scene))
+
+
+## The text of the Label `label_name` under a screen's Safe.
+func _text_of(screen: Control, label_name: String) -> String:
+	return (screen.get_node("Safe/" + label_name) as Label).text
