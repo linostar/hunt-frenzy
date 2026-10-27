@@ -14,7 +14,13 @@ extends Node2D
 ## where its flight will take it TRACK_AHEAD_STEP, 2 x TRACK_AHEAD_STEP, ... seconds later
 ## (TRACK_AHEAD_STEPS points); the smoke test aims at it from these lines. Other birds are
 ## replayable from their logged spawn seeds.
-## Configure with setup() before adding it to the tree.
+## A crossing bird (setup_crossing: the title's geese) flies Flight's level crossing path
+## over a band instead, and emits `escaped` once it is past the band's far side; it never
+## logs its track. hold() (Play's hit stop) freezes a bird for a few hundredths of a second:
+## it neither ages, moves, flaps nor falls until the time is over, and the frame that ends
+## the hold runs only for what is left of that frame, so the bird loses exactly the hold's
+## time, as Play's clocks do.
+## Configure with setup() or setup_crossing() before adding it to the tree.
 
 signal escaped(bird: Bird)
 signal gone(bird: Bird)
@@ -56,11 +62,15 @@ var stolen := false
 ## The index of the wave it belongs to (Play sets it; a split child takes the wave it was
 ## launched in).
 var wave_index := 0
+## The band a crossing bird flies across (an empty rect: the play path).
+var crossing := Rect2()
 
 var _textures: Dictionary[String, Texture2D] = {}
 var _hold := 0.0
 var _fall_speed := 0.0
 var _track_clock := 0.0
+## Seconds of hold (hit stop) still to sit out.
+var _held_for := 0.0
 
 @onready var _sprite: Sprite2D = $Sprite
 @onready var _reticle: Sprite2D = $Reticle
@@ -80,6 +90,24 @@ func setup(bird_spec: BirdSpec, bird_number: int, flight_seed: int, scale_of_spe
 		flee_at = 0.0
 
 
+## Sets the bird up to cross `band` from age 0 on Flight's crossing path (the title's geese).
+func setup_crossing(bird_spec: BirdSpec, bird_number: int, flight_seed: int, band: Rect2) -> void:
+	spec = bird_spec
+	number = bird_number
+	bird_seed = flight_seed
+	crossing = band
+
+
+## Freezes the bird for `seconds` (Play's hit stop); a longer hold already running is kept.
+func hold(seconds: float) -> void:
+	_held_for = maxf(_held_for, seconds)
+
+
+## True while a hold (hit stop) freezes it.
+func is_held() -> bool:
+	return _held_for > 0.0
+
+
 func _ready() -> void:
 	# A bird scene opened on its own (the project check) has no spec and stays still.
 	if spec == null:
@@ -94,11 +122,19 @@ func _ready() -> void:
 	_track()
 
 
-func _process(delta: float) -> void:
+func _process(frame_delta: float) -> void:
+	var delta := frame_delta
+	if _held_for > 0.0:
+		_held_for -= frame_delta
+		if _held_for >= 0.0:
+			return
+		# The hold ended inside this frame: only the rest of the frame runs.
+		delta = -_held_for
+		_held_for = 0.0
 	match state:
 		State.FLYING:
 			age += delta
-			if Flight.has_escaped(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading):
+			if _has_left():
 				set_process(false)
 				escaped.emit(self)
 				queue_free()
@@ -188,7 +224,16 @@ func flee() -> void:
 
 
 func _flight_transform() -> Transform2D:
+	if crossing.has_area():
+		return Flight.crossing_transform(spec, bird_seed, age, crossing)
 	return Flight.transform_at(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading)
+
+
+## True once it has escaped (the play path) or crossed its band (a crossing bird).
+func _has_left() -> bool:
+	if crossing.has_area():
+		return Flight.has_crossed(spec, bird_seed, age, crossing)
+	return Flight.has_escaped(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading)
 
 
 ## The flap frame for the current age: fly_1 / fly_2, or their damaged versions once hit.
@@ -197,7 +242,7 @@ func _flap_frame() -> String:
 
 
 func _track() -> void:
-	if number != TRACKED_NUMBER:
+	if number != TRACKED_NUMBER or crossing.has_area():
 		return
 	var moving := Flight.velocity(spec, bird_seed, age, field, speed_scale, flee_at, launch_from, launch_heading)
 	var ahead := PackedStringArray()

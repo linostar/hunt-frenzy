@@ -255,6 +255,9 @@ func _tests() -> Array[Callable]:
 		_test_settings_screen,
 		_test_settings_over_paused_run,
 		_test_credits_screen,
+		_test_title_scenery_and_geese,
+		_test_title_goose_shot,
+		_test_transition_wipe_and_fade,
 	]
 
 
@@ -4856,3 +4859,237 @@ func _test_credits_screen() -> void:
 ## The text of the Label `label_name` under a screen's Safe.
 func _text_of(screen: Control, label_name: String) -> String:
 	return (screen.get_node("Safe/" + label_name) as Label).text
+
+
+## The title's scenery: the sunset backdrop with its chapter's weather, the rival idling in
+## the grass inside the safe area, and geese crossing on the seeded schedule: over 30 s of
+## title time at least one goose is in view in nearly every frame, none ever covers a title
+## button (their band ends above the first row at every aspect and under a notch), the
+## schedule and paths are the same each time the title opens, and the scenery drifts (plan
+## AC 1).
+func _test_title_scenery_and_geese() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var sunset := Content.chapters().filter(func(chapter: ChapterSpec) -> bool: return chapter.backdrop == Title.TITLE_BACKDROP)
+	var backdrop := title.get_node("Scenery/Backdrop") as Backdrop
+	var weather := title.get_node("Scenery/Weather") as Weather
+	_check(backdrop.id == "sunset" and sunset.size() == 1 and weather.id == (sunset[0] as ChapterSpec).weather and weather.id != "", "the title shows the sunset backdrop with its chapter's weather", "%s, %s" % [backdrop.id, weather.id])
+	var rival := title.get_node("Scenery/Rival") as TextureRect
+	_check(rival.visible and title.rival_pose() == "idle" and _game.safe_rect().encloses(rival.get_global_rect()) and rival.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the rival idles in the grass inside the safe area and ignores touches", str(rival.get_global_rect()))
+	var buttons: Array[Control] = []
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"]:
+		buttons.append(title.get_node("Safe/" + button_name) as Control)
+	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
+	var scenery := title.get_node("Scenery") as Node2D
+	for i in windows.size():
+		_game.safe_area_override = safes[i]
+		root.size = windows[i]
+		await process_frame
+		await process_frame
+		var band := scenery.get_global_transform() * title.goose_band()
+		var lowest_reach := band.end.y
+		var clear := buttons.all(func(button: Control) -> bool: return button.get_global_rect().position.y >= lowest_reach + Title.BAND_MARGIN - 0.5)
+		_check(clear and band.size.y >= Content.bird(Title.TITLE_BIRD).size.y and band.position.y >= _game.safe_rect().position.y + Play.HUD_BAR_HEIGHT - 0.5, "%dx%d: the geese's band lies below the top bar and above every button" % [windows[i].x, windows[i].y], "band %s" % band)
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+	await _open_title()
+	title = current_scene as Title
+	scenery = title.get_node("Scenery") as Node2D
+	buttons.clear()
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"]:
+		buttons.append(title.get_node("Safe/" + button_name) as Control)
+	var frames := 0
+	var seen := 0
+	var covering: Array[String] = []
+	var outside_band: Array[String] = []
+	var drift_seen := 0.0
+	var first_path: Array[Vector2] = []
+	Engine.time_scale = 4.0
+	for frame in 450:
+		await process_frame
+		frames += 1
+		drift_seen = maxf(drift_seen, absf(scenery.position.x))
+		var visible := _game.visible_rect()
+		var any := false
+		for goose in title.flying_geese():
+			var box := scenery.get_global_transform() * Rect2(goose.position - goose.spec.size / 2.0, goose.spec.size)
+			if box.intersects(visible):
+				any = true
+			for button in buttons:
+				if box.intersects(button.get_global_rect()):
+					covering.append("goose #%d %s over %s" % [goose.number, box, button.name])
+			var band := title.goose_band()
+			if goose.position.y - goose.spec.size.y / 2.0 < band.position.y - 0.01 or goose.position.y + goose.spec.size.y / 2.0 > band.end.y + 0.01:
+				outside_band.append("goose #%d at %s" % [goose.number, goose.position])
+			if goose.number == 1 and first_path.size() < 60:
+				first_path.append(goose.position)
+		if any:
+			seen += 1
+	Engine.time_scale = 1.0
+	_check(float(seen) / frames >= 0.9, "a goose is in view in at least 90% of the title's frames", "%d of %d frames" % [seen, frames])
+	_check(covering.is_empty(), "no goose ever covers a title button", "; ".join(covering.slice(0, 5)))
+	_check(outside_band.is_empty(), "every goose stays inside its band", "; ".join(outside_band.slice(0, 5)))
+	_check(drift_seen > Title.DRIFT_AMPLITUDE * 0.3 and drift_seen <= Title.DRIFT_AMPLITUDE + 0.01, "the scenery drifts from side to side within its amplitude", "drift %.2f" % drift_seen)
+	await _open_title()
+	title = current_scene as Title
+	var again: Array[Vector2] = []
+	Engine.time_scale = 4.0
+	for frame in 450:
+		await process_frame
+		for goose in title.flying_geese():
+			if goose.number == 1 and again.size() < 60:
+				again.append(goose.position)
+	Engine.time_scale = 1.0
+	_check(first_path.size() == 60 and again == first_path, "the title's geese fly the same seeded paths each time it opens", "%d and %d points" % [first_path.size(), again.size()])
+
+
+## A tap on a title goose (its polygon, as in play) shoots it: shot and hit sounds, a
+## feather burst, the goose falls, the rival sulks and heckles with a blurt; nothing is
+## scored or saved; it is logged. A tap on empty sky plays the shot only; a tap on a button
+## only presses it; a second goose inside the heckle cooldown gets the pose but no line
+## (plan AC 2).
+func _test_title_goose_shot() -> void:
+	_clear_tool_save()
+	_game.save_game()
+	var save_before := FileAccess.get_file_as_string(_game.save_path)
+	var bests_before := _game.bests.duplicate()
+	await _open_title()
+	var title := current_scene as Title
+	var scenery := title.get_node("Scenery") as Node2D
+	var goose := await _title_goose_in_view(title)
+	_check(goose != null, "a goose crosses the title", "none in view")
+	if goose == null:
+		return
+	goose.set_process(false)
+	var from := _log.size()
+	var shots_from := from
+	var sounds := _game.sfx_log.size()
+	var feathers_before := title.feathers().live_count()
+	await _touch(scenery.to_global(goose.transform * LOCAL_BODY))
+	goose.set_process(true)
+	_check(goose.state != Bird.State.FLYING and title.geese_shot == 1, "a tap on a title goose shoots it", "state %d" % goose.state)
+	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit", &"heckle_combo"], "the shot, the hit and the rival's blurt play", str(_game.sfx_log.slice(sounds)))
+	_check(title.feathers().live_count() == feathers_before + Feathers.FEATHERS_PER_BURST and Array(title.feathers().live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS[goose.spec.sprite]), "the goose bursts into feathers of its colours", "%d feathers" % title.feathers().live_count())
+	_check(title.rival_pose() == "sulk" and title.heckle_shown() in Content.rival_lines().lines[Title.HECKLE_CATEGORY], "the rival sulks and heckles", "%s, '%s'" % [title.rival_pose(), title.heckle_shown()])
+	_check_logged(from, "^\\[Title\\] Shot goose #%d at \\([\\d.]+, [\\d.]+\\): it falls; no score, nothing saved \\(1 shot on the title\\)$" % goose.number, "the title shot is logged")
+	_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) #1: ", "the title heckle is logged")
+	var bubble := (title.get_node("Scenery/Bubble") as Label).get_global_rect()
+	var clear_of_buttons := ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"].all(func(button_name: String) -> bool: return not bubble.intersects((title.get_node("Safe/" + button_name) as Control).get_global_rect()))
+	_check(_game.safe_rect().grow(0.5).encloses(bubble) and clear_of_buttons and (title.get_node("Scenery/Bubble") as Label).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the title's heckle bubble is inside the safe area, clear of the buttons, ignoring touches", str(bubble))
+	var fell := [false]
+	goose.gone.connect(func(_b: Bird) -> void: fell[0] = true)
+	for i in 240:
+		if not is_instance_valid(goose):
+			break
+		await process_frame
+	_check(fell[0], "the shot goose falls off the screen", "still there")
+	# Empty sky: a point of the band no goose covers.
+	var band := title.goose_band()
+	var empty := Vector2.INF
+	for x in range(int(band.position.x) + 40, int(band.end.x) - 40, 30):
+		var point := Vector2(x, band.get_center().y)
+		if title.goose_at(point) == null and title.flying_geese().all(func(other: Bird) -> bool: return other.position.distance_to(point) > 90.0):
+			empty = point
+			break
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	var feathers_now := title.feathers().live_count()
+	await _touch(scenery.to_global(empty))
+	_check(_game.sfx_log.slice(sounds) == [&"shot"] and title.geese_shot == 1 and title.feathers().live_count() <= feathers_now, "a tap on empty sky plays the shot only", str(_game.sfx_log.slice(sounds)))
+	_check_logged(from, "^\\[Title\\] Shot at \\([\\d.]+, [\\d.]+\\): missed$", "the empty shot is logged")
+	var second := await _title_goose_in_view(title)
+	if second != null:
+		second.set_process(false)
+		from = _log.size()
+		await _touch(scenery.to_global(second.transform * LOCAL_BODY))
+		second.set_process(true)
+		_check(title.geese_shot == 2 and title.rival_pose() == "sulk", "a second goose is shot and the rival sulks again", "%d shot" % title.geese_shot)
+		_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) skipped: cooldown, ", "inside the cooldown the rival keeps quiet (logged)")
+	_check(FileAccess.get_file_as_string(_game.save_path) == save_before and _game.bests == bests_before, "nothing is saved and no best changes", "save changed")
+	_check(not Array(_log.since(shots_from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")), "title shots write no save", "a save line")
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	await _tap(title.get_node("Safe/CreditsButton") as Control)
+	_check(title.credits_presses == 1 and not &"shot" in _game.sfx_log.slice(sounds) and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Title] Shot")), "a tap on a button only presses it", str(_game.sfx_log.slice(sounds)))
+	await _game.transition_finished
+	_clear_tool_save()
+
+
+## Waits (at most 6 s) for a title goose wholly inside the visible area and inside the
+## shot surface; null if none came.
+func _title_goose_in_view(title: Title) -> Bird:
+	var scenery := title.get_node("Scenery") as Node2D
+	for i in 360:
+		for goose in title.flying_geese():
+			var box := scenery.get_global_transform() * Rect2(goose.position - goose.spec.size / 2.0, goose.spec.size)
+			if _game.visible_rect().grow(-20.0).encloses(box):
+				return goose
+		await process_frame
+	return null
+
+
+## Screen changes use the marsh-grass wipe: it rises over the screen in WIPE_TIME (at most
+## 0.4 s), the scene changes under full cover, it sinks away in WIPE_TIME; the cover's own
+## colour stays invisible and it blocks touches throughout; goto still logs both ends.
+## With reduce motion a plain fade takes FADE_TIME each way and the wipe never shows
+## (plan ACs 3, 8).
+func _test_transition_wipe_and_fade() -> void:
+	await _open_title()
+	var cover := _game.get_node("Fade/Cover") as ColorRect
+	var wipe := _game.get_node("Fade/Cover/Wipe") as Wipe
+	_check(GameState.WIPE_TIME <= 0.4 and GameState.WIPE_TIME > 0.0, "the wipe takes at most 0.4 s each way", str(GameState.WIPE_TIME))
+	for reduce: bool in [false, true]:
+		_game.reduce_motion = reduce
+		await _open_title()
+		var title := current_scene as Title
+		var from := _log.size()
+		var changed := [false]
+		var on_change := func() -> void: changed[0] = true
+		scene_changed.connect(on_change, CONNECT_ONE_SHOT)
+		_game.goto(GameState.Flow.TITLE)
+		var in_frames := 0
+		var out_frames := 0
+		var coverage: Array[float] = []
+		var styles: Array[String] = []
+		var blocked := true
+		var wipe_shown := false
+		var mid_edge := -1.0
+		while _game.is_transitioning():
+			await process_frame
+			if changed[0]:
+				out_frames += 1
+			else:
+				in_frames += 1
+			coverage.append(_game.cover_progress())
+			styles.append(_game.transition_style())
+			blocked = blocked and (not cover.visible or cover.mouse_filter == Control.MOUSE_FILTER_STOP)
+			wipe_shown = wipe_shown or wipe.visible
+			if not reduce and wipe.coverage() > 0.3 and wipe.coverage() < 0.7 and mid_edge < 0.0:
+				mid_edge = wipe.edge_y()
+		var time := GameState.FADE_TIME if reduce else GameState.WIPE_TIME
+		var label := "reduce motion: plain fade" if reduce else "the wipe"
+		var expected_frames := roundi(time / FRAME)
+		_check(in_frames >= expected_frames and in_frames <= expected_frames + 3 and out_frames >= expected_frames and out_frames <= expected_frames + 3, "%s covers in %.2f s and clears in %.2f s" % [label, time, time], "%d frames in, %d out (expected %d)" % [in_frames, out_frames, expected_frames])
+		_check(coverage.max() >= 0.999 and is_zero_approx(coverage.back()) and is_zero_approx(_game.cover_progress()), "%s covers the screen fully, then clears" % label, str(coverage))
+		_check(styles.all(func(style: String) -> bool: return style == ("fade" if reduce else "wipe")), "%s is the transition style throughout" % label, str(styles.slice(0, 3)))
+		_check(blocked and not cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_IGNORE, "%s blocks touches while it runs and lets them through after" % label, "blocked %s" % blocked)
+		_check(wipe_shown != reduce, "the grass wipe shows only without reduce motion", "wipe shown %s" % wipe_shown)
+		if reduce:
+			_check_logged(from, "^\\[Game\\] Transition: plain fade, 0\\.15 s in and 0\\.15 s out \\(reduce motion\\)$", "the fade is logged")
+		else:
+			_check_logged(from, "^\\[Game\\] Transition: marsh-grass wipe, 0\\.35 s in and 0\\.35 s out$", "the wipe is logged")
+			_check(mid_edge > 0.0 and mid_edge < _game.visible_rect().size.y, "half way in, the grass's edge is inside the screen (it rises from the bottom)", "edge %.1f" % mid_edge)
+			_check(is_zero_approx(cover.self_modulate.a), "under the wipe the cover's own colour stays invisible", str(cover.self_modulate))
+		_check_logged(from, "^\\[Game\\] goto TITLE -> TITLE ", "goto still logs its start")
+		_check_logged(from, "^\\[Game\\] Arrived at TITLE$", "goto still logs its arrival")
+		# A tap on a button during the transition presses nothing.
+		title = current_scene as Title
+		_game.goto(GameState.Flow.TITLE)
+		await process_frame
+		await process_frame
+		await _tap(title.get_node("Safe/CampaignButton") as Control)
+		_check(title.campaign_presses == 0, "%s: a tap during the transition presses nothing" % label, "%d presses" % title.campaign_presses)
+		await _game.transition_finished
+	_game.reduce_motion = false
