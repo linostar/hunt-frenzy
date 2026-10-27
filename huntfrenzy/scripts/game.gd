@@ -3,8 +3,9 @@ extends Node
 ## Autoload "Game" (scenes/game.tscn): the app flow state machine and its scene
 ## transitions, the save (the best score of each mode, the campaign progress and the settings),
 ## ScreenFit (the visible and safe-area rects in base units) and the rotate overlay.
-## Every flow change goes through goto(), which fades a cover over the screen
-## (touches blocked), swaps the scene, fades the cover away and logs the transition
+## Every flow change goes through goto(), which covers the screen (the marsh-grass wipe, or
+## a plain fade with reduce motion; touches blocked), swaps the scene, uncovers it and logs
+## the transition
 ## ("[Game] goto A -> B ..." when it starts, "[Game] Arrived at B" when it is done).
 ## A flow state whose scene is missing is reported with push_error and the visible
 ## error label instead of crashing.
@@ -160,8 +161,11 @@ window.huntFrenzyCheckPersisted = function (dbName, key, expected, timeoutMs, ch
 ## The base viewport (project.godot display/window/size): the playfield is laid out
 ## in it and is never cropped (aspect expand only adds room).
 const BASE_SIZE := Vector2(960, 540)
-## Seconds the cover takes to fade in, and again to fade out.
+## Seconds the plain fade (reduce motion) takes to cover the screen, and again to clear it.
 const FADE_TIME := 0.15
+## Seconds the marsh-grass wipe (Wipe) takes to rise over the screen, and again to sink
+## away (at most 0.4 each: plan AC 3).
+const WIPE_TIME := 0.35
 ## The project setting naming the UI theme every scene uses.
 const THEME_SETTING := "gui/theme/custom"
 ## The audio buses (default_bus_layout.tres): every music player is on MUSIC_BUS, every
@@ -281,6 +285,8 @@ var audio_paused := false
 var held_sounds := 0
 
 var _transitioning := false
+## How the current (or last) screen change covers the screen: "wipe" or "fade".
+var _transition_style := ""
 ## The campaign entries the last load dropped, one log message each (load_game backs the
 ## original up, then writes the save back without them).
 var _dropped_entries: Array[String] = []
@@ -315,6 +321,7 @@ var _music_current := 0
 var _music_fade: Tween
 
 @onready var _cover: ColorRect = $Fade/Cover
+@onready var _wipe: Wipe = $Fade/Cover/Wipe
 @onready var _error_label: Label = $Fade/ErrorLabel
 @onready var _rotate_overlay: Control = $RotateLayer/RotateOverlay
 
@@ -407,9 +414,10 @@ static func fit_window_rect(base: Vector2i, density: float, usable: Rect2i, fram
 	return Rect2i(framed_position + client_offset, client)
 
 
-## Fades to the scene of `new_state`, passing `args` through flow_args: the cover
-## fades in (FADE_TIME), the scene changes, then the cover fades out, and
-## transition_finished fires. Touches are blocked until then. Ignored (with a log
+## Changes to the scene of `new_state`, passing `args` through flow_args: the marsh-grass
+## wipe rises over the screen (WIPE_TIME), the scene changes, then it sinks away
+## (WIPE_TIME), and transition_finished fires; with reduce motion on a plain fade does the
+## same (FADE_TIME each way). Logged with the style. Touches are blocked until then. Ignored (with a log
 ## line) while a transition is running. A scene that does not exist, or that needs a file
 ## that does not exist (missing_dependencies: checked before anything is loaded), is
 ## reported with the file named and nothing changes.
@@ -434,8 +442,7 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 	play_music(track)
 	_log_transition("%s -> %s (%s) args=%s" % [from_name, to_name, path, args])
 	_error_label.hide()
-	_cover.mouse_filter = Control.MOUSE_FILTER_STOP
-	_cover.show()
+	_start_cover()
 	await _fade_to(1.0)
 	var error := get_tree().change_scene_to_file(path)
 	if error != OK:
@@ -993,20 +1000,55 @@ func is_transitioning() -> bool:
 	return _transitioning
 
 
-## How far the cover hides the screen: 0 clear, 1 covered (tests read it).
+## How far the cover hides the screen: 0 clear, 1 covered (tests read it): the wipe's
+## coverage, or the fade's alpha.
 func cover_progress() -> float:
-	return _cover.modulate.a
+	if not _cover.visible:
+		return 0.0
+	return _wipe.coverage() if _transition_style == "wipe" else _cover.modulate.a
 
 
-func _fade_to(alpha: float) -> void:
+## The style of the current (or last) screen change: "wipe", or "fade" with reduce motion.
+func transition_style() -> String:
+	return _transition_style
+
+
+## Shows the cover (it stops touches) for a screen change in the style reduce_motion asks
+## for: the wipe draws the grass over an invisible cover, the fade fades the cover's colour.
+func _start_cover() -> void:
+	_transition_style = "fade" if reduce_motion else "wipe"
+	_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cover.show()
+	if _transition_style == "wipe":
+		_cover.modulate.a = 1.0
+		_cover.self_modulate.a = 0.0
+		_wipe.progress = 0.0
+		_wipe.show()
+		print("[Game] Transition: marsh-grass wipe, %.2f s in and %.2f s out" % [WIPE_TIME, WIPE_TIME])
+	else:
+		_cover.modulate.a = 0.0
+		_cover.self_modulate.a = 1.0
+		_wipe.hide()
+		print("[Game] Transition: plain fade, %.2f s in and %.2f s out (reduce motion)" % [FADE_TIME, FADE_TIME])
+
+
+## Covers the screen (`amount` 1) or clears it (0): the wipe rises or sinks away, the fade
+## fades in or out.
+func _fade_to(amount: float) -> void:
 	var tween := create_tween()
-	tween.tween_property(_cover, "modulate:a", alpha, FADE_TIME)
+	if _transition_style == "wipe":
+		tween.tween_property(_wipe, "progress", 1.0 if amount > 0.0 else 2.0, WIPE_TIME)
+	else:
+		tween.tween_property(_cover, "modulate:a", amount, FADE_TIME)
 	await tween.finished
 
 
 func _end_fade() -> void:
 	_cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_cover.hide()
+	_cover.modulate.a = 0.0
+	_wipe.hide()
+	_wipe.progress = 0.0
 	_transitioning = false
 
 
