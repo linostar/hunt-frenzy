@@ -246,6 +246,7 @@ func _tests() -> Array[Callable]:
 		_test_pause_menu_mutes,
 		_test_pause_holds_sounds_and_ducks_music,
 		_test_audio_missing_files_reported,
+		_test_dropped_taps_are_silent,
 	]
 
 
@@ -4293,6 +4294,54 @@ func _test_audio_missing_files_reported() -> void:
 	_check(_game.check_audio(), "with every file back the audio check passes", "")
 	_game.quiet_errors = false
 	label.hide()
+
+
+## Taps the game drops play no shot sound: during a transition, under the pause menu and
+## under the rotate overlay, a real touch on the sky and a shot that reaches the play scene
+## anyway (ShotInput.shot), with shells and with an empty pool, play neither "shot" nor
+## "empty_click" and count no shot (the pause button's tap is _test_audio_every_event_sound's).
+func _test_dropped_taps_are_silent() -> void:
+	var play := await _start_run(94)
+	_game.goto(GameState.Flow.TITLE)
+	await process_frame
+	_check(_game.is_transitioning(), "a transition is running", "")
+	await _check_dropped_taps(play, "during a transition")
+	_check(_game.is_transitioning(), "the taps were all made during the transition", "it finished first")
+	await _game.transition_finished
+	play = await _start_run(95)
+	play.open_pause("test")
+	await process_frame
+	await _check_dropped_taps(play, "under the pause menu")
+	play.resume()
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.is_rotate_overlay_shown(), "the rotate overlay shows", "")
+	await _check_dropped_taps(play, "under the rotate overlay")
+	root.size = BASE_WINDOW
+	await process_frame
+	play.resume()
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## A real touch on the sky and a shot emitted straight into `play` (with shells, then with
+## an empty pool) play no "shot" or "empty_click" and count no shot, `where` the game drops
+## taps. The pool is restored after.
+func _check_dropped_taps(play: Play, where: String) -> void:
+	var shells := play.ammo.shells
+	var shots := play.scoring.shots()
+	var refused := play.refused
+	var shot := (play.get_node("ShotInput") as ShotInput).shot
+	var at := _global(play, SKY_POINTS[0])
+	for pool: int in [shells, 0]:
+		play.set_shell_pool(pool)
+		_game.sfx_log.clear()
+		await _touch(at)
+		shot.emit(at)
+		var heard := _game.sfx_log.filter(func(id: StringName) -> bool: return id == &"shot" or id == &"empty_click")
+		_check(heard.is_empty() and play.scoring.shots() == shots and play.refused == refused, "a tap %s plays no shot sound (%s)" % [where, "empty pool" if pool == 0 else "%d shells" % pool],
+			"%s, %d shots, %d refused" % [_game.sfx_log, play.scoring.shots() - shots, play.refused - refused])
+	play.set_shell_pool(shells)
 
 
 ## The sounds `action` plays, at once (it is called with sfx_log cleared).
