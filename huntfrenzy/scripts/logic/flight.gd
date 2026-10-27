@@ -17,6 +17,9 @@ extends RefCounted
 ## Launched birds (a splitter's goslings) start at a given point (`from`, kept inside the
 ## cruise band) on a given heading instead of below the grass, and bounce inside the band
 ## from there; split_headings() gives the goslings' diverging headings.
+## Crossing birds (the title's geese) take a different, level path: from just beyond one
+## side of a `band` to beyond the other at a seeded height inside it, wobbling up and down,
+## never leaving it vertically (crossing_position, crossing_transform, has_crossed).
 
 const FLIGHT_ANGLE_MIN := deg_to_rad(30.0)
 const FLIGHT_ANGLE_MAX := deg_to_rad(60.0)
@@ -33,6 +36,9 @@ const ZIGZAG_INTERVAL_MAX := 0.8
 const SPLIT_FAN := deg_to_rad(100.0)
 ## `from` for a bird that is not launched (it rises from below the grass).
 const NOT_LAUNCHED := Vector2.INF
+## A crossing bird's speed is its spec's x a seeded factor in this range.
+const CROSSING_SPEED_MIN := 0.85
+const CROSSING_SPEED_MAX := 1.15
 
 
 ## The bird's centre at `age`. `from` and `heading` launch it from a point (goslings).
@@ -183,3 +189,44 @@ static func _bounce(value: float, low: float, high: float) -> float:
 		return low
 	var folded := fposmod(value - low, 2.0 * span)
 	return low + (folded if folded <= span else 2.0 * span - folded)
+
+
+## A crossing bird's centre at `age`: it enters beyond one side of `band` (a seeded side)
+## and flies level to beyond the other at its spec's speed x a seeded CROSSING_SPEED_MIN..MAX
+## factor x `speed_scale`, at a seeded height, wobbling (spec.wobble at spec.wobble_hz, a
+## seeded phase, the amplitude cut to what the band leaves room for); its whole sprite
+## stays inside the band vertically. A band too short for the sprite keeps it centred.
+static func crossing_position(spec: BirdSpec, bird_seed: int, age: float, band: Rect2, speed_scale := 1.0) -> Vector2:
+	var plan := _crossing(spec, bird_seed, band, speed_scale)
+	var x: float = plan["start_x"] + plan["direction"] * plan["speed"] * age
+	return Vector2(x, plan["y"] + plan["wobble"] * sin(TAU * spec.wobble_hz * age + plan["phase"]))
+
+
+## A crossing bird's transform at `age`: its centre and its facing (x scale -1 flying left),
+## level (no tilt), so its sprite's box is its spec size around the centre.
+static func crossing_transform(spec: BirdSpec, bird_seed: int, age: float, band: Rect2, speed_scale := 1.0) -> Transform2D:
+	var facing: float = _crossing(spec, bird_seed, band, speed_scale)["direction"]
+	return Transform2D(0.0, Vector2(facing, 1.0), 0.0, crossing_position(spec, bird_seed, age, band, speed_scale))
+
+
+## True once a crossing bird's whole sprite is past the far side of `band`.
+static func has_crossed(spec: BirdSpec, bird_seed: int, age: float, band: Rect2, speed_scale := 1.0) -> bool:
+	var plan := _crossing(spec, bird_seed, band, speed_scale)
+	var x := crossing_position(spec, bird_seed, age, band, speed_scale).x
+	return x - spec.size.x / 2.0 > band.end.x if plan["direction"] > 0.0 else x + spec.size.x / 2.0 < band.position.x
+
+
+## A crossing bird's seeded plan: direction (1 right, -1 left), start x, speed, the height
+## of its centre line, its wobble amplitude and phase.
+static func _crossing(spec: BirdSpec, bird_seed: int, band: Rect2, speed_scale: float) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([bird_seed, "crossing"])
+	var direction := 1.0 if rng.randf() < 0.5 else -1.0
+	var speed := spec.speed * speed_scale * rng.randf_range(CROSSING_SPEED_MIN, CROSSING_SPEED_MAX)
+	var room := maxf(band.size.y - spec.size.y, 0.0)
+	var wobble := minf(spec.wobble, room / 2.0)
+	var low := band.position.y + spec.size.y / 2.0 + wobble
+	var high := band.end.y - spec.size.y / 2.0 - wobble
+	var y := lerpf(low, high, rng.randf()) if high >= low else band.get_center().y
+	var start_x := band.position.x - spec.size.x / 2.0 if direction > 0.0 else band.end.x + spec.size.x / 2.0
+	return {"direction": direction, "start_x": start_x, "speed": speed, "y": y, "wobble": wobble, "phase": rng.randf_range(0.0, TAU)}

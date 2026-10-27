@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
+[ext_resource type="Script" path="res://scripts/wipe.gd" id="2_wipe"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_error"]
 content_margin_left = 8.0
@@ -31,6 +32,17 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 color = Color(0.067, 0.059, 0.094, 1)
+
+[node name="Wipe" type="Control" parent="Fade/Cover"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("2_wipe")
 
 [node name="ErrorLabel" type="Label" parent="Fade"]
 visible = false

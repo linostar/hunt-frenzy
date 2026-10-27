@@ -224,8 +224,10 @@ func _tests() -> Array[Callable]:
 		_test_campaign_wave_schedule,
 		_test_campaign_stars_unlocks_and_best,
 		_test_campaign_record_level,
-		_test_save_v1_migrates_to_v3,
-		_test_save_v2_migrates_to_v3,
+		_test_save_v1_migrates_to_v4,
+		_test_save_v2_migrates_to_v4,
+		_test_save_v3_migrates_to_v4,
+		_test_save_reduce_motion_strict,
 		_test_save_settings_and_bad_entries,
 		_test_campaign_level_plays_all_waves,
 		_test_campaign_pass_next_retry_levels,
@@ -250,6 +252,18 @@ func _tests() -> Array[Callable]:
 		_test_pause_keeps_every_held_sound,
 		_test_frequent_sounds_vary_in_pitch,
 		_test_audio_unloadable_files_reported,
+		_test_settings_screen,
+		_test_settings_over_paused_run,
+		_test_credits_screen,
+		_test_title_scenery_and_geese,
+		_test_title_goose_shot,
+		_test_transition_wipe_and_fade,
+		_test_hit_stop,
+		_test_feathers,
+		_test_screen_shake,
+		_test_popup_motion,
+		_test_reduce_motion_everywhere,
+		_test_slider_hold_cut_short,
 	]
 
 
@@ -405,17 +419,21 @@ func _test_fit_window_rect() -> void:
 	_check(full_hd.size == base, "fit_window_rect leaves a roomy 1x screen unchanged", str(full_hd))
 
 
-## The title's Campaign, Endless and Time Attack buttons: in a row, at least 44x44, their
-## text inside them, inside the safe area, with a visible focus style, at 16:9, 19.5:9 and
-## 4:3; Campaign is focused on arrival (no ring), Tab and right move Campaign -> Endless ->
-## Time Attack -> Campaign, left goes the other way.
+## The title's Campaign, Endless and Time Attack buttons in a row and Settings and Credits
+## in a row below them: at least 44x44, their text inside them, inside the safe area, with
+## a visible focus style, at 16:9, 19.5:9 and 4:3; Campaign is focused on arrival (no ring),
+## right moves Campaign -> Endless -> Time Attack -> Campaign, left goes the other way, Tab
+## runs Campaign -> Endless -> Time Attack -> Settings -> Credits -> Campaign, Down from the
+## first row reaches the second and Up returns.
 func _test_title_button_layout() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var buttons := _title_buttons(title)
 	var campaign := buttons[0]
+	var second_row: Array[Button] = [title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button]
 	_check(campaign.has_focus(), "title focuses Campaign on arrival", str(root.gui_get_focus_owner()))
-	for button: Button in buttons:
+	_check(second_row.map(func(button: Button) -> String: return button.text) == ["Settings", "Credits"], "the title offers Settings and Credits", str(second_row.map(func(button: Button) -> String: return button.text)))
+	for button: Button in buttons + second_row:
 		var focus_style := button.get_theme_stylebox(&"focus")
 		_check(focus_style != null and not (focus_style is StyleBoxEmpty), "%s has a visible focus style" % button.name, str(focus_style))
 		_check(button.focus_mode == Control.FOCUS_ALL, "%s takes keyboard focus" % button.name, str(button.focus_mode))
@@ -424,17 +442,28 @@ func _test_title_button_layout() -> void:
 	_check(not campaign.has_focus(true), "the focus ring is hidden on arrival (no stray ring on phones)", "focus visible")
 	for key: Key in [KEY_TAB, KEY_RIGHT, KEY_LEFT]:
 		var order: Array[Button] = []
-		order.assign([buttons[1], buttons[2], buttons[0]] if key != KEY_LEFT else [buttons[2], buttons[1], buttons[0]])
+		match key:
+			KEY_TAB:
+				order.assign([buttons[1], buttons[2], second_row[0], second_row[1], buttons[0]])
+			KEY_RIGHT:
+				order.assign([buttons[1], buttons[2], buttons[0]])
+			_:
+				order.assign([buttons[2], buttons[1], buttons[0]])
 		var reached: Array[String] = []
 		for i in order.size():
 			await _key(key)
 			reached.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
-		_check(reached == order.map(func(button: Button) -> String: return str(button.name)) and campaign.has_focus(true), "%s cycles the focus through the three buttons, the ring shown" % OS.get_keycode_string(key), str(reached))
+		_check(reached == order.map(func(button: Button) -> String: return str(button.name)) and campaign.has_focus(true), "%s cycles the focus through %d buttons, the ring shown" % [OS.get_keycode_string(key), order.size()], str(reached))
+	var vertical: Array[String] = []
+	for key: Key in [KEY_DOWN, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_DOWN]:
+		await _key(key)
+		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+	_check(vertical == ["SettingsButton", "CreditsButton", "TimeAttackButton", "CreditsButton", "TimeAttackButton"], "Down and Up move between the two rows, Right along the second", str(vertical))
 	for window in LANDSCAPE_WINDOWS:
 		root.size = window
 		await process_frame
 		await process_frame
-		for button: Button in buttons:
+		for button: Button in buttons + second_row:
 			var label := "%dx%d %s" % [window.x, window.y, button.name]
 			var rect := button.get_global_rect()
 			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and button.get_combined_minimum_size().x <= rect.size.x + 0.5 and button.get_combined_minimum_size().y <= rect.size.y + 0.5, label + " size, its text inside", "%s, text needs %s" % [rect.size, button.get_combined_minimum_size()])
@@ -475,7 +504,8 @@ func _test_title_follows_notched_safe_area() -> void:
 	await process_frame
 	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
 	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
-	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless and Time Attack are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
+	buttons.append_array([title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button])
+	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless, Time Attack, Settings and Credits are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -772,7 +802,7 @@ func _test_save_and_reload() -> void:
 	_game.load_game()
 	_check(_game.best(GameState.ENDLESS_MODE) == 1234 and _game.best(GameState.TIME_ATTACK_MODE) == 5678, "each mode's best survives a save and reload", str(_game.bests))
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 3.0 and GameState.SAVE_VERSION == 3 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless"), "the save is version 3 with a best per mode", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and GameState.SAVE_VERSION == 4 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless") and saved.get("settings", {}).get("reduce_motion") == false, "the save is version 4 with a best per mode and reduce_motion", str(saved))
 	var endless := Content.mode(GameState.ENDLESS_MODE)
 	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
 	_check(not _game.record_best(endless, 1000) and _game.best(GameState.ENDLESS_MODE) == 1234, "a lower score is not a best", str(_game.bests))
@@ -790,7 +820,7 @@ func _test_save_and_reload() -> void:
 func _test_save_corrupt_and_unknown_version() -> void:
 	var cases := {
 		"{not json": "corrupt (line",
-		JSON.stringify({"version": 4, "best_endless": 5}): "version 4 is newer than this game's 3",
+		JSON.stringify({"version": 5, "best_endless": 5}): "version 5 is newer than this game's 4",
 		JSON.stringify({"version": 0, "best_endless": 5}): "'version' is not a whole number >= 1",
 		JSON.stringify({"version": 1, "best_endless": "lots"}): "bests.endless lots is not a whole number 0..999999999",
 		JSON.stringify({"version": 1, "best_endless": 5, "coins": 3}): "unknown key 'coins'",
@@ -1074,14 +1104,14 @@ func _test_pause_causes_and_resume() -> void:
 
 
 ## The menu's buttons: >= 44x44, focusable with a visible focus style, the ring shown
-## after Tab, Up/Down cycling Resume, Restart and Quit.
+## after Tab, Up/Down cycling Resume, Restart, Quit, Settings and the Music toggle.
 func _test_pause_menu_keyboard() -> void:
 	var play := await _start_run(32)
 	play.open_pause("test")
 	await process_frame
 	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
-	var buttons: Array[Button] = [panel.get_node("ResumeButton"), panel.get_node("RestartButton"), panel.get_node("QuitButton")]
-	_check(buttons.map(func(b: Button) -> String: return b.text) == ["Resume", "Restart", "Quit to title"], "the menu holds Resume, Restart and Quit to title", str(buttons.map(func(b: Button) -> String: return b.text)))
+	var buttons: Array[Button] = [panel.get_node("ResumeButton"), panel.get_node("RestartButton"), panel.get_node("QuitButton"), panel.get_node("SettingsButton")]
+	_check(buttons.map(func(b: Button) -> String: return b.text) == ["Resume", "Restart", "Quit to title", "Settings"], "the menu holds Resume, Restart, Quit to title and Settings", str(buttons.map(func(b: Button) -> String: return b.text)))
 	for button in buttons:
 		var rect := button.get_global_rect()
 		var style := button.get_theme_stylebox(&"focus")
@@ -1090,10 +1120,10 @@ func _test_pause_menu_keyboard() -> void:
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == buttons[1] and buttons[1].has_focus(true), "Tab moves to Restart and shows the ring", str(root.gui_get_focus_owner()))
 	var order := []
-	for i in 4:
+	for i in 5:
 		await _key(KEY_DOWN)
 		order.append((root.gui_get_focus_owner() as Button).text)
-	_check(order == ["Quit to title", "Music: on", "Resume", "Restart"], "Down cycles through the menu and its Music toggle", str(order))
+	_check(order == ["Quit to title", "Settings", "Music: on", "Resume", "Restart"], "Down cycles through the menu, Settings and its Music toggle", str(order))
 	await _key(KEY_UP)
 	_check(root.gui_get_focus_owner() == buttons[0], "Up moves back", str(root.gui_get_focus_owner()))
 	await _key(KEY_UP)
@@ -1102,6 +1132,10 @@ func _test_pause_menu_keyboard() -> void:
 	_check(root.gui_get_focus_owner() == music_toggle, "Up from Resume reaches the Music toggle", str(root.gui_get_focus_owner()))
 	await _key(KEY_RIGHT)
 	_check(root.gui_get_focus_owner() == sfx_toggle, "Right reaches the SFX toggle", str(root.gui_get_focus_owner()))
+	await _key(KEY_UP)
+	_check(root.gui_get_focus_owner() == buttons[3], "Up from the SFX toggle reaches Settings", str(root.gui_get_focus_owner()))
+	await _key(KEY_DOWN)
+	await _key(KEY_RIGHT)
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == buttons[0], "Tab from the SFX toggle wraps to Resume", str(root.gui_get_focus_owner()))
 	play.resume()
@@ -1204,7 +1238,7 @@ func _test_run_ends_on_results() -> void:
 	var stats := _game.flow_args
 	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 100, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 100, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
 	var stolen: int = stats.get("stolen", -1)
 	var rival_score: int = stats.get("rival_score", -1)
 	var steal_line := RegEx.create_from_string("^\\[Play\\] Stolen \\w+ #\\d+ by the rival after a [\\d.]+ s cue: (\\d+) points to the rival")
@@ -1624,10 +1658,11 @@ func _test_time_attack_waves_on_clear() -> void:
 	for bird in play.flying_birds():
 		await _touch(_global(play, bird.transform * LOCAL_BODY))
 	var frames := 0
-	while play.wave.index == 1 and frames < 5:
+	while play.wave.index == 1 and frames < 10:
 		await process_frame
 		frames += 1
-	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1, "the next wave starts as soon as the last one is cleared", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
+	# The last kill's hit stop holds everything, the wave's end included, for its own time.
+	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1 + ceili(Play.HIT_STOP_TIME / FRAME), "the next wave starts as soon as the last one is cleared (after the last kill's hit stop)", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
 	_check(play.ammo.shells == play.wave.shells and play.wave.shells == Wave.for_mode(play.mode, 2, 54).shells and play.wave.shells > 0, "the new wave has a full pool of its own shells", "%d of %d" % [play.ammo.shells, play.wave.shells])
 	_check_logged(from, "^\\[Play\\] Wave 2 start: 4 birds \\([a-z, ]+\\), %d shells, speed x1\\.06, [\\d.]+ s left$" % play.wave.shells, "the wave start is logged with its shells and the time left")
 	var score := play.scoring.score
@@ -1755,14 +1790,19 @@ func _test_time_attack_leftover_overlaps_next_wave() -> void:
 			if bird.is_flying():
 				await _touch(_global(play, bird.transform * LOCAL_BODY))
 	var frames := 0
-	while play.wave.index == 2 and frames < 5:
+	while play.wave.index == 2 and frames < 10:
 		await process_frame
 		frames += 1
-	_check(play.wave.index == 3 and frames <= 1 and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
+	_check(play.wave.index == 3 and frames <= 1 + ceili(Play.HIT_STOP_HEAVY_TIME / FRAME) and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
 	var score := play.scoring.score
 	var from := _log.size()
 	leftover.set_process(true)
 	leftover.age = IN_FIELD_AGE
+	# It was held by the hit stops while its processing was off; let the hold run out.
+	for i in 10:
+		if not leftover.is_held():
+			break
+		await process_frame
 	await process_frame
 	await _touch(_global(play, leftover.transform * LOCAL_BODY))
 	_check(not leftover.is_flying() and play.scoring.score > score, "a leftover hit with the next wave's shells scores", "score %d -> %d" % [score, play.scoring.score])
@@ -1849,7 +1889,7 @@ func _test_time_attack_results() -> void:
 	var stats := _game.flow_args
 	_check(stats.get("mode") == GameState.TIME_ATTACK_MODE and stats.get("score") == 100 and stats.get("best") == 100 and stats.get("new_best") == true and stats.get("rival_steals") == false and stats.get("stolen") == 0 and stats.get("save_error") == "", "the results get the Time Attack run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Time Attack best: 100 \\(was 0\\)$", "the new Time Attack best is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
 	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 56, wave \\d+, time used 60\\.00 of 60\\.00 s, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, %d escaped \\(0 stolen\\), rival score 0, best 100 \\(new best\\)$" % stats.get("escaped", -1), "the run end is logged with the waves, the time used and the score")
 	_check_logged(from, "^\\[Results\\] Mode time_attack: best 100, new best$", "the results log the mode and its best")
 	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
@@ -3091,7 +3131,7 @@ func _test_campaign_record_level() -> void:
 	_check(_game.record_level(dawn_1, 1500), "a first finish with points is a new best", "")
 	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's stars and score are recorded", str(_game.progress.keys()))
 	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 1500, 2 stars \\(passed\\); best 2 stars, score 1500 \\(was never finished\\); dawn_2 unlocked$", "the finished level is logged with its stars, score and unlock")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 0, Time Attack best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
 	_check(saved is Dictionary and saved.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}}, "the save holds the level's best", str(saved))
 	from = _log.size()
@@ -3106,11 +3146,11 @@ func _test_campaign_record_level() -> void:
 	_clear_tool_save()
 
 
-## A version 1 save (the Endless best only) is upgraded through version 2 to version 3: the
+## A version 1 save (the Endless best only) is upgraded through versions 2 and 3 to 4: the
 ## best is kept as the Endless best (Time Attack 0), no level is finished, the settings take
-## their defaults, each step is logged, nothing is reported or backed up, and the upgraded
+## their defaults (reduce motion off), each step is logged, nothing is reported or backed up, and the upgraded
 ## save is written back at once.
-func _test_save_v1_migrates_to_v3() -> void:
+func _test_save_v1_migrates_to_v4() -> void:
 	_clear_tool_save()
 	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 1, "best_endless": 777}))
@@ -3126,18 +3166,20 @@ func _test_save_v1_migrates_to_v3() -> void:
 	_check_logged(from, "^\\[Game\\] Upgraded the save to version 2$", "the step to version 2 is logged")
 	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 777 kept as bests\\.endless, Time Attack best 0$", "the step 2 -> 3 is logged")
 	_check_logged(from, "^\\[Game\\] Upgraded the save to version 3$", "the step to version 3 is logged")
-	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 3, Endless best 777, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
-	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 3$", "writing the upgraded save is logged")
+	_check_logged(from, "^\\[Game\\] Save upgrade 3 -> 4: reduce_motion off, the bests, the campaign progress and the other settings kept$", "the step 3 -> 4 is logged")
+	_check_logged(from, "^\\[Game\\] Upgraded the save to version 4$", "the step to version 4 is logged")
+	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 4, Endless best 777, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 4$", "writing the upgraded save is logged")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 3.0 and saved.get("bests") == {"endless": 777.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false}, "the upgraded save is written as version 3", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 777.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false, "reduce_motion": false}, "the upgraded save is written as version 4", str(saved))
 	_clear_tool_save()
 
 
 ## A version 2 save (the Endless best, campaign progress and settings) is upgraded to
-## version 3: its Endless best becomes bests.endless (Time Attack 0), its progress and
+## version 4 (through 3): its Endless best becomes bests.endless (Time Attack 0), its progress and
 ## settings are kept, the step is logged, nothing is reported or backed up, and it is
 ## written back at once.
-func _test_save_v2_migrates_to_v3() -> void:
+func _test_save_v2_migrates_to_v4() -> void:
 	_clear_tool_save()
 	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 2, "best_endless": 4321, "levels": {"dawn_1": {"stars": 3, "score": 2100}}, "settings": {"music": 30, "sfx": 0, "music_muted": true, "sfx_muted": false}}))
@@ -3150,11 +3192,87 @@ func _test_save_v2_migrates_to_v3() -> void:
 	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v2 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2")), "a v2 save takes only the step 2 -> 3", "a 1 -> 2 line")
 	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 4321 kept as bests\\.endless, Time Attack best 0$", "the v2 -> v3 step is logged")
-	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 2 as version 3$", "writing the v2 save as v3 is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 4321, Time Attack best 0, 1 levels finished \\(3 stars\\), music 30 muted, sfx 0$", "the upgraded v2 save is written back at once")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 2 as version 4$", "writing the v2 save as v4 is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 4321, Time Attack best 0, 1 levels finished \\(3 stars\\), music 30 muted, sfx 0$", "the upgraded v2 save is written back at once")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 3.0 and saved.get("bests") == {"endless": 4321.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {"dawn_1": {"stars": 3.0, "score": 2100.0}}, "the upgraded v2 save is written as version 3", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 4321.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {"dawn_1": {"stars": 3.0, "score": 2100.0}}, "the upgraded v2 save is written as version 4", str(saved))
 	_clear_tool_save()
+
+
+## A version 3 save (the step 8 format) is upgraded to version 4: its settings gain
+## reduce_motion (off) and everything else is kept; only the step 3 -> 4 runs, it is
+## logged, nothing is reported or backed up, and the save is written back at once.
+func _test_save_v3_migrates_to_v4() -> void:
+	_clear_tool_save()
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"version": 3, "bests": {"endless": 900, "time_attack": 450}, "levels": {"noon_1": {"stars": 2, "score": 3100}}, "settings": {"music": 40, "sfx": 60, "music_muted": false, "sfx_muted": true}}))
+	file.close()
+	_game.reduce_motion = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.load_game()
+	_check(_game.bests == {"endless": 900, "time_attack": 450} and _game.progress.keys() == ["noon_1"] and _game.progress["noon_1"].score == 3100 and _game.music_volume == 40 and _game.sfx_volume == 60 and not _game.music_muted and _game.sfx_muted and not _game.reduce_motion,
+		"a v3 save migrates keeping its bests, progress and settings, reduce motion off", "bests %s, %s, music %d, reduce motion %s" % [_game.bests, _game.progress.keys(), _game.music_volume, _game.reduce_motion])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v3 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2") or line.begins_with("[Game] Save upgrade 2 -> 3")), "a v3 save takes only the step 3 -> 4", "an earlier step logged")
+	_check_logged(from, "^\\[Game\\] Save upgrade 3 -> 4: reduce_motion off, the bests, the campaign progress and the other settings kept$", "the v3 -> v4 step is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 3 as version 4$", "writing the v3 save as v4 is logged")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 900.0, "time_attack": 450.0} and saved.get("levels") == {"noon_1": {"stars": 2.0, "score": 3100.0}} and saved.get("settings") == {"music": 40.0, "sfx": 60.0, "music_muted": false, "sfx_muted": true, "reduce_motion": false}, "the upgraded v3 save is written as version 4", str(saved))
+	_clear_tool_save()
+	_game.load_game()
+
+
+## reduce_motion round-trips through the save (and shows in the save's log summary); a v4
+## save whose settings lack it, carry an unknown key beside it or hold a non-bool is corrupt
+## (backed up, reported on the error label with the problem, replaced by a fresh save with
+## it off).
+func _test_save_reduce_motion_strict() -> void:
+	_clear_tool_save()
+	var from := _log.size()
+	_game.reduce_motion = true
+	_game.save_game()
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80, reduce motion$", "a save with reduce motion on says so in its log line")
+	_game.reduce_motion = false
+	_game.load_game()
+	_check(_game.reduce_motion, "reduce motion on survives a save and reload", str(_game.reduce_motion))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("settings", {}).get("reduce_motion") == true, "the save holds settings.reduce_motion", str(saved))
+	var settings := {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}
+	var missing := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": settings})
+	var extra_settings := settings.duplicate()
+	extra_settings["reduce_motion"] = false
+	extra_settings["shake"] = true
+	var extra := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": extra_settings})
+	var wrong_settings := settings.duplicate()
+	wrong_settings["reduce_motion"] = "yes"
+	var wrong := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": wrong_settings})
+	var numeric_settings := settings.duplicate()
+	numeric_settings["reduce_motion"] = 1
+	var numeric := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": numeric_settings})
+	var cases := {
+		missing: "settings must be exactly [\"music\", \"sfx\", \"music_muted\", \"sfx_muted\", \"reduce_motion\"]",
+		extra: "settings must be exactly [\"music\", \"sfx\", \"music_muted\", \"sfx_muted\", \"reduce_motion\"]",
+		wrong: "settings.reduce_motion is not true or false",
+		numeric: "settings.reduce_motion is not true or false",
+	}
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	for text: String in cases:
+		var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+		file.store_string(text)
+		file.close()
+		_game.reduce_motion = true
+		_game.quiet_errors = true
+		var errors := _game.reported_errors.size()
+		_game.load_game()
+		_game.quiet_errors = false
+		var message: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		_check(message.contains(cases[text]) and message.contains(_game.backup_path()) and error_label.text == message and FileAccess.get_file_as_string(_game.backup_path()) == text and not _game.reduce_motion and fresh is Dictionary and fresh.get("settings", {}).get("reduce_motion") == false,
+			"save %s: backed up, reported on the label, fresh with reduce motion off" % cases[text], message)
+	error_label.hide()
+	_clear_tool_save()
+	_game.load_game()
 
 
 ## The settings (volumes and mutes) round-trip through the save; a save whose settings or
@@ -3209,7 +3327,7 @@ func _test_save_settings_and_bad_entries() -> void:
 	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
 	_check_logged(from, "^\\[Game\\] Backed up the save with 6 dropped campaign entries to user://tool_save\\.dropped\\.json$", "the backup path is logged")
 	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("version") == 3.0 and rewritten.get("bests") == {"endless": 42.0, "time_attack": 0.0}, "the v2 save is written back as v3 without the dropped entries", str(rewritten))
+	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("version") == 4.0 and rewritten.get("bests") == {"endless": 42.0, "time_attack": 0.0}, "the v2 save is written back as v4 without the dropped entries", str(rewritten))
 	# A second save with a bad entry: its backup takes the next free name.
 	var second := JSON.stringify({"version": 2, "best_endless": 42, "levels": {"old_level": {"stars": 3, "score": 999}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
 	file = FileAccess.open(_game.save_path, FileAccess.WRITE)
@@ -3643,6 +3761,44 @@ func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
 			if control.focus_mode != Control.FOCUS_ALL or style == null or style is StyleBoxEmpty:
 				problems.append("%s has no visible keyboard focus" % control.name)
 		_check(problems.is_empty(), "%s %dx%d, safe %s: every button >= 44x44, focusable, inside the safe area, apart" % [screen.name, windows[i].x, windows[i].y, safe], "; ".join(problems))
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+
+
+## A screen's `controls` (buttons and sliders) and `labels` at 16:9, 19.5:9, 4:3, under a
+## notch and at a safe height of RESULTS_MIN_SAFE_HEIGHT: every control at least 44x44,
+## focusable with a visible focus ring (a Button's focus style; a TouchSlider draws the
+## Button one), inside the safe area, below the top HUD bar, apart from the others; every
+## label inside the safe area with all its text inside its rect (every wrapped line).
+func _check_screen_layout(screen: Control, controls: Array[Control], labels: Array[Label]) -> void:
+	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
+	for i in windows.size():
+		_game.safe_area_override = safes[i]
+		root.size = windows[i]
+		await process_frame
+		await process_frame
+		var safe := _game.safe_rect()
+		var problems: Array[String] = []
+		for control in controls:
+			var rect := control.get_global_rect()
+			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Play.HUD_BAR_HEIGHT:
+				problems.append("%s %s" % [control.name, rect])
+			for other in controls:
+				if other != control and rect.intersection(other.get_global_rect()).get_area() > 0.25:
+					problems.append("%s overlaps %s" % [control.name, other.name])
+			var style := control.get_theme_stylebox(&"focus", &"Button") if control is TouchSlider else control.get_theme_stylebox(&"focus")
+			if control.focus_mode != Control.FOCUS_ALL or style == null or style is StyleBoxEmpty:
+				problems.append("%s has no visible keyboard focus" % control.name)
+			if control is Button and (control as Button).get_combined_minimum_size().x > rect.size.x + 0.5:
+				problems.append("%s's text is wider than it" % control.name)
+		for label in labels:
+			var rect := label.get_global_rect()
+			var needed := label.get_line_count() * label.get_line_height() if label.autowrap_mode != TextServer.AUTOWRAP_OFF else int(label.get_combined_minimum_size().y)
+			if not safe.grow(0.5).encloses(rect) or needed > rect.size.y + 0.5 or (label.autowrap_mode == TextServer.AUTOWRAP_OFF and label.get_combined_minimum_size().x > rect.size.x + 0.5):
+				problems.append("%s %s needs %d high for %d lines" % [label.name, rect, needed, label.get_line_count()])
+		_check(problems.is_empty(), "%s %dx%d, safe %s: every control >= 44x44, focusable, inside the safe area, apart; every text inside its label" % [screen.name, windows[i].x, windows[i].y, safe], "; ".join(problems))
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -4463,3 +4619,967 @@ func _sounds_of(action: Callable) -> Array[StringName]:
 ## "sound xpitch @at, ..." of a blurt, for comparing and failure messages.
 func _plan_text(plan: Array[GameState.Syllable]) -> String:
 	return ", ".join(plan.map(func(syllable: GameState.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
+
+
+## The settings screen from the title's Settings button: its sliders, toggles and Back fit
+## (sizes, focus, safe area at every aspect, a notch and a short safe area), each setting
+## shows its state in text, the music slider is focused on arrival; Tab, Up and Down move
+## through it and Left/Right step a slider: the bus follows at once, it is logged, saved
+## and plays the UI tap; a touch and a drag set a slider live and save once, on release; the
+## toggles mute their bus or turn reduce motion on (saved, logged, shown); Back and Escape
+## return to the title with Settings focused (plan ACs 10, 11).
+func _test_settings_screen() -> void:
+	_clear_tool_save()
+	_game.load_game()
+	_game.save_game()
+	await _open_title()
+	var title := current_scene as Title
+	var from := _log.size()
+	await _tap(title.get_node("Safe/SettingsButton") as Control)
+	_check(title.settings_presses == 1 and _game.transition_log.back().begins_with("TITLE -> SETTINGS (res://scenes/settings.tscn)"), "a tap on Settings opens the settings through goto", str(_game.transition_log.back()))
+	_check_logged(from, "^\\[Title\\] Settings pressed \\(1\\); opening the settings$", "the Settings press is logged")
+	await _game.transition_finished
+	await process_frame
+	var settings := current_scene as Settings
+	_check(settings != null and _game.state == GameState.Flow.SETTINGS and not settings.overlay, "the settings screen shows", str(current_scene))
+	if settings == null:
+		return
+	_check_logged(from, "^\\[Settings\\] Opened from the title: music 70, sfx 80, reduce motion off$", "the settings' arrival is logged with every setting")
+	var music := settings.get_node("Safe/MusicSlider") as TouchSlider
+	var music_toggle := settings.get_node("Safe/MusicToggle") as Button
+	var sfx := settings.get_node("Safe/SfxSlider") as TouchSlider
+	var sfx_toggle := settings.get_node("Safe/SfxToggle") as Button
+	var reduce := settings.get_node("Safe/ReduceMotionToggle") as Button
+	var back := settings.get_node("Safe/BackButton") as Button
+	var controls: Array[Control] = [music, music_toggle, sfx, sfx_toggle, reduce, back]
+	var labels: Array[Label] = [settings.get_node("Safe/Heading") as Label, settings.get_node("Safe/MusicLabel") as Label, settings.get_node("Safe/SfxLabel") as Label, settings.get_node("Safe/ReduceMotionHint") as Label]
+	_check(music.has_focus() and not music.has_focus(true), "the music slider is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
+	_check(_text_of(settings, "MusicLabel") == "Music 70" and _text_of(settings, "SfxLabel") == "SFX 80" and music_toggle.text == "Music: on" and sfx_toggle.text == "SFX: on" and reduce.text == "Reduce motion: off" and is_equal_approx(music.value, 70) and is_equal_approx(sfx.value, 80) and music.max_value == GameState.VOLUME_MAX and music.min_value == 0,
+		"every setting shows its state in text, the sliders run 0..VOLUME_MAX", "%s | %s | %s | %s | %s" % [_text_of(settings, "MusicLabel"), _text_of(settings, "SfxLabel"), music_toggle.text, sfx_toggle.text, reduce.text])
+	await _check_screen_layout(settings, controls, labels)
+	var reached: Array[String] = []
+	for i in controls.size():
+		await _key(KEY_TAB)
+		reached.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+	_check(reached == ["MusicToggle", "SfxSlider", "SfxToggle", "ReduceMotionToggle", "BackButton", "MusicSlider"] and music.has_focus(true), "Tab cycles through every control, the ring shown", str(reached))
+	var vertical: Array[String] = []
+	for key: Key in [KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_DOWN, KEY_UP, KEY_UP]:
+		await _key(key)
+		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
+	_check(vertical == ["SfxSlider", "ReduceMotionToggle", "BackButton", "MusicSlider", "BackButton", "ReduceMotionToggle"], "Down and Up move between the rows (wrapping)", str(vertical))
+	await _check_slider(settings, music, "Music", GameState.MUSIC_BUS, "music", 70)
+	await _check_slider(settings, sfx, "SFX", GameState.SFX_BUS, "sfx", 80)
+	# A change outside any hold (HSlider's own mouse wheel on a desktop) saves and taps at once.
+	var outside_from := _log.size()
+	var outside_sounds := _game.sfx_log.size()
+	music.value = 40
+	var outside: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(_game.music_volume == 40 and (outside as Dictionary)["settings"]["music"] == 40.0 and _game.sfx_log.slice(outside_sounds) == [&"ui_tap"], "a change outside any hold (the mouse wheel) saves at once and taps", "volume %d, sounds %s" % [_game.music_volume, _game.sfx_log.slice(outside_sounds)])
+	_check_logged(outside_from, "^\\[Settings\\] Music slider moved to 40$", "a change outside a hold is logged without (held)")
+	var saved: Variant
+	var sounds := 0
+	var toggles: Array[Button] = [music_toggle, sfx_toggle]
+	var buses: Array[StringName] = [GameState.MUSIC_BUS, GameState.SFX_BUS]
+	for i in toggles.size():
+		from = _log.size()
+		await _tap(toggles[i])
+		saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		var key := "music_muted" if i == 0 else "sfx_muted"
+		_check(AudioServer.is_bus_mute(AudioServer.get_bus_index(buses[i])) and toggles[i].text.ends_with(": off") and not toggles[i].button_pressed and (saved as Dictionary)["settings"][key] == true, "a tap on %s mutes its bus, shows off and saves" % toggles[i].name, toggles[i].text)
+		_check_logged(from, "^\\[Settings\\] %s toggle pressed: %s off$" % [["Music", "SFX"][i], ["music", "sound effects"][i]], "%s is logged" % toggles[i].name)
+		await _tap(toggles[i])
+		_check(not AudioServer.is_bus_mute(AudioServer.get_bus_index(buses[i])) and toggles[i].text.ends_with(": on"), "a second tap on %s unmutes it" % toggles[i].name, toggles[i].text)
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	await _tap(reduce)
+	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(_game.reduce_motion and reduce.button_pressed and reduce.text == "Reduce motion: on" and (saved as Dictionary)["settings"]["reduce_motion"] == true and _game.sfx_log.slice(sounds) == [&"ui_tap"], "Reduce motion turns on, shows it, is saved and taps", "%s, %s" % [reduce.text, _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] Reduce motion toggle pressed: on$", "the reduce motion press is logged")
+	_check_logged(from, "^\\[Game\\] Reduce motion on: no screen shake, plain fades, steady pop-ups and title$", "Game logs reduce motion")
+	_game.set_reduce_motion(false)
+	_check(reduce.text == "Reduce motion: off" and not reduce.button_pressed, "the screen follows a change made elsewhere", reduce.text)
+	back.grab_focus()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	title = current_scene as Title
+	_check(title != null and (title.get_node("Safe/SettingsButton") as Button).has_focus(), "Back returns to the title with Settings focused", str(root.gui_get_focus_owner()))
+	await _tap(title.get_node("Safe/SettingsButton") as Control)
+	await _game.transition_finished
+	await process_frame
+	from = _log.size()
+	await _key(KEY_ESCAPE)
+	# Bounded: a dead Escape must fail here, not hang until the watchdog.
+	for i in 120:
+		if current_scene is Title and not _game.is_transitioning():
+			break
+		await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/SettingsButton") as Button).has_focus(), "Escape on the settings screen returns to the title too", str(current_scene))
+	_check_logged(from, "^\\[Settings\\] Back pressed; returning to the title$", "Back is logged")
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	_clear_tool_save()
+
+
+## The pause menu's Settings opens the settings over the paused run: the tree stays paused,
+## the run's clock still, the sounds held and the music ducked; a slider applies at once
+## (the duck kept); a mute set there shows on the pause menu's toggle; touches on it are no
+## shots; Escape and Back close it (not the run's pause) and focus Settings again; the
+## menu's toggles stay in sync both ways (plan AC 11).
+func _test_settings_over_paused_run() -> void:
+	_clear_tool_save()
+	_game.load_game()
+	var play := await _start_run(55)
+	await _spawn_flying(play, 7)
+	_game.play_sfx(&"wave_start")
+	play.open_pause("test")
+	await process_frame
+	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
+	var settings_button := panel.get_node("SettingsButton") as Button
+	var from := _log.size()
+	await _tap(settings_button)
+	var settings := play.settings_overlay()
+	_check(settings != null and settings.overlay and settings.is_inside_tree() and paused and play.is_paused() and _game.audio_paused, "Settings opens the settings over the paused run", "overlay %s, paused %s" % [settings, paused])
+	_check(not (panel as Control).visible and (play.get_node("PauseLayer/PauseMenu") as Control).visible, "the pause menu's panel hides under the settings, its dim stays", "panel %s" % (panel as Control).visible)
+	if settings == null:
+		play.resume()
+		return
+	_check_logged(from, "^\\[Play\\] Settings opened over the paused run \\(wave 1 at t ", "opening it is logged")
+	_check_logged(from, "^\\[Settings\\] Opened over the paused run: ", "the settings log their arrival over the run")
+	var clock := play.run_clock
+	var held := _game.held_players().size()
+	for i in 30:
+		await process_frame
+	_check(play.run_clock == clock and paused and _game.held_players().size() == held and held >= 1, "the run stays frozen with its sounds held under the settings", "clock %.3f -> %.3f, held %d" % [clock, play.run_clock, _game.held_players().size()])
+	var music := settings.get_node("Safe/MusicSlider") as TouchSlider
+	_check(music.has_focus(), "the overlay focuses its music slider", str(root.gui_get_focus_owner()))
+	await _key(KEY_LEFT)
+	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	_check(_game.music_volume == 70 - int(TouchSlider.KEY_STEP) and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(70 - int(TouchSlider.KEY_STEP), GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
+	var shots := play.scoring.shots()
+	await _tap(settings.get_node("Safe/ReduceMotionHint") as Control)
+	_check(play.scoring.shots() == shots and play.refused == 0, "a touch on the overlay is no shot", "%d shots" % play.scoring.shots())
+	await _tap(settings.get_node("Safe/MusicToggle") as Control)
+	var menu_toggle := panel.get_node("MusicToggle") as Button
+	_check(_game.music_muted and menu_toggle.text == "Music: off" and not menu_toggle.button_pressed, "a mute set in the settings shows on the pause menu's toggle", menu_toggle.text)
+	from = _log.size()
+	await _key(KEY_ESCAPE)
+	_check(play.settings_overlay() == null and play.is_paused() and paused and settings_button.has_focus(), "Escape closes the settings, the run stays paused, Settings is focused", "overlay %s, paused %s, focus %s" % [play.settings_overlay(), paused, root.gui_get_focus_owner()])
+	_check((panel as Control).visible, "the pause menu's panel shows again", "hidden")
+	_check_logged(from, "^\\[Play\\] Settings closed; back to the pause menu$", "closing is logged")
+	await _tap(menu_toggle)
+	_check(not _game.music_muted and menu_toggle.text == "Music: on", "the pause menu's toggle still works", menu_toggle.text)
+	await _tap(settings_button)
+	settings = play.settings_overlay()
+	_check(settings != null and (settings.get_node("Safe/MusicToggle") as Button).text == "Music: on", "the settings show the mute the pause menu set", str(settings))
+	if settings != null:
+		await _tap(settings.get_node("Safe/BackButton") as Control)
+		await process_frame
+	_check(play.settings_overlay() == null and play.is_paused() and settings_button.has_focus(), "Back closes the settings and focuses Settings", str(root.gui_get_focus_owner()))
+	await _tap(settings_button)
+	play.resume()
+	await process_frame
+	_check(play.settings_overlay() == null and not paused and not _game.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_clear_tool_save()
+
+
+## The credits screen from the title's Credits button: who made it, the engine and its
+## licence, both fonts with the OFL 1.1 and the copyright lines of their shipped OFL files,
+## that the art and audio are original and generated as code, nothing naming Nintendo or
+## Duck Hunt; it fits at every aspect, a notch and a short safe area; Back (focused) and
+## Escape return to the title with Credits focused (plan AC 12).
+func _test_credits_screen() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var from := _log.size()
+	await _tap(title.get_node("Safe/CreditsButton") as Control)
+	_check(title.credits_presses == 1 and _game.transition_log.back().begins_with("TITLE -> CREDITS (res://scenes/credits.tscn)"), "a tap on Credits opens the credits through goto", str(_game.transition_log.back()))
+	_check_logged(from, "^\\[Title\\] Credits pressed \\(1\\); opening the credits$", "the Credits press is logged")
+	await _game.transition_finished
+	await process_frame
+	var credits := current_scene as Credits
+	_check(credits != null and _game.state == GameState.Flow.CREDITS, "the credits screen shows", str(current_scene))
+	if credits == null:
+		return
+	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), _text_of(credits, "Lines")]
+	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code"]:
+		_check(needed in text, "the credits say " + needed, text)
+	for font: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
+		var notice := FileAccess.get_file_as_string(font).get_slice("\n\n", 0).replace("\n", " ")
+		while "  " in notice:
+			notice = notice.replace("  ", " ")
+		notice = notice.strip_edges()
+		_check(notice.begins_with("Copyright") and notice in text, "the credits carry the copyright line of " + font, notice)
+	var scene_text := FileAccess.get_file_as_string("res://scenes/credits.tscn") + FileAccess.get_file_as_string("res://scripts/credits.gd")
+	for banned: String in ["nintendo", "duck hunt"]:
+		_check(not banned in text.to_lower() and not banned in scene_text.to_lower(), "nothing in the credits names " + banned, text)
+	var back := credits.get_node("Safe/BackButton") as Button
+	_check(back.has_focus() and not back.has_focus(true), "Back is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
+	var controls: Array[Control] = [back]
+	var labels: Array[Label] = [credits.get_node("Safe/Heading") as Label, credits.get_node("Safe/MadeBy") as Label, credits.get_node("Safe/Lines") as Label]
+	await _check_screen_layout(credits, controls, labels)
+	from = _log.size()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Back returns to the title with Credits focused", str(root.gui_get_focus_owner()))
+	_check_logged(from, "^\\[Credits\\] Back pressed; returning to the title$", "Back is logged")
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	await _key(KEY_ESCAPE)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Escape on the credits returns to the title too", str(current_scene))
+
+
+## The text of the Label `label_name` under a screen's Safe.
+func _text_of(screen: Control, label_name: String) -> String:
+	return (screen.get_node("Safe/" + label_name) as Label).text
+
+
+## The title's scenery: the sunset backdrop with its chapter's weather, the rival idling in
+## the grass inside the safe area, and geese crossing on the seeded schedule: over 30 s of
+## title time at least one goose is in view in nearly every frame, none ever covers a title
+## button (their band ends above the first row at every aspect and under a notch), the
+## schedule and paths are the same each time the title opens, and the scenery drifts (plan
+## AC 1).
+func _test_title_scenery_and_geese() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var sunset := Content.chapters().filter(func(chapter: ChapterSpec) -> bool: return chapter.backdrop == Title.TITLE_BACKDROP)
+	var backdrop := title.get_node("Scenery/Backdrop") as Backdrop
+	var weather := title.get_node("Scenery/Weather") as Weather
+	_check(backdrop.id == "sunset" and sunset.size() == 1 and weather.id == (sunset[0] as ChapterSpec).weather and weather.id != "", "the title shows the sunset backdrop with its chapter's weather", "%s, %s" % [backdrop.id, weather.id])
+	var rival := title.get_node("Scenery/Rival") as TextureRect
+	_check(rival.visible and title.rival_pose() == "idle" and _game.safe_rect().encloses(rival.get_global_rect()) and rival.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the rival idles in the grass inside the safe area and ignores touches", str(rival.get_global_rect()))
+	var buttons: Array[Control] = []
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"]:
+		buttons.append(title.get_node("Safe/" + button_name) as Control)
+	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT]
+	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
+	var scenery := title.get_node("Scenery") as Node2D
+	for i in windows.size():
+		_game.safe_area_override = safes[i]
+		root.size = windows[i]
+		await process_frame
+		await process_frame
+		var band := scenery.get_global_transform() * title.goose_band()
+		var lowest_reach := band.end.y
+		var clear := buttons.all(func(button: Control) -> bool: return button.get_global_rect().position.y >= lowest_reach + Title.BAND_MARGIN - 0.5)
+		_check(clear and band.size.y >= Content.bird(Title.TITLE_BIRD).size.y and band.position.y >= _game.safe_rect().position.y + Play.HUD_BAR_HEIGHT - 0.5, "%dx%d: the geese's band lies below the top bar and above every button" % [windows[i].x, windows[i].y], "band %s" % band)
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+	await _open_title()
+	title = current_scene as Title
+	scenery = title.get_node("Scenery") as Node2D
+	buttons.clear()
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"]:
+		buttons.append(title.get_node("Safe/" + button_name) as Control)
+	var frames := 0
+	var seen := 0
+	var covering: Array[String] = []
+	var outside_band: Array[String] = []
+	var drift_seen := 0.0
+	var first_path: Array[Vector2] = []
+	Engine.time_scale = 4.0
+	for frame in 450:
+		await process_frame
+		frames += 1
+		drift_seen = maxf(drift_seen, absf(scenery.position.x))
+		var visible := _game.visible_rect()
+		var any := false
+		for goose in title.flying_geese():
+			var box := scenery.get_global_transform() * Rect2(goose.position - goose.spec.size / 2.0, goose.spec.size)
+			if box.intersects(visible):
+				any = true
+			for button in buttons:
+				if box.intersects(button.get_global_rect()):
+					covering.append("goose #%d %s over %s" % [goose.number, box, button.name])
+			var band := title.goose_band()
+			if goose.position.y - goose.spec.size.y / 2.0 < band.position.y - 0.01 or goose.position.y + goose.spec.size.y / 2.0 > band.end.y + 0.01:
+				outside_band.append("goose #%d at %s" % [goose.number, goose.position])
+			if goose.number == 1 and first_path.size() < 60:
+				first_path.append(goose.position)
+		if any:
+			seen += 1
+	Engine.time_scale = 1.0
+	_check(float(seen) / frames >= 0.9, "a goose is in view in at least 90% of the title's frames", "%d of %d frames" % [seen, frames])
+	_check(covering.is_empty(), "no goose ever covers a title button", "; ".join(covering.slice(0, 5)))
+	_check(outside_band.is_empty(), "every goose stays inside its band", "; ".join(outside_band.slice(0, 5)))
+	_check(drift_seen > Title.DRIFT_AMPLITUDE * 0.3 and drift_seen <= Title.DRIFT_AMPLITUDE + 0.01, "the scenery drifts from side to side within its amplitude", "drift %.2f" % drift_seen)
+	await _open_title()
+	title = current_scene as Title
+	var again: Array[Vector2] = []
+	Engine.time_scale = 4.0
+	for frame in 450:
+		await process_frame
+		for goose in title.flying_geese():
+			if goose.number == 1 and again.size() < 60:
+				again.append(goose.position)
+	Engine.time_scale = 1.0
+	_check(first_path.size() == 60 and again == first_path, "the title's geese fly the same seeded paths each time it opens", "%d and %d points" % [first_path.size(), again.size()])
+
+
+## A tap on a title goose (its polygon, as in play) shoots it: shot and hit sounds, a
+## feather burst, the goose falls, the rival sulks and heckles with a blurt; nothing is
+## scored or saved; it is logged. A tap on empty sky plays the shot only; a tap on a button
+## only presses it; a second goose inside the heckle cooldown gets the pose but no line
+## (plan AC 2).
+func _test_title_goose_shot() -> void:
+	_clear_tool_save()
+	_game.save_game()
+	var save_before := FileAccess.get_file_as_string(_game.save_path)
+	var bests_before := _game.bests.duplicate()
+	await _open_title()
+	var title := current_scene as Title
+	var scenery := title.get_node("Scenery") as Node2D
+	var goose := await _title_goose_in_view(title)
+	_check(goose != null, "a goose crosses the title", "none in view")
+	if goose == null:
+		return
+	goose.set_process(false)
+	var from := _log.size()
+	var shots_from := from
+	# Inside the goose's box but outside its polygon: a miss, as in play.
+	await _touch(scenery.to_global(goose.transform * LOCAL_BOX_CORNER))
+	_check(goose.is_flying() and title.geese_shot == 0, "a tap inside a title goose's box but outside its polygon misses", "shot %d" % title.geese_shot)
+	var sounds := _game.sfx_log.size()
+	var feathers_before := title.feathers().live_count()
+	await _touch(scenery.to_global(goose.transform * LOCAL_BODY))
+	goose.set_process(true)
+	_check(goose.state != Bird.State.FLYING and title.geese_shot == 1, "a tap on a title goose shoots it", "state %d" % goose.state)
+	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit", &"heckle_combo"], "the shot, the hit and the rival's blurt play", str(_game.sfx_log.slice(sounds)))
+	_check(title.feathers().live_count() == feathers_before + Feathers.FEATHERS_PER_BURST and Array(title.feathers().live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS[goose.spec.sprite]), "the goose bursts into feathers of its colours", "%d feathers" % title.feathers().live_count())
+	_check(title.rival_pose() == "sulk" and title.heckle_shown() in Content.rival_lines().lines[Title.HECKLE_CATEGORY], "the rival sulks and heckles", "%s, '%s'" % [title.rival_pose(), title.heckle_shown()])
+	_check_logged(from, "^\\[Title\\] Shot goose #%d at \\([\\d.]+, [\\d.]+\\): it falls; no score, nothing saved \\(1 shot on the title\\)$" % goose.number, "the title shot is logged")
+	_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) #1: ", "the title heckle is logged")
+	var bubble := (title.get_node("Scenery/Bubble") as Label).get_global_rect()
+	var clear_of_buttons := ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"].all(func(button_name: String) -> bool: return not bubble.intersects((title.get_node("Safe/" + button_name) as Control).get_global_rect()))
+	_check(_game.safe_rect().grow(0.5).encloses(bubble) and clear_of_buttons and (title.get_node("Scenery/Bubble") as Label).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the title's heckle bubble is inside the safe area, clear of the buttons, ignoring touches", str(bubble))
+	var fell := [false]
+	goose.gone.connect(func(_b: Bird) -> void: fell[0] = true)
+	for i in 240:
+		if not is_instance_valid(goose):
+			break
+		await process_frame
+	_check(fell[0], "the shot goose falls off the screen", "still there")
+	# Empty sky: a point of the band no goose covers.
+	var band := title.goose_band()
+	var empty := Vector2.INF
+	for x in range(int(band.position.x) + 40, int(band.end.x) - 40, 30):
+		var point := Vector2(x, band.get_center().y)
+		if title.goose_at(point) == null and title.flying_geese().all(func(other: Bird) -> bool: return other.position.distance_to(point) > 90.0):
+			empty = point
+			break
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	var feathers_now := title.feathers().live_count()
+	await _touch(scenery.to_global(empty))
+	_check(_game.sfx_log.slice(sounds) == [&"shot"] and title.geese_shot == 1 and title.feathers().live_count() <= feathers_now, "a tap on empty sky plays the shot only", str(_game.sfx_log.slice(sounds)))
+	_check_logged(from, "^\\[Title\\] Shot at \\([\\d.]+, [\\d.]+\\): missed$", "the empty shot is logged")
+	var second := await _title_goose_in_view(title)
+	if second != null:
+		second.set_process(false)
+		from = _log.size()
+		await _touch(scenery.to_global(second.transform * LOCAL_BODY))
+		second.set_process(true)
+		_check(title.geese_shot == 2 and title.rival_pose() == "sulk", "a second goose is shot and the rival sulks again", "%d shot" % title.geese_shot)
+		_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) skipped: cooldown, ", "inside the cooldown the rival keeps quiet (logged)")
+	_check(FileAccess.get_file_as_string(_game.save_path) == save_before and _game.bests == bests_before, "nothing is saved and no best changes", "save changed")
+	_check(not Array(_log.since(shots_from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")), "title shots write no save", "a save line")
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	await _tap(title.get_node("Safe/CreditsButton") as Control)
+	_check(title.credits_presses == 1 and not &"shot" in _game.sfx_log.slice(sounds) and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Title] Shot")), "a tap on a button only presses it", str(_game.sfx_log.slice(sounds)))
+	await _game.transition_finished
+	_clear_tool_save()
+
+
+## Waits (at most 6 s) for a title goose wholly inside the visible area and inside the
+## shot surface; null if none came.
+func _title_goose_in_view(title: Title) -> Bird:
+	var scenery := title.get_node("Scenery") as Node2D
+	for i in 360:
+		for goose in title.flying_geese():
+			var box := scenery.get_global_transform() * Rect2(goose.position - goose.spec.size / 2.0, goose.spec.size)
+			if _game.visible_rect().grow(-20.0).encloses(box):
+				return goose
+		await process_frame
+	return null
+
+
+## Screen changes use the marsh-grass wipe: it rises over the screen in WIPE_TIME (at most
+## 0.4 s), the scene changes under full cover, it sinks away in WIPE_TIME; the cover's own
+## colour stays invisible and it blocks touches throughout; goto still logs both ends.
+## With reduce motion a plain fade takes FADE_TIME each way and the wipe never shows
+## (plan ACs 3, 8).
+func _test_transition_wipe_and_fade() -> void:
+	await _open_title()
+	var cover := _game.get_node("Fade/Cover") as ColorRect
+	var wipe := _game.get_node("Fade/Cover/Wipe") as Wipe
+	_check(GameState.WIPE_TIME <= 0.4 and GameState.WIPE_TIME > 0.0, "the wipe takes at most 0.4 s each way", str(GameState.WIPE_TIME))
+	for reduce: bool in [false, true]:
+		_game.reduce_motion = reduce
+		await _open_title()
+		var title := current_scene as Title
+		var from := _log.size()
+		var changed := [false]
+		var on_change := func() -> void: changed[0] = true
+		scene_changed.connect(on_change, CONNECT_ONE_SHOT)
+		_game.goto(GameState.Flow.TITLE)
+		var in_frames := 0
+		var out_frames := 0
+		var coverage: Array[float] = []
+		var styles: Array[String] = []
+		var blocked := true
+		var wipe_shown := false
+		var mid_edge := -1.0
+		var first_edge := -1.0
+		while _game.is_transitioning():
+			await process_frame
+			if changed[0]:
+				out_frames += 1
+			else:
+				in_frames += 1
+			coverage.append(_game.cover_progress())
+			styles.append(_game.transition_style())
+			blocked = blocked and (not cover.visible or cover.mouse_filter == Control.MOUSE_FILTER_STOP)
+			wipe_shown = wipe_shown or wipe.visible
+			if not reduce and not changed[0] and wipe.coverage() > 0.3 and wipe.coverage() < 0.7 and mid_edge < 0.0:
+				mid_edge = wipe.edge_y()
+			if not reduce and in_frames == 1:
+				first_edge = wipe.edge_y()
+		var time := GameState.FADE_TIME if reduce else GameState.WIPE_TIME
+		var label := "reduce motion: plain fade" if reduce else "the wipe"
+		var expected_frames := roundi(time / FRAME)
+		_check(in_frames >= expected_frames and in_frames <= expected_frames + 3 and out_frames >= expected_frames and out_frames <= expected_frames + 3, "%s covers in %.2f s and clears in %.2f s" % [label, time, time], "%d frames in, %d out (expected %d)" % [in_frames, out_frames, expected_frames])
+		_check(coverage.max() >= 0.999 and is_zero_approx(coverage.back()) and is_zero_approx(_game.cover_progress()), "%s covers the screen fully, then clears" % label, str(coverage))
+		_check(styles.all(func(style: String) -> bool: return style == ("fade" if reduce else "wipe")), "%s is the transition style throughout" % label, str(styles.slice(0, 3)))
+		_check(blocked and not cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_IGNORE, "%s blocks touches while it runs and lets them through after" % label, "blocked %s" % blocked)
+		_check(wipe_shown != reduce, "the grass wipe shows only without reduce motion", "wipe shown %s" % wipe_shown)
+		if reduce:
+			_check_logged(from, "^\\[Game\\] Transition: plain fade, 0\\.15 s in and 0\\.15 s out \\(reduce motion\\)$", "the fade is logged")
+		else:
+			_check_logged(from, "^\\[Game\\] Transition: marsh-grass wipe, 0\\.35 s in and 0\\.35 s out$", "the wipe is logged")
+			_check(mid_edge > 0.0 and mid_edge < _game.visible_rect().size.y and first_edge > _game.visible_rect().size.y * 0.5, "half way in, the grass's edge is inside the screen (it rises from the bottom)", "first edge %.1f, mid edge %.1f" % [first_edge, mid_edge])
+			_check(is_zero_approx(cover.self_modulate.a), "under the wipe the cover's own colour stays invisible", str(cover.self_modulate))
+		_check_logged(from, "^\\[Game\\] goto TITLE -> TITLE ", "goto still logs its start")
+		_check_logged(from, "^\\[Game\\] Arrived at TITLE$", "goto still logs its arrival")
+		# A tap on a button during the transition presses nothing.
+		title = current_scene as Title
+		_game.goto(GameState.Flow.TITLE)
+		await process_frame
+		await process_frame
+		await _tap(title.get_node("Safe/CampaignButton") as Control)
+		_check(title.campaign_presses == 0, "%s: a tap during the transition presses nothing" % label, "%d presses" % title.campaign_presses)
+		await _game.transition_finished
+	_game.reduce_motion = false
+
+
+## Hit stop: a kill freezes the world for HIT_STOP_TIME (HIT_STOP_HEAVY_TIME for an armored
+## or golden kill): the other birds, run_clock and wave_clock stand still, then each has
+## lost exactly the stop's time (a bird's age keeps its offset from run_clock); a second
+## kill during it (a salvo) scores and updates the HUD at once but starts no second stop;
+## a timed run's clock loses exactly the stop too (plan AC 4).
+func _test_hit_stop() -> void:
+	var play := await _start_run(61)
+	for i in 120:
+		if play.wave_clock > 0.5:
+			break
+		await process_frame
+	var victim := await _spawn_flying(play, 11)
+	var watcher := await _spawn_flying(play, 12)
+	var second := await _spawn_flying(play, 13)
+	await process_frame
+	var clock := play.run_clock
+	var wave_clock := play.wave_clock
+	var offset := watcher.age - play.run_clock
+	var where := watcher.position
+	var from := _log.size()
+	var shot_input := play.get_node("ShotInput") as ShotInput
+	shot_input.shot.emit(_global(play, victim.transform * LOCAL_BODY))
+	_check(is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_TIME) and Play.HIT_STOP_TIME <= 0.06 and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop (at most 0.06) that holds the other birds" % Play.HIT_STOP_TIME, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
+	_check_logged(from, "^\\[Play\\] Hit stop 0\\.05 s on the kill of goose #%d " % victim.number, "the hit stop is logged")
+	await process_frame
+	shot_input.shot.emit(_global(play, second.transform * LOCAL_BODY))
+	_check(not second.is_flying() and _text(play, "Score") == "Score %d" % play.scoring.score and play.scoring.kills == 2, "a kill during the stop scores and the HUD shows it at once", _text(play, "Score"))
+	_check(play.hit_stops == 1, "a second kill during the stop starts no second stop", "%d stops" % play.hit_stops)
+	_check_logged(from, "^\\[Play\\] Hit stop for goose #%d skipped: one is running " % second.number, "the skipped stop is logged")
+	var frames := 1
+	var frozen := true
+	while play.hit_stop_left() > 0.0 and frames < 20:
+		frozen = frozen and play.run_clock == clock and play.wave_clock == wave_clock and watcher.position == where
+		await process_frame
+		frames += 1
+	_check(frozen, "during the stop the clocks and the other birds stand still", "clock %.4f -> %.4f" % [clock, play.run_clock])
+	for i in 3:
+		await process_frame
+		frames += 1
+	var lost := frames * FRAME - (play.run_clock - clock)
+	_check(absf(lost - Play.HIT_STOP_TIME) < 1e-6 and absf((frames * FRAME - (play.wave_clock - wave_clock)) - Play.HIT_STOP_TIME) < 1e-6, "run_clock and wave_clock lose exactly the stop's time", "lost %.6f s over %d frames" % [lost, frames])
+	_check(absf((watcher.age - play.run_clock) - offset) < 1e-6 and watcher.position != where, "a bird loses exactly the same time (its age keeps its offset from run_clock) and flies on", "offset %.6f -> %.6f" % [offset, watcher.age - play.run_clock])
+	# A splitter's goslings, launched by the kill that starts a stop, wait it out too.
+	while play.hit_stop_left() > 0.0:
+		await process_frame
+	var splitter := await _spawn_flying(play, 18, IN_FIELD_AGE, "splitter")
+	shot_input.shot.emit(_global(play, splitter.transform * LOCAL_BODY))
+	var goslings := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling")
+	_check(goslings.size() == 2 and goslings.all(func(bird: Bird) -> bool: return bird.is_held()), "the goslings launched by the kill wait out the stop", str(goslings.map(func(bird: Bird) -> bool: return bird.is_held())))
+	while play.hit_stop_left() > 0.0:
+		await process_frame
+	# An armored kill and a golden kill stop longer. 0.09 s is not a whole number of frames,
+	# so this also proves the frame that ends a stop runs only its remainder: run_clock and a
+	# watching bird lose exactly the stop's time.
+	for bird_id: String in ["armored", "golden"]:
+		var heavy := await _spawn_flying(play, 21, IN_FIELD_AGE, bird_id)
+		heavy.set_process(false)
+		var heavy_watcher := await _spawn_flying(play, 25)
+		for shot in heavy.spec.hp - 1:
+			shot_input.shot.emit(_global(play, heavy.transform * LOCAL_BODY))
+		await process_frame
+		var heavy_clock := play.run_clock
+		var heavy_offset := heavy_watcher.age - play.run_clock
+		shot_input.shot.emit(_global(play, heavy.transform * LOCAL_BODY))
+		_check(not heavy.is_flying() and is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_HEAVY_TIME) and Play.HIT_STOP_HEAVY_TIME <= 0.1, "a %s kill stops the world longer, %.2f s (at most 0.1)" % [bird_id, Play.HIT_STOP_HEAVY_TIME], "left %.3f" % play.hit_stop_left())
+		var heavy_frames := 0
+		for i in 12:
+			await process_frame
+			heavy_frames += 1
+		var heavy_lost := heavy_frames * FRAME - (play.run_clock - heavy_clock)
+		_check(absf(heavy_lost - Play.HIT_STOP_HEAVY_TIME) < 1e-6, "after a %s kill run_clock loses exactly %.2f s (not whole frames)" % [bird_id, Play.HIT_STOP_HEAVY_TIME], "lost %.6f s over %d frames" % [heavy_lost, heavy_frames])
+		_check(is_instance_valid(heavy_watcher) and absf((heavy_watcher.age - play.run_clock) - heavy_offset) < 1e-6, "after a %s kill a watching bird loses exactly the same time" % bird_id, "offset %.6f -> %.6f" % [heavy_offset, heavy_watcher.age - play.run_clock] if is_instance_valid(heavy_watcher) else "gone")
+		if is_instance_valid(heavy_watcher):
+			heavy_watcher.queue_free()
+	# A timed run's clock loses exactly the stop as well.
+	play = await _start_run(62, GameState.TIME_ATTACK_MODE)
+	for i in 120:
+		if play.wave_clock > 0.5:
+			break
+		await process_frame
+	var goose := await _spawn_flying(play, 14)
+	var left := play.time_left()
+	frames = 0
+	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, goose.transform * LOCAL_BODY))
+	for i in 10:
+		await process_frame
+		frames += 1
+	_check(absf((left - play.time_left()) - (frames * FRAME - Play.HIT_STOP_TIME)) < 1e-6, "the Time Attack clock loses exactly the stop's time", "%.4f -> %.4f over %d frames" % [left, play.time_left(), frames])
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Feathers: a kill bursts FEATHERS_PER_BURST feathers in the bird's own colours at the hit
+## point (a goose, the decoy); every bird sprite has colours, each a palette entry; bursts
+## past FEATHERS_MAX retire the oldest; they fade out; a sprite without colours is reported
+## and bursts nothing (plan AC 5).
+func _test_feathers() -> void:
+	var palette := FileAccess.get_file_as_string("res://art/palette.hex").split("\n", false)
+	var missing: Array[String] = []
+	for spec in Content.birds():
+		var colors: Array = Feathers.COLORS.get(spec.sprite, [])
+		if colors.size() < 2:
+			missing.append("%s has %d colours" % [spec.sprite, colors.size()])
+		for color: Color in colors:
+			if not color.to_html(false) in palette:
+				missing.append("%s %s is not in the palette" % [spec.sprite, color.to_html(false)])
+	_check(missing.is_empty(), "every bird sprite has feather colours, all from art/palette.hex", "; ".join(missing))
+	_check(Feathers.FEATHERS_MAX >= Feathers.FEATHERS_PER_BURST * 3 and Feathers.FEATHERS_MAX <= 64, "the live feather cap holds a few bursts and stays small", str(Feathers.FEATHERS_MAX))
+	var play := await _start_run(63)
+	var feathers := play.get_node("World/Feathers") as Feathers
+	var goose := await _spawn_flying(play, 15)
+	var point := goose.transform * LOCAL_BODY
+	await _touch(_global(play, point))
+	_check(feathers.live_count() == Feathers.FEATHERS_PER_BURST and Array(feathers.live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS["goose"]), "a goose kill bursts its feathers in the goose's colours", "%d: %s" % [feathers.live_count(), feathers.live_colors()])
+	var colours_used := {}
+	for color in feathers.live_colors():
+		colours_used[color.to_html(false)] = true
+	_check(colours_used.size() == Feathers.COLORS["goose"].size(), "the burst uses every colour of the bird", str(colours_used.keys()))
+	_check(feathers.last_burst_at.distance_to(point) < 1.0, "the kill's burst starts at the hit point", "burst at %s, hit at %s" % [feathers.last_burst_at, point])
+	var decoy := await _spawn_flying(play, 16, IN_FIELD_AGE, "decoy")
+	var decoy_point := decoy.transform * LOCAL_BODY
+	await _touch(_global(play, decoy_point))
+	_check(feathers.last_burst_at.distance_to(decoy_point) < 1.0, "the decoy's burst starts at the hit point", "burst at %s, hit at %s" % [feathers.last_burst_at, decoy_point])
+	var newest := Array(feathers.live_colors()).slice(Feathers.FEATHERS_PER_BURST)
+	_check(feathers.live_count() == 2 * Feathers.FEATHERS_PER_BURST and newest.all(func(color: Color) -> bool: return color in Feathers.COLORS["decoy"]), "a decoy hit bursts the pigeon's colours", str(newest))
+	# A steal bursts the stolen bird's feathers where it was shot.
+	var bursts := feathers.bursts
+	var cued := await _cued_bird(play, 17, "goose")
+	for i in roundi(Content.rival_lines().aim_time / FRAME) + 5:
+		if cued.stolen:
+			break
+		await process_frame
+	_check(cued.stolen and feathers.bursts == bursts + 1 and feathers.last_burst_at.distance_to(cued.position) < 1.0 and Array(feathers.live_colors()).slice(-Feathers.FEATHERS_PER_BURST).all(func(color: Color) -> bool: return color in Feathers.COLORS["goose"]),
+		"a steal bursts the goose's feathers where the rival shot it", "stolen %s, %d bursts, at %s, bird at %s" % [cued.stolen, feathers.bursts - bursts, feathers.last_burst_at, cued.position])
+	# The cap: more bursts than it holds keep the newest.
+	var loose := Feathers.new()
+	root.add_child(loose)
+	var thrown := 0
+	for i in 6:
+		thrown += loose.burst(Vector2(100 + i, 100), "golden")
+	_check(thrown == 6 * Feathers.FEATHERS_PER_BURST and loose.live_count() == Feathers.FEATHERS_MAX, "bursts past the cap keep at most FEATHERS_MAX feathers alive", "%d thrown, %d alive" % [thrown, loose.live_count()])
+	for i in roundi(Feathers.FEATHER_LIFE_MAX / FRAME) + 2:
+		await process_frame
+	_check(loose.live_count() == 0, "feathers fade out within their lifetime", "%d left" % loose.live_count())
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var none := loose.burst(Vector2(100, 100), "dragon")
+	loose.burst(Vector2(100, 100), "dragon")
+	_game.quiet_errors = false
+	_check(none == 0 and loose.live_count() == 0 and _game.reported_errors.size() == errors + 1 and _game.reported_errors.back().contains("'dragon'"), "a sprite without feather colours is reported once and bursts nothing", str(_game.reported_errors.slice(errors)))
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	loose.free()
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Screen shake: an armored kill, a golden kill, a decoy hit, a steal and a lost wave each
+## shake the world (logged with their cause) by at most their amplitude, ending exactly
+## where it was (offset zero) after their time; the HUD never moves; a weaker shake does
+## not cut a stronger one short (plan AC 6).
+func _test_screen_shake() -> void:
+	var play := await _start_run(64)
+	var world := play.get_node("World") as Node2D
+	var bar := play.get_node("Hud/Bar") as Control
+	var bar_at := bar.global_position
+	var origin := world.position
+	for cause: String in Play.SHAKES:
+		var amplitude: float = Play.SHAKES[cause][0]
+		var time: float = Play.SHAKES[cause][1]
+		play.shake(cause)
+		var largest := 0.0
+		var moved_bar := false
+		var frames := 0
+		while frames < roundi(time / FRAME) + 2:
+			await process_frame
+			frames += 1
+			largest = maxf(largest, play.shake_offset().length())
+			moved_bar = moved_bar or bar.global_position != bar_at
+		_check(largest > amplitude * 0.3 and largest <= amplitude + 0.001, "%s shakes the world by up to %.0f units" % [cause, amplitude], "largest %.2f" % largest)
+		_check(world.position == origin and play.shake_offset() == Vector2.ZERO and play.shake_strength() == 0.0, "%s's shake ends with the world exactly where it was" % cause, str(world.position - origin))
+		_check(not moved_bar, "%s's shake leaves the HUD where it is" % cause, str(bar.global_position))
+	play.shake("lost wave")
+	await process_frame
+	var from := _log.size()
+	play.shake("armored kill")
+	_check_logged(from, "^\\[Play\\] Shake \\(armored kill\\) skipped: a stronger one \\(lost wave\\) is running$", "a weaker shake does not cut a stronger one short")
+	for i in 30:
+		await process_frame
+	# Each event shakes: the kills, the decoy, a steal.
+	from = _log.size()
+	for bird_id: String in ["armored", "golden", "decoy"]:
+		var bird := await _spawn_flying(play, 22, IN_FIELD_AGE, bird_id)
+		bird.set_process(false)
+		for shot in bird.spec.hp:
+			while play.hit_stop_left() > 0.0:
+				await process_frame
+			await _touch(_global(play, bird.transform * LOCAL_BODY))
+		for i in 30:
+			await process_frame
+	_check_logged(from, "^\\[Play\\] Shake \\(armored kill\\): 6 units over 0\\.25 s$", "an armored kill shakes")
+	_check_logged(from, "^\\[Play\\] Shake \\(golden kill\\): 8 units over 0\\.30 s$", "a golden kill shakes")
+	_check_logged(from, "^\\[Play\\] Shake \\(decoy hit\\): 10 units over 0\\.30 s$", "a decoy hit shakes")
+	from = _log.size()
+	var cued := await _cued_bird(play, 23, "goose")
+	for i in roundi(Content.rival_lines().aim_time / FRAME) + 5:
+		if cued.stolen:
+			break
+		await process_frame
+	_check(cued.stolen, "the rival steals the cued goose", "not stolen")
+	_check_logged(from, "^\\[Play\\] Shake \\(steal\\): 7 units over 0\\.30 s$", "a steal shakes")
+	play = await _start_run(65, GameState.TIME_ATTACK_MODE)
+	from = _log.size()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in 120:
+		if play.wave_clock > 0.2:
+			break
+		await process_frame
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\): 12 units over 0\\.40 s$", "a lost wave shakes")
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Pop-ups: a score pop-up bounces in past its size and settles; combo pop-ups are larger
+## the higher the multiplier; a penalty pop-up shakes from side to side; each keeps its
+## text and colour, and stays inside the visible area at its largest, even for a hit at
+## the top edge (plan AC 7).
+func _test_popup_motion() -> void:
+	var play := await _start_run(66)
+	var popups := play.get_node("World/Popups")
+	var scales: Array[float] = []
+	for n in 3:
+		var goose := await _spawn_flying(play, 30 + n)
+		await _touch(_global(play, goose.transform * LOCAL_BODY))
+		var label := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+		var largest := 0.0
+		var outside := false
+		for i in roundi(Play.POPUP_BOUNCE_TIME / FRAME) + 6:
+			largest = maxf(largest, label.scale.x)
+			var box := label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
+			outside = outside or not _game.visible_rect().grow(0.5).encloses(box)
+			await process_frame
+		var rest: float = label.get_meta(&"rest_scale")
+		scales.append(rest)
+		var color := label.get_theme_color(&"font_color")
+		_check(largest > rest * 1.2 and is_equal_approx(label.scale.x, rest) and color == Play.POPUP_COLOR, "pop-up %d '%s' bounces in past its size and settles, in the pop-up colour" % [n + 1, label.text], "largest %.2f, now %.2f, rest %.2f" % [largest, label.scale.x, rest])
+		_check(not outside, "pop-up %d stays inside the visible area" % (n + 1), "outside")
+		while play.hit_stop_left() > 0.0:
+			await process_frame
+	_check(scales[0] == 1.0 and scales[1] > scales[0] and scales[2] > scales[1] and is_equal_approx(scales[2], 1.0 + 2 * Play.POPUP_COMBO_GROWTH), "combo pop-ups grow with the multiplier", str(scales))
+	var decoy := await _spawn_flying(play, 40, IN_FIELD_AGE, "decoy")
+	# Shot synchronously, so the pop-up's resting x is read before it starts shaking.
+	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, decoy.transform * LOCAL_BODY))
+	var penalty := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	var x0 := penalty.position.x
+	var swing := 0.0
+	for i in roundi(Play.POPUP_SHAKE_TIME / FRAME) + 4:
+		swing = maxf(swing, absf(penalty.position.x - x0))
+		await process_frame
+	_check(penalty.text.begins_with("-") and penalty.get_theme_color(&"font_color") == Play.PENALTY_COLOR and swing > Play.POPUP_SHAKE * 0.5 and is_equal_approx(penalty.position.x, x0) and penalty.scale == Vector2.ONE, "the penalty pop-up shakes side to side and comes to rest, in the penalty colour", "swing %.2f, x %.2f -> %.2f" % [swing, x0, penalty.position.x])
+	# A hit at the very top of the field: the pop-up is moved in, not cut off.
+	var high := play.spawn_bird("goose", 41)
+	high.set_process(false)
+	# Its body just below the top bar and its tail at the left edge: unclamped, the pop-up
+	# would leave the screen on both sides as it bounces and rises.
+	high.position = Vector2(12.0, Play.FIELD.position.y + 2.0)
+	high.transform = Transform2D(0.0, high.position)
+	await _touch(_global(play, high.transform * LOCAL_BODY))
+	_check(not high.is_flying(), "the goose at the top left edge is hit", "still flying")
+	var top := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	var top_outside := false
+	for i in roundi(Play.POPUP_TIME / FRAME) - 2:
+		var box := top.get_global_transform() * Rect2(Vector2.ZERO, top.size)
+		top_outside = top_outside or not _game.visible_rect().grow(0.5).encloses(box)
+		await process_frame
+	_check(not top_outside, "a pop-up for a hit at the top edge stays inside the visible area as it bounces and rises", "outside")
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Reduce motion (saved) turns off the screen shake, the wipe (a plain fade), the pop-ups'
+## bounce and shake and the title's drift, and keeps the hit stop, the feathers and the
+## gameplay cues (the empty cue, the aim cue) (plan AC 8).
+func _test_reduce_motion_everywhere() -> void:
+	_clear_tool_save()
+	_game.set_reduce_motion(true)
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and (saved as Dictionary)["settings"]["reduce_motion"] == true, "reduce motion is saved", str(saved))
+	await _open_title()
+	_check(_game.transition_style() == "fade", "screens change by the plain fade", _game.transition_style())
+	var scenery := current_scene.get_node("Scenery") as Node2D
+	var drift := 0.0
+	for i in 240:
+		drift = maxf(drift, absf(scenery.position.x))
+		await process_frame
+	_check(drift == 0.0, "the title's scenery stays still", "drift %.3f" % drift)
+	var play := await _start_run(67)
+	var world := play.get_node("World") as Node2D
+	var origin := world.position
+	var feathers := play.get_node("World/Feathers") as Feathers
+	var armored := await _spawn_flying(play, 24, IN_FIELD_AGE, "armored")
+	armored.set_process(false)
+	var still := true
+	var bounced := false
+	for shot in armored.spec.hp:
+		await _touch(_global(play, armored.transform * LOCAL_BODY))
+	_check(play.hit_stops == 1 and play.hit_stop_left() > 0.0, "the hit stop still runs", "%d stops" % play.hit_stops)
+	_check(feathers.live_count() == Feathers.FEATHERS_PER_BURST, "feathers still burst", "%d" % feathers.live_count())
+	var label := play.get_node("World/Popups").get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	for i in 30:
+		still = still and world.position == origin
+		bounced = bounced or not is_equal_approx(label.scale.x, label.get_meta(&"rest_scale"))
+		await process_frame
+	_check(still, "an armored kill does not shake the world", str(world.position - origin))
+	_check(not bounced, "the score pop-up does not bounce", "scaled")
+	var decoy := await _spawn_flying(play, 25, IN_FIELD_AGE, "decoy")
+	await _touch(_global(play, decoy.transform * LOCAL_BODY))
+	var penalty := play.get_node("World/Popups").get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	var x0 := penalty.position.x
+	var wiggled := false
+	for i in 20:
+		wiggled = wiggled or penalty.position.x != x0
+		still = still and world.position == origin
+		await process_frame
+	_check(not wiggled and still, "a decoy hit neither shakes the world nor its pop-up", "wiggled %s" % wiggled)
+	var from := _log.size()
+	play.shake("lost wave")
+	await process_frame
+	_check(world.position == origin, "no shake at all, whatever the cause", str(world.position - origin))
+	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\) skipped: reduce motion$", "a skipped shake is logged")
+	var cued := await _cued_bird(play, 26, "goose")
+	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
+	play.set_shell_pool(0)
+	await _touch(_global(play, Vector2(480, 200)))
+	_check(play.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
+	_game.set_reduce_motion(false)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_check(_game.transition_style() == "wipe", "with reduce motion off the wipe is back", _game.transition_style())
+	_clear_tool_save()
+
+
+## One settings slider (`what` "Music" or "SFX", bus `bus_name`, save key `key`, starting at
+## `start`): a held Right key steps it by TouchSlider.KEY_STEP and each repeat (echo) again,
+## live on the bus and label but unsaved and silent; the key's release saves the final value
+## once with one UI tap; a Left press and release steps it back and saves; a touch at 25%
+## and a drag to 75% apply live, unsaved and silent, and the lift saves once with one tap.
+func _check_slider(settings: Settings, slider: TouchSlider, what: String, bus_name: StringName, key: String, start: int) -> void:
+	var bus := AudioServer.get_bus_index(bus_name)
+	var label := "MusicLabel" if key == "music" else "SfxLabel"
+	var volume := func() -> int: return _game.music_volume if key == "music" else _game.sfx_volume
+	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save_path)) as Dictionary)["settings"][key]
+	slider.grab_focus()
+	var from := _log.size()
+	var sounds := _game.sfx_log.size()
+	await _key_event(KEY_RIGHT, true, false)
+	var step := int(TouchSlider.KEY_STEP)
+	_check(volume.call() == start + step and step >= 5 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(start + step)) and _text_of(settings, label) == "%s %d" % [what, start + step],
+		"%s: a Right press steps the slider by %d (at least 5), the bus and label follow at once" % [what, step], "volume %d, held %s, label %s" % [volume.call(), slider.is_held(), _text_of(settings, label)])
+	for echo in 2:
+		await _key_event(KEY_RIGHT, true, true)
+	_check(volume.call() == start + 3 * step and stored.call() == float(start) and _game.sfx_log.size() == sounds and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")),
+		"%s: the held key's repeats keep stepping, with no save and no tap per repeat" % what, "volume %d, stored %s, sounds %s" % [volume.call(), stored.call(), _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider moved to %d \\(held\\)$" % [what, start + 3 * step], "%s: each step is logged as held" % what)
+	await _key_event(KEY_RIGHT, false, false)
+	var saves := Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size()
+	_check(not slider.is_held() and stored.call() == float(start + 3 * step) and saves == 1 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "%s: releasing the key saves the final value once and taps once" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider released at %d \\(keys released\\); saving$" % [what, start + 3 * step], "%s: the key release is logged" % what)
+	await _key(KEY_LEFT)
+	_check(volume.call() == start + 2 * step and stored.call() == float(start + 2 * step) and slider.has_focus(), "%s: a Left press and release steps back and saves, the focus stays" % what, "volume %d, stored %s" % [volume.call(), stored.call()])
+	# A finger: the press sets the value under it, the drag follows, the lift saves once.
+	var grabber := float(slider.get_theme_icon(&"grabber").get_width())
+	var rect := slider.get_global_rect()
+	var at_quarter := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.25, rect.get_center().y)
+	var at_three_quarters := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.75, rect.get_center().y)
+	var before := stored.call() as float
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	await _finger(at_quarter, true)
+	await _drag(at_three_quarters)
+	_check(volume.call() == 75 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(75)) and stored.call() == before and _game.sfx_log.size() == sounds,
+		"%s: a touch and a drag set the volume live (bus and label), unsaved and silent while the finger is down" % what, "volume %d, held %s, stored %s, sounds %s" % [volume.call(), slider.is_held(), stored.call(), _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider moved to 25 \\(held\\)$" % what, "%s: the touch is logged as held" % what)
+	await _finger(at_three_quarters, false)
+	saves = Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size()
+	_check(not slider.is_held() and stored.call() == 75.0 and saves == 1 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "%s: lifting the finger saves the volume once and plays the UI tap" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider released at 75 \\(finger lifted\\); saving$" % what, "%s: the lift is logged" % what)
+
+
+## A key event for `keycode`: pressed or released, an echo (auto-repeat) or not.
+func _key_event(keycode: Key, pressed: bool, echo: bool) -> void:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.physical_keycode = keycode
+	event.pressed = pressed
+	event.echo = echo
+	Input.parse_input_event(event)
+	await process_frame
+
+
+## A touch of finger `index` (TOUCH_INDEX unless given) pressed or lifted at canvas point `at`.
+func _finger(at: Vector2, pressed: bool, index := TOUCH_INDEX) -> void:
+	var touch := InputEventScreenTouch.new()
+	touch.index = index
+	touch.position = root.get_final_transform() * at
+	touch.pressed = pressed
+	Input.parse_input_event(touch)
+	await process_frame
+
+
+## A drag of finger `index` (TOUCH_INDEX unless given) to canvas point `at`.
+func _drag(at: Vector2, index := TOUCH_INDEX) -> void:
+	var drag := InputEventScreenDrag.new()
+	drag.index = index
+	drag.position = root.get_final_transform() * at
+	Input.parse_input_event(drag)
+	await process_frame
+
+
+## A slider hold whose end never arrives still ends, saving its value, and the slider
+## recovers: the rotate overlay showing while a finger is down (GUI input is disabled, so
+## the lift is never delivered) saves the held volume and later touches and keys work; a
+## press by another finger while one is down ends the old hold (saved) and takes over;
+## closing the settings over the paused run with a finger down (Escape, or resuming) saves
+## the held volume (review finding 1).
+func _test_slider_hold_cut_short() -> void:
+	_clear_tool_save()
+	_game.load_game()
+	_game.save_game()
+	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save_path)) as Dictionary)["settings"]["music"]
+	_game.goto(GameState.Flow.SETTINGS)
+	await _game.transition_finished
+	await process_frame
+	var settings := current_scene as Settings
+	var slider := settings.music_slider()
+	var points := _slider_points(slider)
+	var from := _log.size()
+	await _finger(points[0], true)
+	_check(slider.is_held() and _game.music_volume == 25 and stored.call() == 70.0, "a finger down on the music slider holds it at 25, unsaved", "held %s, volume %d" % [slider.is_held(), _game.music_volume])
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.is_rotate_overlay_shown() and not slider.is_held() and stored.call() == 25.0, "the rotate overlay showing mid-press ends the hold and saves the held volume", "held %s, stored %s" % [slider.is_held(), stored.call()])
+	_check_logged(from, "^\\[Settings\\] Music slider released at 25 \\(rotate overlay\\); saving$", "the cut-short hold is logged with its cause")
+	await _finger(points[0], false)
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	await _finger(points[1], true, TOUCH_INDEX + 1)
+	await _finger(points[1], false, TOUCH_INDEX + 1)
+	_check(_game.music_volume == 75 and stored.call() == 75.0 and not slider.is_held(), "after the overlay a later touch moves the slider and its lift saves", "volume %d, stored %s" % [_game.music_volume, stored.call()])
+	from = _log.size()
+	slider.grab_focus()
+	await _key(KEY_RIGHT)
+	_check(_game.music_volume == 80 and stored.call() == 80.0 and not slider.is_held(), "after the overlay a key step is saved on its release (no stuck hold)", "volume %d, stored %s" % [_game.music_volume, stored.call()])
+	# A lift that never comes: the next press (another finger) ends the old hold first.
+	from = _log.size()
+	await _finger(points[0], true)
+	await _finger(points[1], true, TOUCH_INDEX + 1)
+	_check(stored.call() == 25.0 and slider.is_held() and _game.music_volume == 75, "a new touch while a finger is down saves the old hold and takes over", "stored %s, volume %d" % [stored.call(), _game.music_volume])
+	_check_logged(from, "^\\[Settings\\] Music slider released at 25 \\(a new touch took over\\); saving$", "the take-over is logged")
+	await _finger(points[1], false, TOUCH_INDEX + 1)
+	await _finger(points[0], false)
+	_check(stored.call() == 75.0 and not slider.is_held(), "the new finger's lift saves its value; the stale finger's late lift changes nothing", "stored %s" % stored.call())
+	# Over the paused run: Escape (and resuming) close the settings with a finger down.
+	var play := await _start_run(68)
+	for closer: String in ["Escape", "resume"]:
+		play.open_pause("test")
+		await process_frame
+		play.open_settings()
+		await process_frame
+		var overlay_slider := play.settings_overlay().music_slider()
+		var overlay_points := _slider_points(overlay_slider)
+		from = _log.size()
+		await _finger(overlay_points[0], true)
+		await _drag(overlay_points[1])
+		_check(overlay_slider.is_held() and _game.music_volume == 75, "%s: a finger holds the overlay's slider at 75" % closer, "volume %d" % _game.music_volume)
+		if closer == "Escape":
+			await _key(KEY_ESCAPE)
+		else:
+			play.resume()
+			await process_frame
+		_check(play.settings_overlay() == null and stored.call() == 75.0, "%s closes the settings with a finger down and the held volume is saved" % closer, "overlay %s, stored %s" % [play.settings_overlay(), stored.call()])
+		_check_logged(from, "^\\[Settings\\] Music slider released at 75 \\(left the screen\\); saving$", "%s: the closed hold is logged" % closer)
+		await _finger(overlay_points[1], false)
+		_game.set_music_volume(70)
+		if play.is_paused():
+			play.resume()
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_clear_tool_save()
+
+
+## The canvas points 25% and 75% along `slider` (HSlider's mapping: values 25 and 75 of 100).
+func _slider_points(slider: TouchSlider) -> Array[Vector2]:
+	var grabber := float(slider.get_theme_icon(&"grabber").get_width())
+	var rect := slider.get_global_rect()
+	var points: Array[Vector2] = []
+	for fraction: float in [0.25, 0.75]:
+		points.append(Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * fraction, rect.get_center().y))
+	return points

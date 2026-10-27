@@ -26,7 +26,11 @@
 //     ("[Title] Time Attack button at ..."), requiring its press, "[Play] Run start: mode
 //     time_attack" and the play scene, and its first goose is shot as above; reloaded once
 //     more, Endless is tapped, requiring its press, "[Play] Run start: mode endless" and the
-//     play scene;
+//     play scene; between the reload and Time Attack, Settings is tapped where the title logs
+//     it (its press, the settings screen), the music slider is tapped SLIDER_TAP_AT along it
+//     (requiring "[Settings] Music slider moved to N", "released at N (finger lifted)" and the save logged
+//     with that volume: the slider follows a real touch and the mouse), Back returns to the
+//     title, and Credits opens and closes the same way;
 //   desktop only, then the backdrop tour: a save that has finished every level of the first
 //     three chapters is written to the page's IndexedDB (where Godot's user:// lives) and the
 //     page reloaded, requiring "[Game] Loaded save ... 18 levels finished"; then level 1 of
@@ -51,13 +55,15 @@
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Campaign is and Enter press nothing, turn the phone to landscape (844x390),
 //     require "[Game] Rotate overlay hidden ... unpaused", then tap Campaign and require the press;
-//   keyboard: Tab, Tab, Tab (through Endless and Time Attack back to Campaign, showing the
-//     focus ring) and Enter on the focused Campaign, Enter on the focused dawn chapter, Enter
+//   keyboard: Tab x5 (through Endless, Time Attack, Settings and Credits back to Campaign,
+//     showing the focus ring) and Enter on the focused Campaign, Enter on the focused dawn chapter, Enter
 //     on the focused level 1, require each press and the play scene running dawn_1; Escape
 //     opens the pause menu, Enter on the focused Resume resumes, Escape opens it again, Down
 //     Down Enter quits to the title; Tab, Tab, Enter starts Time Attack (its press, its run
 //     start, the play scene), Escape and Down Down Enter quit it to the title; Tab, Enter
-//     starts Endless (its press, its run start, the play scene).
+//     starts Endless (its press, its run start, the play scene), Escape and Down Down Enter quit
+//     it; Tab x3, Enter opens Settings, Right steps the focused music slider (logged and
+//     saved), Escape returns; Tab, Enter opens Credits, Enter on its focused Back returns.
 // Usage: node tools/smoke_web.mjs [buildDir]   (default: build/web)
 // Env:   SMOKE_BOOT_TIMEOUT_MS (default 30000), SMOKE_SETTLE_MS (default 2000),
 //        SMOKE_STEP_TIMEOUT_MS (each waited-for log line, default 20000)
@@ -67,7 +73,8 @@
 // keyboard), plus
 // build/smoke-mobile-portrait-rotate.png (the overlay), build/smoke-keyboard-focus.png (the
 // focus ring after Tab), build/smoke-keyboard-pause.png (the pause menu) and the desktop
-// backdrop tour's build/smoke-desktop-backdrop-<dawn_1|noon_1|sunset_1|night_1|endless|time_attack>.png.
+// backdrop tour's build/smoke-desktop-backdrop-<dawn_1|noon_1|sunset_1|night_1|endless|time_attack>.png,
+// and build/smoke-<run>-settings.png and build/smoke-<run>-credits.png (desktop, mobile-landscape, keyboard).
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { launchChrome, serveBuild } from './web_util.mjs';
@@ -99,6 +106,14 @@ const BLOCKED_WAIT_MS = 1500;
 const CAMPAIGN_RECT = /^\[Title\] Campaign button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 const ENDLESS_RECT = /^\[Title\] Endless button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 const TIME_ATTACK_RECT = /^\[Title\] Time Attack button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const SETTINGS_RECT = /^\[Title\] Settings button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const CREDITS_RECT = /^\[Title\] Credits button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const MUSIC_SLIDER_RECT = /^\[Settings\] Music slider at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const SETTINGS_BACK_RECT = /^\[Settings\] Back button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+const CREDITS_BACK_RECT = /^\[Credits\] Back button at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
+// Where the settings tour taps the music slider: this fraction of the way along it, which
+// sets the volume to about that fraction of 100 (the grabber's half width in from each end).
+const SLIDER_TAP_AT = 0.3;
 const DAWN_RECT = /^\[ChapterSelect\] Chapter dawn at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 const LEVEL_RECT = /^\[LevelSelect\] Level dawn_1 at \[P: \(([\d.-]+), ([\d.-]+)\), S: \(([\d.-]+), ([\d.-]+)\)\]/;
 // The campaign level the path plays, logged by the play scene before it arrives.
@@ -190,17 +205,17 @@ const BACKDROP_TOUR = [
   { shot: 'time_attack', mode: 'Time Attack', backdrop: 'noon', weather: 'wind' },
 ];
 const BACKDROP_SHOT_DELAY_MS = 2500;
-// A version 3 save (GameState.SAVE_VERSION) with every level of the first three chapters
+// A version 4 save (GameState.SAVE_VERSION) with every level of the first three chapters
 // finished, so each chapter's level 1 is open; Godot's web user:// is Emscripten IDBFS in
 // IndexedDB database /userfs, store FILE_DATA, key = the file's path, which the game logs
 // (SAVE_FILE) along with its directories, each stored as an entry of its own.
 const SAVE_FILE = /^\[Game\] Browser storage \(IndexedDB\) is available for user:\/\/save\.json \((\/userfs\/.+)\)$/;
 const TOUR_LEVELS = ['dawn', 'noon', 'sunset'].flatMap((c) => [1, 2, 3, 4, 5, 6].map((i) => `${c}_${i}`));
 const TOUR_SAVE = JSON.stringify({
-  version: 3,
+  version: 4,
   bests: { endless: 0, time_attack: 0 },
   levels: Object.fromEntries(TOUR_LEVELS.map((id) => [id, { stars: 1, score: 1000 }])),
-  settings: { music: 70, sfx: 80, music_muted: false, sfx_muted: false },
+  settings: { music: 70, sfx: 80, music_muted: false, sfx_muted: false, reduce_motion: false },
 });
 
 // Waits until a console line logged at or after index `from` matches `pattern` (a RegExp)
@@ -412,6 +427,44 @@ async function startMode(page, logs, pointer, rect, label, run, how) {
   return waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, `the play scene (${label})`, from);
 }
 
+// Opens Settings from the title by tapping it where the title logs it, taps the music slider
+// SLIDER_TAP_AT along (requiring the slider to move and the release to save), screenshots
+// the screen, taps Back (requiring the title), then opens Credits the same way, screenshots
+// it and taps its Back. Returns the volume the tap set.
+async function settingsAndCredits(page, logs, pointer, how, shot) {
+  let from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, SETTINGS_RECT, 'the Settings button layout'));
+  await waitForLog(page, logs, /^\[Title\] Settings pressed \(1\)/, `Settings to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, /^\[Game\] Arrived at SETTINGS/, 'the settings screen', from);
+  await waitForLog(page, logs, /^\[Settings\] Opened from the title: /, 'the settings to open from the title', from);
+  const slider = await waitForLog(page, logs, MUSIC_SLIDER_RECT, 'the music slider layout', from);
+  const [x, y, w, h] = slider.slice(1).map(Number);
+  const tapFrom = logs.length;
+  await pointer.tap(await pagePoint(page, x + w * SLIDER_TAP_AT, y + h / 2));
+  const moved = await waitForLog(page, logs, /^\[Settings\] Music slider moved to (\d+)/, `the music slider to follow the ${how} tap`, tapFrom);
+  const released = await waitForLog(page, logs, /^\[Settings\] Music slider released at (\d+) \(finger lifted\); saving$/, `the ${how} tap on the slider to be released and saved`, tapFrom);
+  await waitForLog(page, logs, new RegExp(`^\\[Game\\] Saved to user://save\\.json .*music ${released[1]}\\b`), 'the new music volume to be saved', tapFrom);
+  await page.waitForTimeout(300);
+  await shot('settings');
+  from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, SETTINGS_BACK_RECT, 'the settings Back button layout'));
+  await waitForLog(page, logs, /^\[Settings\] Back pressed; returning to the title$/, `Back to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after the settings', from);
+  from = logs.length;
+  // The title logged its layout on arrival (before `from`): the latest rect is this title's.
+  await pointer.tap(await buttonPoint(page, logs, CREDITS_RECT, 'the Credits button layout'));
+  await waitForLog(page, logs, /^\[Title\] Credits pressed \(1\)/, `Credits to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, /^\[Game\] Arrived at CREDITS/, 'the credits screen', from);
+  await page.waitForTimeout(300);
+  await shot('credits');
+  from = logs.length;
+  await pointer.tap(await buttonPoint(page, logs, CREDITS_BACK_RECT, 'the credits Back button layout'));
+  await waitForLog(page, logs, /^\[Credits\] Back pressed; returning to the title$/, `the credits' Back to be pressed (${how} tap)`, from);
+  await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after the credits', from);
+  await page.waitForTimeout(300);
+  return Number(moved[1]);
+}
+
 // Writes TOUR_SAVE as user://save.json into the page's IndexedDB as Godot's IDBFS stores
 // files and directories ({timestamp: Date, mode[, contents]}), then reloads and requires it
 // loaded.
@@ -440,7 +493,7 @@ async function plantTourSave(page, logs) {
   if (error !== '') throw new Error(error);
   const from = logs.length;
   await reloadToTitle(page, logs);
-  await waitForLog(page, logs, new RegExp(`^\\[Game\\] Loaded save from user://save\\.json: version 3, .*, ${TOUR_LEVELS.length} levels finished`), 'the planted save to load', from);
+  await waitForLog(page, logs, new RegExp(`^\\[Game\\] Loaded save from user://save\\.json: version 4, .*, ${TOUR_LEVELS.length} levels finished`), 'the planted save to load', from);
 }
 
 // Starts each BACKDROP_TOUR run from the title, requires its backdrop and weather, takes
@@ -481,11 +534,11 @@ async function backdropTour(page, logs, pointer, shot) {
 // The run's scripted path once the title is up; throws on a missing log line.
 async function playPath(page, context, run, logs, logTimes, shot) {
   if (run.keyboard) {
-    // Tab is keyboard navigation, which shows the focus ring (hidden on arrival); two more
-    // wrap through Endless and Time Attack back to Campaign.
+    // Tab is keyboard navigation, which shows the focus ring (hidden on arrival); four more
+    // wrap through Endless, Time Attack, Settings and Credits back to Campaign.
     const before = await audioStates(page);
     if (before.length === 0 || before.includes('running')) throw new Error(`audio must wait for the first key (AudioContext states: ${JSON.stringify(before)})`);
-    for (const key of ['Tab', 'Tab', 'Tab']) await page.keyboard.press(key);
+    for (const key of ['Tab', 'Tab', 'Tab', 'Tab', 'Tab']) await page.keyboard.press(key);
     const after = await waitForAudioRunning(page, 'after the first key press');
     await waitForLog(page, logs, TITLE_MUSIC, 'the title loop ("[Audio] Music title")');
     const level = await waitForSound(page, 'after the first key press (the title loop)');
@@ -541,6 +594,40 @@ async function playPath(page, context, run, logs, logTimes, shot) {
     await waitForLog(page, logs, /^\[Title\] Endless pressed \(1\)/, 'Endless to be pressed (Tab, Enter)', from);
     await waitForLog(page, logs, ENDLESS_RUN, 'Endless to start', from);
     await waitForLog(page, logs, /^\[Game\] Arrived at PLAY/, 'the play scene (Endless)', from);
+    from = logs.length;
+    await page.keyboard.press('Escape');
+    await waitForLog(page, logs, /^\[Play\] Paused \(Escape\)/, 'Escape to pause Endless', from);
+    for (const key of ['ArrowDown', 'ArrowDown', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'the title after quitting Endless', from);
+    await page.waitForTimeout(300);
+    // Settings by keyboard: Tab x3 reaches it, Enter opens it with the music slider focused,
+    // Right steps the slider (saved at once), Escape goes back with Settings focused; Tab
+    // reaches Credits, Enter opens them with Back focused, Enter returns.
+    from = logs.length;
+    for (const key of ['Tab', 'Tab', 'Tab', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Title\] Settings pressed \(1\)/, 'Settings to be pressed (Tab x3, Enter)', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at SETTINGS/, 'the settings screen', from);
+    await page.waitForTimeout(300);
+    from = logs.length;
+    await page.keyboard.press('ArrowRight');
+    // A step key holds the slider (applied live) until it is released, then saves once.
+    await waitForLog(page, logs, /^\[Settings\] Music slider moved to \d+ \(held\)$/, 'Right to step the focused music slider', from);
+    const stepped = await waitForLog(page, logs, /^\[Settings\] Music slider released at (\d+) \(keys released\); saving$/, 'the Right key\'s release to save the step', from);
+    await waitForLog(page, logs, new RegExp(`^\\[Game\\] Saved to user://save\\.json .*music ${stepped[1]}\\b`), 'the stepped volume to be saved', from);
+    await shot('settings');
+    from = logs.length;
+    await page.keyboard.press('Escape');
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'Escape to return from the settings', from);
+    await page.waitForTimeout(300);
+    from = logs.length;
+    for (const key of ['Tab', 'Enter']) await page.keyboard.press(key);
+    await waitForLog(page, logs, /^\[Title\] Credits pressed \(1\)/, 'Credits to be pressed (Tab from Settings, Enter)', from);
+    await waitForLog(page, logs, /^\[Game\] Arrived at CREDITS/, 'the credits screen', from);
+    await page.waitForTimeout(300);
+    await shot('credits');
+    from = logs.length;
+    await page.keyboard.press('Enter');
+    await waitForLog(page, logs, /^\[Game\] Arrived at TITLE/, 'Enter on the focused Back to return from the credits', from);
     return [];
   }
   const pointer = await pointerFor(page, context, run);
@@ -586,6 +673,8 @@ async function playPath(page, context, run, logs, logTimes, shot) {
   if (held < 1) failures.push(`the pause held no sound although the sky shot was still sounding ("${logs.slice(hiddenFrom).find((l) => AUDIO_PAUSED.test(l))}")`);
   const how = run.context.hasTouch ? 'touch' : 'mouse';
   await reloadToTitle(page, logs);
+  const volume = await settingsAndCredits(page, logs, pointer, how, shot);
+  console.log(`[${run.name}] settings: a ${how} tap set the music volume to ${volume}`);
   const timed = await startMode(page, logs, pointer, TIME_ATTACK_RECT, 'Time Attack', TIME_ATTACK_RUN, how);
   const timedOutcomes = await shootFirstGoose(page, logs, logTimes, pointer, timed.index + 1);
   console.log(`[${run.name}] Time Attack shots at the first goose: ${timedOutcomes.join(', ')}`);
@@ -669,7 +758,7 @@ async function smoke(browser, url, run) {
     }, png.toString('base64'));
     if (distinctColors < 2) failures.push('screenshot is a single flat colour (nothing rendered)');
     if (failures.length === 0) failures.push(...await playPath(page, context, run, logs, logTimes, shot));
-    for (const line of logs.filter((l) => /^\[(Game|Title|ChapterSelect|LevelSelect|Play|Results|Audio)\]/.test(l))) console.log(`[${run.name}] ${line}`);
+    for (const line of logs.filter((l) => /^\[(Game|Title|ChapterSelect|LevelSelect|Play|Results|Audio|Settings|Credits)\]/.test(l))) console.log(`[${run.name}] ${line}`);
   } catch (err) {
     failures.push(`smoke test aborted: ${err.message}`);
     // The game's last log lines show where the run got stuck.
