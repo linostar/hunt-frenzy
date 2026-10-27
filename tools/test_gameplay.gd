@@ -4743,8 +4743,11 @@ func _test_settings_screen() -> void:
 	await process_frame
 	from = _log.size()
 	await _key(KEY_ESCAPE)
-	await _game.transition_finished
-	await process_frame
+	# Bounded: a dead Escape must fail here, not hang until the watchdog.
+	for i in 120:
+		if current_scene is Title and not _game.is_transitioning():
+			break
+		await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/SettingsButton") as Button).has_focus(), "Escape on the settings screen returns to the title too", str(current_scene))
 	_check_logged(from, "^\\[Settings\\] Back pressed; returning to the title$", "Back is logged")
 	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
@@ -5070,6 +5073,7 @@ func _test_transition_wipe_and_fade() -> void:
 		var blocked := true
 		var wipe_shown := false
 		var mid_edge := -1.0
+		var first_edge := -1.0
 		while _game.is_transitioning():
 			await process_frame
 			if changed[0]:
@@ -5080,8 +5084,10 @@ func _test_transition_wipe_and_fade() -> void:
 			styles.append(_game.transition_style())
 			blocked = blocked and (not cover.visible or cover.mouse_filter == Control.MOUSE_FILTER_STOP)
 			wipe_shown = wipe_shown or wipe.visible
-			if not reduce and wipe.coverage() > 0.3 and wipe.coverage() < 0.7 and mid_edge < 0.0:
+			if not reduce and not changed[0] and wipe.coverage() > 0.3 and wipe.coverage() < 0.7 and mid_edge < 0.0:
 				mid_edge = wipe.edge_y()
+			if not reduce and in_frames == 1:
+				first_edge = wipe.edge_y()
 		var time := GameState.FADE_TIME if reduce else GameState.WIPE_TIME
 		var label := "reduce motion: plain fade" if reduce else "the wipe"
 		var expected_frames := roundi(time / FRAME)
@@ -5094,7 +5100,7 @@ func _test_transition_wipe_and_fade() -> void:
 			_check_logged(from, "^\\[Game\\] Transition: plain fade, 0\\.15 s in and 0\\.15 s out \\(reduce motion\\)$", "the fade is logged")
 		else:
 			_check_logged(from, "^\\[Game\\] Transition: marsh-grass wipe, 0\\.35 s in and 0\\.35 s out$", "the wipe is logged")
-			_check(mid_edge > 0.0 and mid_edge < _game.visible_rect().size.y, "half way in, the grass's edge is inside the screen (it rises from the bottom)", "edge %.1f" % mid_edge)
+			_check(mid_edge > 0.0 and mid_edge < _game.visible_rect().size.y and first_edge > _game.visible_rect().size.y * 0.5, "half way in, the grass's edge is inside the screen (it rises from the bottom)", "first edge %.1f, mid edge %.1f" % [first_edge, mid_edge])
 			_check(is_zero_approx(cover.self_modulate.a), "under the wipe the cover's own colour stays invisible", str(cover.self_modulate))
 		_check_logged(from, "^\\[Game\\] goto TITLE -> TITLE ", "goto still logs its start")
 		_check_logged(from, "^\\[Game\\] Arrived at TITLE$", "goto still logs its arrival")
@@ -5131,7 +5137,7 @@ func _test_hit_stop() -> void:
 	var from := _log.size()
 	var shot_input := play.get_node("ShotInput") as ShotInput
 	shot_input.shot.emit(_global(play, victim.transform * LOCAL_BODY))
-	_check(is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_TIME) and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop that holds the other birds" % Play.HIT_STOP_TIME, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
+	_check(is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_TIME) and Play.HIT_STOP_TIME <= 0.06 and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop (at most 0.06) that holds the other birds" % Play.HIT_STOP_TIME, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
 	_check_logged(from, "^\\[Play\\] Hit stop 0\\.05 s on the kill of goose #%d " % victim.number, "the hit stop is logged")
 	await process_frame
 	shot_input.shot.emit(_global(play, second.transform * LOCAL_BODY))
@@ -5160,17 +5166,29 @@ func _test_hit_stop() -> void:
 	_check(goslings.size() == 2 and goslings.all(func(bird: Bird) -> bool: return bird.is_held()), "the goslings launched by the kill wait out the stop", str(goslings.map(func(bird: Bird) -> bool: return bird.is_held())))
 	while play.hit_stop_left() > 0.0:
 		await process_frame
-	# An armored kill and a golden kill stop longer.
+	# An armored kill and a golden kill stop longer. 0.09 s is not a whole number of frames,
+	# so this also proves the frame that ends a stop runs only its remainder: run_clock and a
+	# watching bird lose exactly the stop's time.
 	for bird_id: String in ["armored", "golden"]:
 		var heavy := await _spawn_flying(play, 21, IN_FIELD_AGE, bird_id)
 		heavy.set_process(false)
-		for shot in heavy.spec.hp:
-			while play.hit_stop_left() > 0.0:
-				await process_frame
+		var heavy_watcher := await _spawn_flying(play, 25)
+		for shot in heavy.spec.hp - 1:
 			shot_input.shot.emit(_global(play, heavy.transform * LOCAL_BODY))
-		_check(not heavy.is_flying() and is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_HEAVY_TIME) and Play.HIT_STOP_HEAVY_TIME <= 0.1 and Play.HIT_STOP_TIME <= 0.06, "a %s kill stops the world longer, %.2f s (at most 0.1)" % [bird_id, Play.HIT_STOP_HEAVY_TIME], "left %.3f" % play.hit_stop_left())
-		while play.hit_stop_left() > 0.0:
+		await process_frame
+		var heavy_clock := play.run_clock
+		var heavy_offset := heavy_watcher.age - play.run_clock
+		shot_input.shot.emit(_global(play, heavy.transform * LOCAL_BODY))
+		_check(not heavy.is_flying() and is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_HEAVY_TIME) and Play.HIT_STOP_HEAVY_TIME <= 0.1, "a %s kill stops the world longer, %.2f s (at most 0.1)" % [bird_id, Play.HIT_STOP_HEAVY_TIME], "left %.3f" % play.hit_stop_left())
+		var heavy_frames := 0
+		for i in 12:
 			await process_frame
+			heavy_frames += 1
+		var heavy_lost := heavy_frames * FRAME - (play.run_clock - heavy_clock)
+		_check(absf(heavy_lost - Play.HIT_STOP_HEAVY_TIME) < 1e-6, "after a %s kill run_clock loses exactly %.2f s (not whole frames)" % [bird_id, Play.HIT_STOP_HEAVY_TIME], "lost %.6f s over %d frames" % [heavy_lost, heavy_frames])
+		_check(is_instance_valid(heavy_watcher) and absf((heavy_watcher.age - play.run_clock) - heavy_offset) < 1e-6, "after a %s kill a watching bird loses exactly the same time" % bird_id, "offset %.6f -> %.6f" % [heavy_offset, heavy_watcher.age - play.run_clock] if is_instance_valid(heavy_watcher) else "gone")
+		if is_instance_valid(heavy_watcher):
+			heavy_watcher.queue_free()
 	# A timed run's clock loses exactly the stop as well.
 	play = await _start_run(62, GameState.TIME_ATTACK_MODE)
 	for i in 120:
@@ -5349,9 +5367,12 @@ func _test_popup_motion() -> void:
 	# A hit at the very top of the field: the pop-up is moved in, not cut off.
 	var high := play.spawn_bird("goose", 41)
 	high.set_process(false)
-	high.position = Vector2(480, Play.FIELD.position.y + 30.0)
+	# Its body just below the top bar and its tail at the left edge: unclamped, the pop-up
+	# would leave the screen on both sides as it bounces and rises.
+	high.position = Vector2(12.0, Play.FIELD.position.y + 2.0)
 	high.transform = Transform2D(0.0, high.position)
 	await _touch(_global(play, high.transform * LOCAL_BODY))
+	_check(not high.is_flying(), "the goose at the top left edge is hit", "still flying")
 	var top := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
 	var top_outside := false
 	for i in roundi(Play.POPUP_TIME / FRAME) - 2:
