@@ -258,6 +258,11 @@ func _tests() -> Array[Callable]:
 		_test_title_scenery_and_geese,
 		_test_title_goose_shot,
 		_test_transition_wipe_and_fade,
+		_test_hit_stop,
+		_test_feathers,
+		_test_screen_shake,
+		_test_popup_motion,
+		_test_reduce_motion_everywhere,
 	]
 
 
@@ -1652,10 +1657,11 @@ func _test_time_attack_waves_on_clear() -> void:
 	for bird in play.flying_birds():
 		await _touch(_global(play, bird.transform * LOCAL_BODY))
 	var frames := 0
-	while play.wave.index == 1 and frames < 5:
+	while play.wave.index == 1 and frames < 10:
 		await process_frame
 		frames += 1
-	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1, "the next wave starts as soon as the last one is cleared", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
+	# The last kill's hit stop holds everything, the wave's end included, for its own time.
+	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1 + ceili(Play.HIT_STOP_TIME / FRAME), "the next wave starts as soon as the last one is cleared (after the last kill's hit stop)", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
 	_check(play.ammo.shells == play.wave.shells and play.wave.shells == Wave.for_mode(play.mode, 2, 54).shells and play.wave.shells > 0, "the new wave has a full pool of its own shells", "%d of %d" % [play.ammo.shells, play.wave.shells])
 	_check_logged(from, "^\\[Play\\] Wave 2 start: 4 birds \\([a-z, ]+\\), %d shells, speed x1\\.06, [\\d.]+ s left$" % play.wave.shells, "the wave start is logged with its shells and the time left")
 	var score := play.scoring.score
@@ -1783,14 +1789,19 @@ func _test_time_attack_leftover_overlaps_next_wave() -> void:
 			if bird.is_flying():
 				await _touch(_global(play, bird.transform * LOCAL_BODY))
 	var frames := 0
-	while play.wave.index == 2 and frames < 5:
+	while play.wave.index == 2 and frames < 10:
 		await process_frame
 		frames += 1
-	_check(play.wave.index == 3 and frames <= 1 and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
+	_check(play.wave.index == 3 and frames <= 1 + ceili(Play.HIT_STOP_HEAVY_TIME / FRAME) and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
 	var score := play.scoring.score
 	var from := _log.size()
 	leftover.set_process(true)
 	leftover.age = IN_FIELD_AGE
+	# It was held by the hit stops while its processing was off; let the hold run out.
+	for i in 10:
+		if not leftover.is_held():
+			break
+		await process_frame
 	await process_frame
 	await _touch(_global(play, leftover.transform * LOCAL_BODY))
 	_check(not leftover.is_flying() and play.scoring.score > score, "a leftover hit with the next wave's shells scores", "score %d -> %d" % [score, play.scoring.score])
@@ -5093,3 +5104,310 @@ func _test_transition_wipe_and_fade() -> void:
 		_check(title.campaign_presses == 0, "%s: a tap during the transition presses nothing" % label, "%d presses" % title.campaign_presses)
 		await _game.transition_finished
 	_game.reduce_motion = false
+
+
+## Hit stop: a kill freezes the world for HIT_STOP_TIME (HIT_STOP_HEAVY_TIME for an armored
+## or golden kill): the other birds, run_clock and wave_clock stand still, then each has
+## lost exactly the stop's time (a bird's age keeps its offset from run_clock); a second
+## kill during it (a salvo) scores and updates the HUD at once but starts no second stop;
+## a timed run's clock loses exactly the stop too (plan AC 4).
+func _test_hit_stop() -> void:
+	var play := await _start_run(61)
+	for i in 120:
+		if play.wave_clock > 0.5:
+			break
+		await process_frame
+	var victim := await _spawn_flying(play, 11)
+	var watcher := await _spawn_flying(play, 12)
+	var second := await _spawn_flying(play, 13)
+	await process_frame
+	var clock := play.run_clock
+	var wave_clock := play.wave_clock
+	var offset := watcher.age - play.run_clock
+	var where := watcher.position
+	var from := _log.size()
+	var shot_input := play.get_node("ShotInput") as ShotInput
+	shot_input.shot.emit(_global(play, victim.transform * LOCAL_BODY))
+	_check(is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_TIME) and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop that holds the other birds" % Play.HIT_STOP_TIME, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
+	_check_logged(from, "^\\[Play\\] Hit stop 0\\.05 s on the kill of goose #%d " % victim.number, "the hit stop is logged")
+	await process_frame
+	shot_input.shot.emit(_global(play, second.transform * LOCAL_BODY))
+	_check(not second.is_flying() and _text(play, "Score") == "Score %d" % play.scoring.score and play.scoring.kills == 2, "a kill during the stop scores and the HUD shows it at once", _text(play, "Score"))
+	_check(play.hit_stops == 1, "a second kill during the stop starts no second stop", "%d stops" % play.hit_stops)
+	_check_logged(from, "^\\[Play\\] Hit stop for goose #%d skipped: one is running " % second.number, "the skipped stop is logged")
+	var frames := 1
+	var frozen := true
+	while play.hit_stop_left() > 0.0 and frames < 20:
+		frozen = frozen and play.run_clock == clock and play.wave_clock == wave_clock and watcher.position == where
+		await process_frame
+		frames += 1
+	_check(frozen, "during the stop the clocks and the other birds stand still", "clock %.4f -> %.4f" % [clock, play.run_clock])
+	for i in 3:
+		await process_frame
+		frames += 1
+	var lost := frames * FRAME - (play.run_clock - clock)
+	_check(absf(lost - Play.HIT_STOP_TIME) < 1e-6 and absf((frames * FRAME - (play.wave_clock - wave_clock)) - Play.HIT_STOP_TIME) < 1e-6, "run_clock and wave_clock lose exactly the stop's time", "lost %.6f s over %d frames" % [lost, frames])
+	_check(absf((watcher.age - play.run_clock) - offset) < 1e-6 and watcher.position != where, "a bird loses exactly the same time (its age keeps its offset from run_clock) and flies on", "offset %.6f -> %.6f" % [offset, watcher.age - play.run_clock])
+	# An armored kill and a golden kill stop longer.
+	for bird_id: String in ["armored", "golden"]:
+		var heavy := await _spawn_flying(play, 21, IN_FIELD_AGE, bird_id)
+		heavy.set_process(false)
+		for shot in heavy.spec.hp:
+			while play.hit_stop_left() > 0.0:
+				await process_frame
+			shot_input.shot.emit(_global(play, heavy.transform * LOCAL_BODY))
+		_check(not heavy.is_flying() and is_equal_approx(play.hit_stop_left(), Play.HIT_STOP_HEAVY_TIME) and Play.HIT_STOP_HEAVY_TIME <= 0.1 and Play.HIT_STOP_TIME <= 0.06, "a %s kill stops the world longer, %.2f s (at most 0.1)" % [bird_id, Play.HIT_STOP_HEAVY_TIME], "left %.3f" % play.hit_stop_left())
+		while play.hit_stop_left() > 0.0:
+			await process_frame
+	# A timed run's clock loses exactly the stop as well.
+	play = await _start_run(62, GameState.TIME_ATTACK_MODE)
+	for i in 120:
+		if play.wave_clock > 0.5:
+			break
+		await process_frame
+	var goose := await _spawn_flying(play, 14)
+	var left := play.time_left()
+	frames = 0
+	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, goose.transform * LOCAL_BODY))
+	for i in 10:
+		await process_frame
+		frames += 1
+	_check(absf((left - play.time_left()) - (frames * FRAME - Play.HIT_STOP_TIME)) < 1e-6, "the Time Attack clock loses exactly the stop's time", "%.4f -> %.4f over %d frames" % [left, play.time_left(), frames])
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Feathers: a kill bursts FEATHERS_PER_BURST feathers in the bird's own colours at the hit
+## point (a goose, the decoy); every bird sprite has colours, each a palette entry; bursts
+## past FEATHERS_MAX retire the oldest; they fade out; a sprite without colours is reported
+## and bursts nothing (plan AC 5).
+func _test_feathers() -> void:
+	var palette := FileAccess.get_file_as_string("res://art/palette.hex").split("\n", false)
+	var missing: Array[String] = []
+	for spec in Content.birds():
+		var colors: Array = Feathers.COLORS.get(spec.sprite, [])
+		if colors.size() < 2:
+			missing.append("%s has %d colours" % [spec.sprite, colors.size()])
+		for color: Color in colors:
+			if not color.to_html(false) in palette:
+				missing.append("%s %s is not in the palette" % [spec.sprite, color.to_html(false)])
+	_check(missing.is_empty(), "every bird sprite has feather colours, all from art/palette.hex", "; ".join(missing))
+	_check(Feathers.FEATHERS_MAX >= Feathers.FEATHERS_PER_BURST * 3 and Feathers.FEATHERS_MAX <= 64, "the live feather cap holds a few bursts and stays small", str(Feathers.FEATHERS_MAX))
+	var play := await _start_run(63)
+	var feathers := play.get_node("World/Feathers") as Feathers
+	var goose := await _spawn_flying(play, 15)
+	var point := goose.transform * LOCAL_BODY
+	await _touch(_global(play, point))
+	_check(feathers.live_count() == Feathers.FEATHERS_PER_BURST and Array(feathers.live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS["goose"]), "a goose kill bursts its feathers in the goose's colours", "%d: %s" % [feathers.live_count(), feathers.live_colors()])
+	var colours_used := {}
+	for color in feathers.live_colors():
+		colours_used[color.to_html(false)] = true
+	_check(colours_used.size() == Feathers.COLORS["goose"].size(), "the burst uses every colour of the bird", str(colours_used.keys()))
+	var decoy := await _spawn_flying(play, 16, IN_FIELD_AGE, "decoy")
+	await _touch(_global(play, decoy.transform * LOCAL_BODY))
+	var newest := Array(feathers.live_colors()).slice(Feathers.FEATHERS_PER_BURST)
+	_check(feathers.live_count() == 2 * Feathers.FEATHERS_PER_BURST and newest.all(func(color: Color) -> bool: return color in Feathers.COLORS["decoy"]), "a decoy hit bursts the pigeon's colours", str(newest))
+	# The cap: more bursts than it holds keep the newest.
+	var loose := Feathers.new()
+	root.add_child(loose)
+	var thrown := 0
+	for i in 6:
+		thrown += loose.burst(Vector2(100 + i, 100), "golden")
+	_check(thrown == 6 * Feathers.FEATHERS_PER_BURST and loose.live_count() == Feathers.FEATHERS_MAX, "bursts past the cap keep at most FEATHERS_MAX feathers alive", "%d thrown, %d alive" % [thrown, loose.live_count()])
+	for i in roundi(Feathers.FEATHER_LIFE_MAX / FRAME) + 2:
+		await process_frame
+	_check(loose.live_count() == 0, "feathers fade out within their lifetime", "%d left" % loose.live_count())
+	_game.quiet_errors = true
+	var errors := _game.reported_errors.size()
+	var none := loose.burst(Vector2(100, 100), "dragon")
+	loose.burst(Vector2(100, 100), "dragon")
+	_game.quiet_errors = false
+	_check(none == 0 and loose.live_count() == 0 and _game.reported_errors.size() == errors + 1 and _game.reported_errors.back().contains("'dragon'"), "a sprite without feather colours is reported once and bursts nothing", str(_game.reported_errors.slice(errors)))
+	(_game.get_node("Fade/ErrorLabel") as Label).hide()
+	loose.free()
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Screen shake: an armored kill, a golden kill, a decoy hit, a steal and a lost wave each
+## shake the world (logged with their cause) by at most their amplitude, ending exactly
+## where it was (offset zero) after their time; the HUD never moves; a weaker shake does
+## not cut a stronger one short (plan AC 6).
+func _test_screen_shake() -> void:
+	var play := await _start_run(64)
+	var world := play.get_node("World") as Node2D
+	var bar := play.get_node("Hud/Bar") as Control
+	var bar_at := bar.global_position
+	var origin := world.position
+	for cause: String in Play.SHAKES:
+		var amplitude: float = Play.SHAKES[cause][0]
+		var time: float = Play.SHAKES[cause][1]
+		play.shake(cause)
+		var largest := 0.0
+		var moved_bar := false
+		var frames := 0
+		while frames < roundi(time / FRAME) + 2:
+			await process_frame
+			frames += 1
+			largest = maxf(largest, play.shake_offset().length())
+			moved_bar = moved_bar or bar.global_position != bar_at
+		_check(largest > amplitude * 0.3 and largest <= amplitude + 0.001, "%s shakes the world by up to %.0f units" % [cause, amplitude], "largest %.2f" % largest)
+		_check(world.position == origin and play.shake_offset() == Vector2.ZERO and play.shake_strength() == 0.0, "%s's shake ends with the world exactly where it was" % cause, str(world.position - origin))
+		_check(not moved_bar, "%s's shake leaves the HUD where it is" % cause, str(bar.global_position))
+	play.shake("lost wave")
+	await process_frame
+	var from := _log.size()
+	play.shake("armored kill")
+	_check_logged(from, "^\\[Play\\] Shake \\(armored kill\\) skipped: a stronger one \\(lost wave\\) is running$", "a weaker shake does not cut a stronger one short")
+	for i in 30:
+		await process_frame
+	# Each event shakes: the kills, the decoy, a steal.
+	from = _log.size()
+	for bird_id: String in ["armored", "golden", "decoy"]:
+		var bird := await _spawn_flying(play, 22, IN_FIELD_AGE, bird_id)
+		bird.set_process(false)
+		for shot in bird.spec.hp:
+			while play.hit_stop_left() > 0.0:
+				await process_frame
+			await _touch(_global(play, bird.transform * LOCAL_BODY))
+		for i in 30:
+			await process_frame
+	_check_logged(from, "^\\[Play\\] Shake \\(armored kill\\): 6 units over 0\\.25 s$", "an armored kill shakes")
+	_check_logged(from, "^\\[Play\\] Shake \\(golden kill\\): 8 units over 0\\.30 s$", "a golden kill shakes")
+	_check_logged(from, "^\\[Play\\] Shake \\(decoy hit\\): 10 units over 0\\.30 s$", "a decoy hit shakes")
+	from = _log.size()
+	var cued := await _cued_bird(play, 23, "goose")
+	for i in roundi(Content.rival_lines().aim_time / FRAME) + 5:
+		if cued.stolen:
+			break
+		await process_frame
+	_check(cued.stolen, "the rival steals the cued goose", "not stolen")
+	_check_logged(from, "^\\[Play\\] Shake \\(steal\\): 7 units over 0\\.30 s$", "a steal shakes")
+	play = await _start_run(65, GameState.TIME_ATTACK_MODE)
+	from = _log.size()
+	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	for i in 120:
+		if play.wave_clock > 0.2:
+			break
+		await process_frame
+	for i in play.wave.shells:
+		await _touch(grass)
+	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\): 12 units over 0\\.40 s$", "a lost wave shakes")
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Pop-ups: a score pop-up bounces in past its size and settles; combo pop-ups are larger
+## the higher the multiplier; a penalty pop-up shakes from side to side; each keeps its
+## text and colour, and stays inside the visible area at its largest, even for a hit at
+## the top edge (plan AC 7).
+func _test_popup_motion() -> void:
+	var play := await _start_run(66)
+	var popups := play.get_node("World/Popups")
+	var scales: Array[float] = []
+	for n in 3:
+		var goose := await _spawn_flying(play, 30 + n)
+		await _touch(_global(play, goose.transform * LOCAL_BODY))
+		var label := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+		var largest := 0.0
+		var outside := false
+		for i in roundi(Play.POPUP_BOUNCE_TIME / FRAME) + 6:
+			largest = maxf(largest, label.scale.x)
+			var box := label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
+			outside = outside or not _game.visible_rect().grow(0.5).encloses(box)
+			await process_frame
+		var rest: float = label.get_meta(&"rest_scale")
+		scales.append(rest)
+		var color := label.get_theme_color(&"font_color")
+		_check(largest > rest * 1.2 and is_equal_approx(label.scale.x, rest) and color == Play.POPUP_COLOR, "pop-up %d '%s' bounces in past its size and settles, in the pop-up colour" % [n + 1, label.text], "largest %.2f, now %.2f, rest %.2f" % [largest, label.scale.x, rest])
+		_check(not outside, "pop-up %d stays inside the visible area" % (n + 1), "outside")
+		while play.hit_stop_left() > 0.0:
+			await process_frame
+	_check(scales[0] == 1.0 and scales[1] > scales[0] and scales[2] > scales[1] and is_equal_approx(scales[2], 1.0 + 2 * Play.POPUP_COMBO_GROWTH), "combo pop-ups grow with the multiplier", str(scales))
+	var decoy := await _spawn_flying(play, 40, IN_FIELD_AGE, "decoy")
+	# Shot synchronously, so the pop-up's resting x is read before it starts shaking.
+	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, decoy.transform * LOCAL_BODY))
+	var penalty := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	var x0 := penalty.position.x
+	var swing := 0.0
+	for i in roundi(Play.POPUP_SHAKE_TIME / FRAME) + 4:
+		swing = maxf(swing, absf(penalty.position.x - x0))
+		await process_frame
+	_check(penalty.text.begins_with("-") and penalty.get_theme_color(&"font_color") == Play.PENALTY_COLOR and swing > Play.POPUP_SHAKE * 0.5 and is_equal_approx(penalty.position.x, x0) and penalty.scale == Vector2.ONE, "the penalty pop-up shakes side to side and comes to rest, in the penalty colour", "swing %.2f, x %.2f -> %.2f" % [swing, x0, penalty.position.x])
+	# A hit at the very top of the field: the pop-up is moved in, not cut off.
+	var high := play.spawn_bird("goose", 41)
+	high.set_process(false)
+	high.position = Vector2(480, Play.FIELD.position.y + 30.0)
+	high.transform = Transform2D(0.0, high.position)
+	await _touch(_global(play, high.transform * LOCAL_BODY))
+	var top := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	var top_outside := false
+	for i in roundi(Play.POPUP_TIME / FRAME) - 2:
+		var box := top.get_global_transform() * Rect2(Vector2.ZERO, top.size)
+		top_outside = top_outside or not _game.visible_rect().grow(0.5).encloses(box)
+		await process_frame
+	_check(not top_outside, "a pop-up for a hit at the top edge stays inside the visible area as it bounces and rises", "outside")
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## Reduce motion (saved) turns off the screen shake, the wipe (a plain fade), the pop-ups'
+## bounce and shake and the title's drift, and keeps the hit stop, the feathers and the
+## gameplay cues (the empty cue, the aim cue) (plan AC 8).
+func _test_reduce_motion_everywhere() -> void:
+	_clear_tool_save()
+	_game.set_reduce_motion(true)
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and (saved as Dictionary)["settings"]["reduce_motion"] == true, "reduce motion is saved", str(saved))
+	await _open_title()
+	_check(_game.transition_style() == "fade", "screens change by the plain fade", _game.transition_style())
+	var scenery := current_scene.get_node("Scenery") as Node2D
+	var drift := 0.0
+	for i in 240:
+		drift = maxf(drift, absf(scenery.position.x))
+		await process_frame
+	_check(drift == 0.0, "the title's scenery stays still", "drift %.3f" % drift)
+	var play := await _start_run(67)
+	var world := play.get_node("World") as Node2D
+	var origin := world.position
+	var feathers := play.get_node("World/Feathers") as Feathers
+	var armored := await _spawn_flying(play, 24, IN_FIELD_AGE, "armored")
+	armored.set_process(false)
+	var still := true
+	var bounced := false
+	for shot in armored.spec.hp:
+		await _touch(_global(play, armored.transform * LOCAL_BODY))
+	_check(play.hit_stops == 1 and play.hit_stop_left() > 0.0, "the hit stop still runs", "%d stops" % play.hit_stops)
+	_check(feathers.live_count() == Feathers.FEATHERS_PER_BURST, "feathers still burst", "%d" % feathers.live_count())
+	var label := play.get_node("World/Popups").get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	for i in 30:
+		still = still and world.position == origin
+		bounced = bounced or not is_equal_approx(label.scale.x, label.get_meta(&"rest_scale"))
+		await process_frame
+	_check(still, "an armored kill does not shake the world", str(world.position - origin))
+	_check(not bounced, "the score pop-up does not bounce", "scaled")
+	var decoy := await _spawn_flying(play, 25, IN_FIELD_AGE, "decoy")
+	await _touch(_global(play, decoy.transform * LOCAL_BODY))
+	var penalty := play.get_node("World/Popups").get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
+	var x0 := penalty.position.x
+	var wiggled := false
+	for i in 20:
+		wiggled = wiggled or penalty.position.x != x0
+		still = still and world.position == origin
+		await process_frame
+	_check(not wiggled and still, "a decoy hit neither shakes the world nor its pop-up", "wiggled %s" % wiggled)
+	var from := _log.size()
+	play.shake("lost wave")
+	await process_frame
+	_check(world.position == origin, "no shake at all, whatever the cause", str(world.position - origin))
+	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\) skipped: reduce motion$", "a skipped shake is logged")
+	var cued := await _cued_bird(play, 26, "goose")
+	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
+	play.set_shell_pool(0)
+	await _touch(_global(play, Vector2(480, 200)))
+	_check(play.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
+	_game.set_reduce_motion(false)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_check(_game.transition_style() == "wipe", "with reduce motion off the wipe is back", _game.transition_style())
+	_clear_tool_save()

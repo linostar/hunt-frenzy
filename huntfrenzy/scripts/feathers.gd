@@ -28,8 +28,8 @@ const COLORS: Dictionary[String, Array] = {
 ## The feathers' outline (the art's ink).
 const INK := Color(0.122, 0.102, 0.18)
 ## Launch speed (base units per second), within FAN of straight up.
-const SPEED_MIN := 120.0
-const SPEED_MAX := 260.0
+const SPEED_MIN := 160.0
+const SPEED_MAX := 320.0
 const FAN := deg_to_rad(150.0)
 ## Downward pull, and how fast the air slows them (fraction of the speed kept per second).
 const GRAVITY := 260.0
@@ -41,8 +41,8 @@ const FEATHER_LIFE_MIN := 0.9
 const FEATHER_LIFE_MAX := 1.4
 ## The last seconds of a feather's life fade it out.
 const FADE_TIME := 0.35
-## A feather's shape: a slim leaf, 12 long and 5 wide, pointing along +x.
-const SHAPE: Array[Vector2] = [Vector2(-6, 0), Vector2(-3, -2.5), Vector2(3, -2), Vector2(6, 0), Vector2(3, 2), Vector2(-3, 2.5)]
+## A feather's shape: a slim leaf, 18 long and 7.5 wide, pointing along +x.
+const SHAPE: Array[Vector2] = [Vector2(-9, 0), Vector2(-4.5, -3.75), Vector2(4.5, -3), Vector2(9, 0), Vector2(4.5, 3), Vector2(-4.5, 3.75)]
 
 
 ## One feather in the air.
@@ -137,4 +137,4 @@ func _draw() -> void:
 		draw_colored_polygon(shape, fill)
 		var closed := shape.duplicate()
 		closed.append(shape[0])
-		draw_polyline(closed, outline, 1.0)
+		draw_polyline(closed, outline, 1.5)
