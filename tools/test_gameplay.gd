@@ -249,6 +249,7 @@ func _tests() -> Array[Callable]:
 		_test_dropped_taps_are_silent,
 		_test_pause_keeps_every_held_sound,
 		_test_frequent_sounds_vary_in_pitch,
+		_test_audio_unloadable_files_reported,
 	]
 
 
@@ -4350,6 +4351,40 @@ func _test_pause_keeps_every_held_sound() -> void:
 		"on resuming every held sound continues", "%d in flight" % _game.sounds_in_flight())
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
+
+
+## A sound or loop file that exists but is not audio (a resource of another type) is reported
+## with its path, on the error label and in the reported errors (the log), and plays nothing;
+## Game's loop files are the data's (MUSIC_PATH matches Content.music_path).
+func _test_audio_unloadable_files_reported() -> void:
+	_check(GameState.MUSIC_PATH % "title" == Content.music_path("title"), "Game and Content name the same loop files", GameState.MUSIC_PATH)
+	var not_audio := "[gd_resource type=\"Gradient\" format=3]\n\n[resource]\n"
+	for path: String in ["user://not_audio_shot.tres", "user://not_audio_banjo_jam.tres"]:
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(not_audio)
+		file.close()
+	var label := _game.get_node("Fade/ErrorLabel") as Label
+	_game.quiet_errors = true
+	_game.sfx_path = "user://not_audio_%s.tres"
+	_game.music_path = "user://not_audio_%s.tres"
+	var errors := _game.reported_errors.size()
+	_game.sfx_log.clear()
+	_game.play_sfx(&"shot")
+	var sfx_message := "Sound effect 'shot' at user://not_audio_shot.tres cannot be loaded as audio"
+	_check(_game.reported_errors.slice(errors) == [sfx_message] and label.visible and label.text == sfx_message and _game.sfx_log.is_empty(),
+		"a sound effect file that is not audio is reported with its path, on screen, and plays nothing", str(_game.reported_errors.slice(errors)))
+	errors = _game.reported_errors.size()
+	var track := _game.music_track
+	_game.play_music("banjo_jam")
+	var music_message := "Music track 'banjo_jam' at user://not_audio_banjo_jam.tres cannot be loaded as audio"
+	_check(_game.reported_errors.slice(errors) == [music_message] and label.visible and label.text == music_message and _game.music_track == track,
+		"a loop file that is not audio is reported with its path, on screen, and the music stays", str(_game.reported_errors.slice(errors)))
+	_game.sfx_path = GameState.SFX_PATH
+	_game.music_path = GameState.MUSIC_PATH
+	_game.quiet_errors = false
+	label.hide()
+	for path: String in ["user://not_audio_shot.tres", "user://not_audio_banjo_jam.tres"]:
+		DirAccess.remove_absolute(path)
 
 
 ## The shot, the plain hit and the escape each play at a pitch within SOUND_PITCH_SPREAD of

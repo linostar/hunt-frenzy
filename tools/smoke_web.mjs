@@ -42,7 +42,11 @@
 //     Playwright lets audio start without one, whatever its --autoplay-policy); before the
 //     first input none may be running, after the first tap (Campaign) one
 //     must be running (keyboard: after the first key), and the log must hold "[Audio] Music title" (the title loop asked for
-//     at boot, audible from that tap on); an audio error or warning in the console fails the
+//     at boot, audible from that tap on), and an AnalyserNode fed by every node connected to
+//     the page's audio output must hear sound (the title loop); before the page is hidden a
+//     shot is fired on the sky and the pause must log at least one sound held (a runtime
+//     error from Game's own checks that play() started and stream_paused held fails the run
+//     as a console error); an audio error or warning in the console fails the
 //     run (Chrome's own note that audio waits for a gesture is expected);
 //   mobile-portrait: require "[Game] Rotate overlay shown ... tree paused", check that a
 //     touch where Campaign is and Enter press nothing, turn the phone to landscape (844x390),
@@ -135,7 +139,26 @@ const AUDIO_RECORDER = `(() => {
       }
     };
   }
+  // Every node the page connects to an AudioContext's output is also fed to an AnalyserNode
+  // (window.__huntFrenzyAnalysers), so the test can hear whether sound comes out.
+  window.__huntFrenzyAnalysers = [];
+  const connect = AudioNode.prototype.connect;
+  AudioNode.prototype.connect = function (target, ...rest) {
+    if (target instanceof AudioDestinationNode && !this.__huntFrenzyTapped) {
+      this.__huntFrenzyTapped = true;
+      const analyser = this.context.createAnalyser();
+      analyser.fftSize = 2048;
+      connect.call(this, analyser);
+      window.__huntFrenzyAnalysers.push(analyser);
+    }
+    return connect.call(this, target, ...rest);
+  };
 })();`;
+// The output level (largest absolute sample of the latest 2048) that counts as sound.
+const SOUND_LEVEL_MIN = 0.001;
+// A shot or the empty click, the sounds the pause test fires on the sky.
+const SHOT_SOUND = /^\[Audio\] SFX (shot|empty_click)\b/;
+const AUDIO_PAUSED = /^\[Audio\] Paused: (\d+) sounds held/;
 // The rival speaking or aiming (Play logs every heckle shown and every aim cue started).
 const RIVAL_LINE = /^\[Play\] (Heckle \(\w+\) #\d+: |Aim cue on )/;
 // Seconds between two "ahead" points of a [Bird] line (Bird.TRACK_AHEAD_STEP).
@@ -238,6 +261,32 @@ function audioStates(page) {
   return page.evaluate(() => (window.__huntFrenzyAudio ?? []).map((ctx) => ctx.state));
 }
 
+// The page's audio output level now: the largest absolute sample any analyser holds (0 when
+// nothing is connected or all is silent).
+function audioLevel(page) {
+  return page.evaluate(() => {
+    let level = 0;
+    for (const analyser of window.__huntFrenzyAnalysers ?? []) {
+      const data = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(data);
+      for (const v of data) level = Math.max(level, Math.abs(v));
+    }
+    return level;
+  });
+}
+
+// Waits until the page's audio output carries sound; returns its level.
+async function waitForSound(page, what) {
+  const deadline = Date.now() + STEP_TIMEOUT_MS;
+  let level = 0;
+  while (Date.now() < deadline) {
+    level = await audioLevel(page);
+    if (level >= SOUND_LEVEL_MIN) return level;
+    await page.waitForTimeout(50);
+  }
+  throw new Error(`timed out after ${STEP_TIMEOUT_MS} ms waiting for sound to come out ${what} (output level ${level})`);
+}
+
 // Waits until one of the page's AudioContexts is running; returns the states seen.
 async function waitForAudioRunning(page, what) {
   const deadline = Date.now() + STEP_TIMEOUT_MS;
@@ -262,7 +311,8 @@ async function reachFirstLevel(page, logs, pointer, how) {
   await waitForLog(page, logs, /^\[Title\] Campaign pressed \(1\)/, `Campaign to be pressed (${how} tap)`, from);
   const after = await waitForAudioRunning(page, `after the first ${how} tap`);
   await waitForLog(page, logs, TITLE_MUSIC, 'the title loop ("[Audio] Music title")');
-  console.log(`[${how}] audio: AudioContext ${JSON.stringify(before)} before the first tap, ${JSON.stringify(after)} after it`);
+  const level = await waitForSound(page, `after the first ${how} tap (the title loop)`);
+  console.log(`[${how}] audio: AudioContext ${JSON.stringify(before)} before the first tap, ${JSON.stringify(after)} after it, output level ${level.toFixed(3)}`);
   await waitForLog(page, logs, /^\[Game\] Arrived at CHAPTER_SELECT/, 'the chapter select', from);
   from = logs.length;
   await pointer.tap(await buttonPoint(page, logs, DAWN_RECT, 'the dawn chapter button layout'));
@@ -438,7 +488,8 @@ async function playPath(page, context, run, logs, logTimes, shot) {
     for (const key of ['Tab', 'Tab', 'Tab']) await page.keyboard.press(key);
     const after = await waitForAudioRunning(page, 'after the first key press');
     await waitForLog(page, logs, TITLE_MUSIC, 'the title loop ("[Audio] Music title")');
-    console.log(`[${run.name}] audio: AudioContext ${JSON.stringify(before)} before the first key, ${JSON.stringify(after)} after it`);
+    const level = await waitForSound(page, 'after the first key press (the title loop)');
+    console.log(`[${run.name}] audio: AudioContext ${JSON.stringify(before)} before the first key, ${JSON.stringify(after)} after it, output level ${level.toFixed(3)}`);
     await page.waitForTimeout(300);
     await shot('focus');
     let from = logs.length;
@@ -520,13 +571,19 @@ async function playPath(page, context, run, logs, logTimes, shot) {
   await shot('play');
   const rival = await waitForLog(page, logs, RIVAL_LINE, 'a rival line (a heckle or an aim cue)', arrived.index + 1);
   console.log(`[${run.name}] rival: ${rival.input}`);
-  // The page becoming hidden (another tab, the phone's home button) pauses the run.
+  // The page becoming hidden (another tab, the phone's home button) pauses the run; a shot
+  // fired just before is still sounding then, and the pause must hold it.
+  const shotFrom = logs.length;
+  await pointer.tap(await pagePoint(page, BASE.width / 2, 120));
+  await waitForLog(page, logs, SHOT_SOUND, 'the sky shot\'s sound', shotFrom);
   const hiddenFrom = logs.length;
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await waitForLog(page, logs, /^\[Play\] Paused \(page hidden\)/, 'the hidden page to pause the run', hiddenFrom);
+  const held = Number((await waitForLog(page, logs, AUDIO_PAUSED, 'the pause to hold the sounds', hiddenFrom))[1]);
+  if (held < 1) failures.push(`the pause held no sound although the sky shot was still sounding ("${logs.slice(hiddenFrom).find((l) => AUDIO_PAUSED.test(l))}")`);
   const how = run.context.hasTouch ? 'touch' : 'mouse';
   await reloadToTitle(page, logs);
   const timed = await startMode(page, logs, pointer, TIME_ATTACK_RECT, 'Time Attack', TIME_ATTACK_RUN, how);

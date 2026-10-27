@@ -195,6 +195,8 @@ const HECKLE_VOICES: Dictionary[String, Array] = {
 ## The loops of the title (and the chapter and level selects) and of the results screen;
 ## a run plays its chapter's or mode's (data music, Content.music_path).
 const TITLE_TRACK := "title"
+## The file of each loop: as Content.music_path, which the data's tracks are checked against.
+const MUSIC_PATH := "res://audio/music/%s.mp3"
 const RESULTS_TRACK := "results"
 ## Seconds a new loop takes to fade in over the old one (at most 0.5: plan AC 7).
 const CROSSFADE_TIME := 0.4
@@ -218,8 +220,10 @@ class Syllable:
 
 ## Paths per flow state; tests swap one to check the missing-scene path.
 var scene_paths: Dictionary[Flow, String] = SCENE_PATHS.duplicate()
-## Where sound effects are (SFX_PATH); tests swap it to check the missing-sound path.
+## Where sound effects are (SFX_PATH) and music loops are (MUSIC_PATH); tests swap them to
+## check the missing and unloadable paths.
 var sfx_path := SFX_PATH
+var music_path := MUSIC_PATH
 ## Tests set this to keep expected errors out of the log; they are still recorded
 ## and shown on the error label.
 var quiet_errors := false
@@ -293,7 +297,7 @@ var _held: Array[AudioStreamPlayer] = []
 var _held_at := 0.0
 ## The syllables of blurts still to start, each at its _clock time (in order).
 var _blurt_queue: Array[Syllable] = []
-## Loop id -> its stream, or null when it is missing (reported once).
+## Loop file -> its stream, or null when it is missing (reported once).
 var _tracks: Dictionary[String, AudioStream] = {}
 var _music_players: Array[AudioStreamPlayer] = []
 ## The index in _music_players of the one playing (or fading in) music_track.
@@ -411,8 +415,8 @@ func goto(new_state: Flow, args: Dictionary = {}) -> void:
 		return
 	var missing := missing_dependencies(path)
 	var track := track_for(new_state, args)
-	if track != "" and not ResourceLoader.exists(Content.music_path(track)):
-		missing.append(Content.music_path(track))
+	if track != "" and not ResourceLoader.exists(music_path % track):
+		missing.append(music_path % track)
 	if not missing.is_empty():
 		report_error("Cannot go to %s: scene '%s' needs %s, which %s missing" % [to_name, path, ", ".join(missing), "is" if missing.size() == 1 else "are"])
 		return
@@ -1139,8 +1143,8 @@ func check_audio() -> bool:
 		if not ResourceLoader.exists(sfx_path % id):
 			problems.append("Sound effect '%s' is missing: %s (run python3 tools/sfx.py)" % [id, sfx_path % id])
 	for track: String in [TITLE_TRACK, RESULTS_TRACK]:
-		if not ResourceLoader.exists(Content.music_path(track)):
-			problems.append("Music track '%s' is missing: %s (run python3 tools/music.py)" % [track, Content.music_path(track)])
+		if not ResourceLoader.exists(music_path % track):
+			problems.append("Music track '%s' is missing: %s (run python3 tools/music.py)" % [track, music_path % track])
 	for problem in problems:
 		report_error(problem)
 	if problems.is_empty():
@@ -1260,6 +1264,7 @@ func _start_voice(stream: AudioStream, pitch: float) -> void:
 		_menu_voice.pitch_scale = pitch
 		if not audio_silent():
 			_menu_voice.play()
+			_check_started(_menu_voice, "Sound '%s'" % stream.resource_path.get_file())
 		return
 	var pick := 0
 	for i in _sfx_players.size():
@@ -1276,11 +1281,19 @@ func _start_voice(stream: AudioStream, pitch: float) -> void:
 	player.stream_paused = false
 	if not audio_silent():
 		player.play()
+		_check_started(player, "Sound '%s'" % stream.resource_path.get_file())
 
 
 ## The blurt syllables queued and not started yet.
 func blurt_syllables_waiting() -> int:
 	return _blurt_queue.size()
+
+
+## With an audio device, `player` must be playing right after play(): `what` did not start
+## otherwise (reported, never silent).
+func _check_started(player: AudioStreamPlayer, what: String) -> void:
+	if not player.playing:
+		report_error("%s did not start playing on %s (bus %s)" % [what, player.name, player.bus])
 
 
 ## The sounds still in flight (started and not over yet, or held by the pause).
@@ -1324,8 +1337,12 @@ func sync_audio_pause() -> void:
 		_held_at = _clock
 		for i in _sfx_players.size():
 			if _sfx_until[i] > _clock:
+				var was_playing := _sfx_players[i].playing
 				_sfx_players[i].stream_paused = true
 				_held.append(_sfx_players[i])
+				# With an audio device a sound still playing must now be paused, not running on.
+				if was_playing and not _sfx_players[i].stream_paused:
+					report_error("Sound on %s kept playing when the game paused (stream_paused did not hold it)" % _sfx_players[i].name)
 		held_sounds = _held.size()
 		print("[Audio] Paused: %d sounds held, %d blurt syllables waiting, music ducked by %.0f dB" % [held_sounds, _blurt_queue.size(), -PAUSE_DUCK_DB])
 	else:
@@ -1366,8 +1383,8 @@ static func track_for(to: Flow, args: Dictionary) -> String:
 func play_music(track: String) -> void:
 	if track == "" or track == music_track:
 		return
-	if not _tracks.has(track):
-		var path := Content.music_path(track)
+	var path := music_path % track
+	if not _tracks.has(path):
 		var stream: AudioStream = null
 		if not ResourceLoader.exists(path):
 			report_error("Music track '%s' is missing: %s (run python3 tools/music.py)" % [track, path])
@@ -1375,8 +1392,8 @@ func play_music(track: String) -> void:
 			stream = load(path) as AudioStream
 			if stream == null:
 				report_error("Music track '%s' at %s cannot be loaded as audio" % [track, path])
-		_tracks[track] = stream
-	if _tracks[track] == null:
+		_tracks[path] = stream
+	if _tracks[path] == null:
 		return
 	var from := music_track
 	music_track = track
@@ -1387,10 +1404,11 @@ func play_music(track: String) -> void:
 	var old := _music_players[_music_current]
 	_music_current = 1 - _music_current
 	var player := _music_players[_music_current]
-	player.stream = _tracks[track]
+	player.stream = _tracks[path]
 	player.volume_linear = 0.0
 	if not audio_silent():
 		player.play()
+		_check_started(player, "Music track '%s'" % track)
 	_music_fade = create_tween().set_parallel()
 	_music_fade.tween_property(player, "volume_linear", 1.0, CROSSFADE_TIME)
 	if from != "":
