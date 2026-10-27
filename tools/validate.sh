@@ -16,7 +16,7 @@ mkdir -p "$LOG_DIR"
 
 fail() {
   echo "FAIL $1 (log: $2)" >&2
-  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main|sfx|music" "$2" >&2 || true
+  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main|sfx|music|import_cache" "$2" >&2 || true
   exit 1
 }
 
@@ -69,35 +69,15 @@ fi
 # of it) are tolerated there; any other problem (a script or scene parse error) still fails.
 CACHE_MISS="Cannot open file 'res://\.godot/imported/|Unable to open file: res://\.godot/imported/|Failed loading resource: res://|referenced non-existent resource at: res://|Error loading custom project (font|theme) 'res://"
 
-# Prints why the import cache is stale and returns 0 when it is: no cache at all, or a
-# tracked asset (a file with a committed .import) whose imported file is missing or older
-# than the asset itself. Returns 1 when every asset's import is in place and up to date.
-import_cache_stale() {
-  if [ ! -d huntfrenzy/.godot/imported ]; then
-    echo "no import cache"
-    return 0
-  fi
-  local import source dest
-  while IFS= read -r -d '' import; do
-    source="${import%.import}"
-    [ -f "$source" ] || continue
-    while IFS= read -r dest; do
-      dest="huntfrenzy/${dest#res://}"
-      if [ ! -f "$dest" ]; then
-        echo "${source#huntfrenzy/} is not imported yet"
-        return 0
-      fi
-      if [ "$source" -nt "$dest" ]; then
-        echo "${source#huntfrenzy/} is newer than its import"
-        return 0
-      fi
-    done < <(sed -n 's/^dest_files=\[\(.*\)\]$/\1/p' "$import" | tr ',' '\n' | sed -n 's/^ *"\(res:\/\/[^"]*\)"$/\1/p')
-  done < <(find huntfrenzy -path huntfrenzy/.godot -prune -o -name '*.import' -type f -print0)
-  return 1
-}
-
-if stale="$(import_cache_stale)"; then
-  echo "Import cache is stale ($stale): running the priming import"
+# Whether the import cache is stale, by Godot's own rule (tools/import_cache.py: no cache, an
+# asset not imported yet, or one whose content changed since its import; a touch alone is
+# not stale), and that rule's self-test on made-up projects.
+if ! python3 tools/import_cache.py --self-test >"$LOG_DIR/import_cache.log" 2>&1 || ! grep -q "^import_cache: OK" "$LOG_DIR/import_cache.log"; then
+  fail "import cache check self-test" "$LOG_DIR/import_cache.log"
+fi
+cache_state="$(python3 tools/import_cache.py huntfrenzy 2>>"$LOG_DIR/import_cache.log")" || fail "import cache check" "$LOG_DIR/import_cache.log"
+if [ "$cache_state" != "fresh" ]; then
+  echo "Import cache is stale (${cache_state#stale: }): running the priming import"
   godot "$LOG_DIR/import_prime.log" --headless --path huntfrenzy --import || true
   if grep -E "ERROR|WARNING" "$LOG_DIR/import_prime.log" | grep -qvE "$CACHE_MISS"; then
     fail "priming import reported problems besides import-cache misses" "$LOG_DIR/import_prime.log"
@@ -171,7 +151,7 @@ done
 # a malformed copy.
 run_script test_content "$LOG_DIR/content.log"
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
-summary="$(grep "^sfx: OK" "$LOG_DIR/sfx.log"); $(grep "^music: OK" "$LOG_DIR/music.log"); $(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
+summary="$(grep "^sfx: OK" "$LOG_DIR/sfx.log"); $(grep "^import_cache: OK" "$LOG_DIR/import_cache.log"); $(grep "^music: OK" "$LOG_DIR/music.log"); $(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
 # The main scene (the title) runs 120 frames (2 s at 60 fixed fps) by default; run_main
 # requires the flow state to match the running scene.
 RUN_FRAMES="${RUN_FRAMES:-120}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60
