@@ -4976,6 +4976,9 @@ func _test_title_goose_shot() -> void:
 	goose.set_process(false)
 	var from := _log.size()
 	var shots_from := from
+	# Inside the goose's box but outside its polygon: a miss, as in play.
+	await _touch(scenery.to_global(goose.transform * LOCAL_BOX_CORNER))
+	_check(goose.is_flying() and title.geese_shot == 0, "a tap inside a title goose's box but outside its polygon misses", "shot %d" % title.geese_shot)
 	var sounds := _game.sfx_log.size()
 	var feathers_before := title.feathers().live_count()
 	await _touch(scenery.to_global(goose.transform * LOCAL_BODY))
@@ -5148,6 +5151,15 @@ func _test_hit_stop() -> void:
 	var lost := frames * FRAME - (play.run_clock - clock)
 	_check(absf(lost - Play.HIT_STOP_TIME) < 1e-6 and absf((frames * FRAME - (play.wave_clock - wave_clock)) - Play.HIT_STOP_TIME) < 1e-6, "run_clock and wave_clock lose exactly the stop's time", "lost %.6f s over %d frames" % [lost, frames])
 	_check(absf((watcher.age - play.run_clock) - offset) < 1e-6 and watcher.position != where, "a bird loses exactly the same time (its age keeps its offset from run_clock) and flies on", "offset %.6f -> %.6f" % [offset, watcher.age - play.run_clock])
+	# A splitter's goslings, launched by the kill that starts a stop, wait it out too.
+	while play.hit_stop_left() > 0.0:
+		await process_frame
+	var splitter := await _spawn_flying(play, 18, IN_FIELD_AGE, "splitter")
+	shot_input.shot.emit(_global(play, splitter.transform * LOCAL_BODY))
+	var goslings := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling")
+	_check(goslings.size() == 2 and goslings.all(func(bird: Bird) -> bool: return bird.is_held()), "the goslings launched by the kill wait out the stop", str(goslings.map(func(bird: Bird) -> bool: return bird.is_held())))
+	while play.hit_stop_left() > 0.0:
+		await process_frame
 	# An armored kill and a golden kill stop longer.
 	for bird_id: String in ["armored", "golden"]:
 		var heavy := await _spawn_flying(play, 21, IN_FIELD_AGE, bird_id)

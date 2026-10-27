@@ -38,8 +38,9 @@ extends Node
 ## every Button's press plays "ui_tap" unless it is in OWN_SOUND_GROUP (it plays its own).
 ## A heckle plays a gibberish blurt (play_heckle: blurt_plan strings the rival's syllables,
 ## seeded by the line, pitched and voiced by the category). The music is one loop per
-## screen (track_for: the title's for the title and the selects, the chapter's or the
-## mode's in a run, the results' on results) on the Music bus: goto() asks for it as the
+## screen (track_for: the title's for the title, the selects, the settings and the
+## credits, the chapter's or the mode's in a run, the results' on results) on the Music
+## bus: goto() asks for it as the
 ## transition starts, a screen with the same loop leaves it playing, another crossfades in
 ## over CROSSFADE_TIME, and every change is logged ("[Audio] Music <track>"). The saved
 ## volumes and mutes set the Music and SFX buses at start and on every change. While the
@@ -1423,8 +1424,8 @@ func sync_audio_pause() -> void:
 	_apply_volumes()
 
 
-## The loop of flow state `to` entered with `args`: the title's for the title and the
-## selects, the chapter's (a campaign level) or the mode's in a run, the results'; "" for a
+## The loop of flow state `to` entered with `args`: the title's for the title, the
+## selects, the settings and the credits, the chapter's (a campaign level) or the mode's in a run, the results'; "" for a
 ## run that cannot start (an unknown level or mode: the music stays as it is).
 static func track_for(to: Flow, args: Dictionary) -> String:
 	match to:
