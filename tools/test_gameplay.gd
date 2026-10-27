@@ -247,6 +247,7 @@ func _tests() -> Array[Callable]:
 		_test_pause_holds_sounds_and_ducks_music,
 		_test_audio_missing_files_reported,
 		_test_dropped_taps_are_silent,
+		_test_pause_keeps_every_held_sound,
 	]
 
 
@@ -3849,7 +3850,7 @@ func _test_audio_buses_follow_settings() -> void:
 	var sfx_bus := AudioServer.get_bus_index(GameState.SFX_BUS)
 	for bus: int in [music_bus, sfx_bus]:
 		_check(bus > 0 and AudioServer.get_bus_send(bus) == &"Master", "bus %s sends to Master" % AudioServer.get_bus_name(bus), str(AudioServer.get_bus_send(bus)))
-	_check(_game.sfx_players().size() == GameState.SFX_VOICES and _game.sfx_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.SFX_BUS),
+	_check(_game.sfx_players().size() == GameState.SFX_VOICES + 1 and _game.sfx_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.SFX_BUS),
 		"every sound effect player is on the SFX bus", str(_game.sfx_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
 	_check(_game.music_players().size() == 2 and _game.music_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.MUSIC_BUS),
 		"every music player is on the Music bus", str(_game.music_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
@@ -4320,6 +4321,32 @@ func _test_dropped_taps_are_silent() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	play.resume()
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## With all SFX_VOICES pool voices sounding as the pause opens, every one is held and none
+## is taken over: the pause sound (and a menu tap) play on the menu voice, and on resuming
+## every held sound continues where it was.
+func _test_pause_keeps_every_held_sound() -> void:
+	var play := await _start_run(96)
+	for i in GameState.SFX_VOICES:
+		_game.play_sfx(&"time_up")
+	var pool := _game.sfx_players().slice(0, GameState.SFX_VOICES)
+	_check(_game.sounds_in_flight() == GameState.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"every pool voice is sounding", str(_game.sounds_in_flight()))
+	play.open_pause("test")
+	_game.play_sfx(&"ui_tap")
+	var menu := _game.sfx_players().back() as AudioStreamPlayer
+	_check(_game.held_players() == pool and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"all %d held sounds keep their voices while the pause menu's sounds play" % GameState.SFX_VOICES, str(pool.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path.get_file())))
+	_check(menu.bus == GameState.SFX_BUS and menu.stream != null and menu.stream.resource_path.ends_with("/ui_tap.wav") and _game.sfx_log.slice(-2) == [&"pause", &"ui_tap"],
+		"the pause and the tap play on the menu voice", "%s, %s" % [menu.stream, _game.sfx_log.slice(-2)])
+	for i in 30:
+		await process_frame
+	play.resume()
+	_check(_game.held_players().is_empty() and _game.sounds_in_flight() == GameState.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"on resuming every held sound continues", "%d in flight" % _game.sounds_in_flight())
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 

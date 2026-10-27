@@ -368,9 +368,10 @@ func resume(cause := "Resume") -> void:
 	if not _pause_menu.visible or _over:
 		return
 	_pause_menu.hide()
+	# On the menu voice, while the audio is still paused, so it never takes a held sound's voice.
+	_game.play_sfx(&"resume")
 	get_tree().paused = false
 	_game.sync_audio_pause()
-	_game.play_sfx(&"resume")
 	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
 
 

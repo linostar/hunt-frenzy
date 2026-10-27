@@ -44,7 +44,8 @@ extends Node
 ## volumes and mutes set the Music and SFX buses at start and on every change. While the
 ## tree is paused (the pause menu, the rotate overlay) the sounds in flight are held and the
 ## music is ducked by PAUSE_DUCK_DB (sync_audio_pause); sounds started during the pause (the
-## menu's own) play, and everything continues when the tree runs again. A missing or
+## menu's own) play on a reserved menu voice, so a held sound is never taken over, and
+## everything held continues when the tree runs again. A missing or
 ## unloadable sound or loop is reported with its path (log and error label); goto() refuses
 ## a screen whose loop is missing, as it does a scene's missing file. Browsers start audio
 ## only after the player's first touch or key: Godot's web platform resumes its
@@ -168,7 +169,9 @@ const SFX_IDS: Array[StringName] = [
 	&"golden_chime", &"decoy_penalty", &"escape", &"wave_start", &"wave_clear", &"wave_lost", &"combo_up",
 	&"rival_aim", &"rival_steal", &"countdown_tick", &"time_up", &"star", &"new_best", &"ui_tap", &"pause", &"resume",
 ]
-## Sound effect players: at most this many sounds at once (the oldest gives way).
+## Sound effect players: at most this many sounds at once (the oldest gives way). One more
+## player, the menu voice, plays every sound started while the audio is paused (the pause
+## menu's own), so a sound the pause holds is never taken over.
 const SFX_VOICES := 8
 ## sfx_log keeps the ids of this many latest sounds (tests read it).
 const SFX_LOG_SIZE := 256
@@ -279,6 +282,8 @@ var _clock := 0.0
 ## Sound file -> its stream, or null when it is missing (reported once).
 var _sounds: Dictionary[String, AudioStream] = {}
 var _sfx_players: Array[AudioStreamPlayer] = []
+## The reserved voice of the sounds started while the audio is paused (never held).
+var _menu_voice: AudioStreamPlayer
 ## Per player: the _clock when its sound started, and when it ends (still in flight before then).
 var _sfx_started: Array[float] = []
 var _sfx_until: Array[float] = []
@@ -1086,6 +1091,7 @@ func _quit_quietly() -> void:
 		_music_fade.kill()
 	for player in _sfx_players:
 		player.stop()
+	_menu_voice.stop()
 	for player in _music_players:
 		player.stop()
 	for i in QUIT_FRAMES:
@@ -1104,6 +1110,10 @@ func _setup_audio() -> void:
 		_sfx_players.append(player)
 		_sfx_started.append(-INF)
 		_sfx_until.append(-INF)
+	_menu_voice = AudioStreamPlayer.new()
+	_menu_voice.name = "SfxMenu"
+	_menu_voice.bus = SFX_BUS
+	add_child(_menu_voice)
 	for i in 2:
 		var player := AudioStreamPlayer.new()
 		player.name = "Music%d" % i
@@ -1233,22 +1243,26 @@ func _sound(id: StringName) -> AudioStream:
 	return stream
 
 
-## Starts `stream` at `pitch` on a free pool player (else on the one that started first),
-## never on one the pause holds. Without an audio device it is only recorded.
+## Starts `stream` at `pitch`: while the audio is paused on the menu voice (the pool's
+## players may all be held, and a held sound is never taken over), otherwise on a free pool
+## player (else on the one that started first; nothing is held then). Without an audio
+## device it is only recorded.
 func _start_voice(stream: AudioStream, pitch: float) -> void:
 	if stream == null:
 		return
-	var pick := -1
+	if audio_paused:
+		_menu_voice.stream = stream
+		_menu_voice.pitch_scale = pitch
+		if not audio_silent():
+			_menu_voice.play()
+		return
+	var pick := 0
 	for i in _sfx_players.size():
-		if _sfx_players[i] in _held:
-			continue
 		if _sfx_until[i] <= _clock:
 			pick = i
 			break
-		if pick < 0 or _sfx_started[i] < _sfx_started[pick]:
+		if _sfx_started[i] < _sfx_started[pick]:
 			pick = i
-	if pick < 0:
-		pick = 0
 	var player := _sfx_players[pick]
 	_sfx_started[pick] = _clock
 	_sfx_until[pick] = _clock + stream.get_length() / pitch
@@ -1279,9 +1293,11 @@ func held_players() -> Array[AudioStreamPlayer]:
 	return _held.duplicate()
 
 
-## The pool player of each sound (tests check the bus and the pause hold).
+## The pool players and, last, the menu voice (tests check the bus and the pause hold).
 func sfx_players() -> Array[AudioStreamPlayer]:
-	return _sfx_players
+	var players: Array[AudioStreamPlayer] = _sfx_players.duplicate()
+	players.append(_menu_voice)
+	return players
 
 
 ## The two music players (tests check the bus and the stream).
