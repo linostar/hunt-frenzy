@@ -56,8 +56,9 @@ class Feather:
 	var life := 1.0
 	var phase := 0.0
 
-## Bursts so far (seeds the next one).
+## Bursts so far (seeds the next one), and where the latest one started (tests read it).
 var bursts := 0
+var last_burst_at := Vector2.INF
 
 var _feathers: Array[Feather] = []
 var _shape := PackedVector2Array(SHAPE)
@@ -75,6 +76,7 @@ func burst(point: Vector2, sprite: String) -> int:
 			(get_node(GameState.AUTOLOAD_PATH) as GameState).report_error("No feather colours for the sprite '%s' (Feathers.COLORS); its kills burst no feathers" % sprite)
 		return 0
 	bursts += 1
+	last_burst_at = point
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash([roundi(point.x), roundi(point.y), sprite, bursts])
 	var colors: Array = COLORS[sprite]

@@ -3,10 +3,12 @@ extends Control
 ## The settings screen: the music and sound effects volumes (TouchSlider, 0..VOLUME_MAX,
 ## applied to their bus at once), their mutes and Reduce motion (toggle buttons, pressed =
 ## on), each showing its state in text ("Music 70", "Music: on", "Reduce motion: off").
-## Every change is logged and saved at once (Game's setters), except a volume while a
-## finger is still on its slider: that is applied live and saved when the finger lifts.
-## A slider step plays the UI tap (the toggles and Back play it as every button does); a
-## drag plays it once, when the finger lifts. It follows the settings whoever changes them
+## Every change is logged and saved at once (Game's setters), except a volume during a
+## slider hold (a finger on it, or a step key held down with its repeats): that is applied
+## to the bus live and saved, with one UI tap, when the hold ends (TouchSlider.released:
+## the finger lifts, the keys are released, or the hold is cut short: the rotate overlay,
+## the screen closing, another touch), so the final value is never lost. The toggles and
+## Back tap as every button does. It follows the settings whoever changes them
 ## (the pause menu's mutes), through Game.audio_settings_changed and reduce_motion_changed.
 ## It opens two ways: as a screen from the title's Settings button (Game.goto(SETTINGS));
 ## Back or Escape returns to the title with its Settings button focused); or over the
@@ -59,6 +61,8 @@ func _ready() -> void:
 	_sfx_slider.value_changed.connect(_on_volume_changed.bind(_sfx_slider))
 	_music_slider.released.connect(_on_volume_released.bind(_music_slider))
 	_sfx_slider.released.connect(_on_volume_released.bind(_sfx_slider))
+	# The rotate overlay disables GUI input: a finger or key down then never reports its end.
+	_game.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
 	_reduce_motion_toggle.toggled.connect(_on_reduce_motion_toggled)
@@ -97,8 +101,8 @@ func _show() -> void:
 	_reduce_motion_toggle.text = REDUCE_MOTION_TEXT % ("on" if _game.reduce_motion else "off")
 
 
-## A slider moved (a key step, a touch or a drag): the bus follows at once; saved now,
-## or when the finger lifts (_on_volume_released) while one is on it.
+## A slider moved (a key step, a touch or a drag): the bus follows at once; during a hold
+## (always, for touches and keys) it is saved when the hold ends (_on_volume_released).
 func _on_volume_changed(value: float, slider: TouchSlider) -> void:
 	var held := slider.is_held()
 	var volume := int(value)
@@ -116,11 +120,18 @@ func _on_volume_changed(value: float, slider: TouchSlider) -> void:
 		_game.play_sfx(&"ui_tap")
 
 
-## The finger lifted from a slider: its volume is saved (once per touch or drag).
-func _on_volume_released(value: float, slider: TouchSlider) -> void:
-	print("[Settings] %s slider released at %d; saving" % ["Music" if slider == _music_slider else "SFX", int(value)])
+## A slider's hold ended (`cause`): its volume is saved and the UI tap plays, once per hold.
+func _on_volume_released(value: float, cause: String, slider: TouchSlider) -> void:
+	print("[Settings] %s slider released at %d (%s); saving" % ["Music" if slider == _music_slider else "SFX", int(value), cause])
 	_game.play_sfx(&"ui_tap")
 	_game.save_game()
+
+
+## The rotate overlay showed: any slider hold ends now (its end would never arrive).
+func _on_rotate_overlay_changed(shown: bool) -> void:
+	if shown:
+		_music_slider.cancel_hold("rotate overlay")
+		_sfx_slider.cancel_hold("rotate overlay")
 
 
 func _on_music_toggled(on: bool) -> void:

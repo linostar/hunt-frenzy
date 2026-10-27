@@ -263,6 +263,7 @@ func _tests() -> Array[Callable]:
 		_test_screen_shake,
 		_test_popup_motion,
 		_test_reduce_motion_everywhere,
+		_test_slider_hold_cut_short,
 	]
 
 
@@ -4630,6 +4631,7 @@ func _plan_text(plan: Array[GameState.Syllable]) -> String:
 func _test_settings_screen() -> void:
 	_clear_tool_save()
 	_game.load_game()
+	_game.save_game()
 	await _open_title()
 	var title := current_scene as Title
 	var from := _log.size()
@@ -4665,53 +4667,17 @@ func _test_settings_screen() -> void:
 		await _key(key)
 		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
 	_check(vertical == ["SfxSlider", "ReduceMotionToggle", "BackButton", "MusicSlider", "BackButton", "ReduceMotionToggle"], "Down and Up move between the rows (wrapping)", str(vertical))
-	music.grab_focus()
-	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
-	from = _log.size()
-	var sounds := _game.sfx_log.size()
-	await _key(KEY_RIGHT)
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(_game.music_volume == 71 and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(71)) and _text_of(settings, "MusicLabel") == "Music 71" and saved is Dictionary and (saved as Dictionary)["settings"]["music"] == 71.0,
-		"Right steps the focused music slider: the bus follows, the label shows it, it is saved", "volume %d, label %s, save %s" % [_game.music_volume, _text_of(settings, "MusicLabel"), saved])
-	_check(_game.sfx_log.slice(sounds) == [&"ui_tap"], "a slider step plays the UI tap", str(_game.sfx_log.slice(sounds)))
-	_check_logged(from, "^\\[Settings\\] Music slider moved to 71$", "the slider step is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, .*music 71, sfx 80$", "the step is saved at once")
-	await _key(KEY_LEFT)
-	_check(_game.music_volume == 70 and music.has_focus(), "Left steps it back and keeps the focus on the slider", "volume %d" % _game.music_volume)
-	# A finger: the press sets the value under it, the drag follows, the lift saves once.
-	var grabber := float(music.get_theme_icon(&"grabber").get_width())
-	var rect := music.get_global_rect()
-	var at_quarter := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.25, rect.get_center().y)
-	var at_three_quarters := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.75, rect.get_center().y)
-	from = _log.size()
-	sounds = _game.sfx_log.size()
-	var press := InputEventScreenTouch.new()
-	press.index = TOUCH_INDEX
-	press.position = root.get_final_transform() * at_quarter
-	press.pressed = true
-	Input.parse_input_event(press)
-	await process_frame
-	var drag := InputEventScreenDrag.new()
-	drag.index = TOUCH_INDEX
-	drag.position = root.get_final_transform() * at_three_quarters
-	Input.parse_input_event(drag)
-	await process_frame
-	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(_game.music_volume == 75 and music.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(75)) and (saved as Dictionary)["settings"]["music"] == 70.0 and _game.sfx_log.size() == sounds,
-		"a touch and a drag set the music volume live (bus and label), unsaved and silent while the finger is down", "volume %d, held %s, saved %s, sounds %s" % [_game.music_volume, music.is_held(), (saved as Dictionary)["settings"]["music"], _game.sfx_log.slice(sounds)])
-	_check_logged(from, "^\\[Settings\\] Music slider moved to 25 \\(held\\)$", "the touch is logged as held")
-	var lift := press.duplicate() as InputEventScreenTouch
-	lift.position = drag.position
-	lift.pressed = false
-	Input.parse_input_event(lift)
-	await process_frame
-	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(not music.is_held() and (saved as Dictionary)["settings"]["music"] == 75.0 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "lifting the finger saves the volume once and plays the UI tap", "saved %s, sounds %s" % [(saved as Dictionary)["settings"]["music"], _game.sfx_log.slice(sounds)])
-	_check_logged(from, "^\\[Settings\\] Music slider released at 75; saving$", "the release is logged")
-	_check(Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size() == 1, "a drag saves exactly once", "%d saves" % Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size())
-	sfx.grab_focus()
-	await _key(KEY_LEFT)
-	_check(_game.sfx_volume == 79 and is_equal_approx(AudioServer.get_bus_volume_db(AudioServer.get_bus_index(GameState.SFX_BUS)), GameState.bus_volume_db(79)) and _text_of(settings, "SfxLabel") == "SFX 79", "Left steps the SFX slider and its bus", "sfx %d" % _game.sfx_volume)
+	await _check_slider(settings, music, "Music", GameState.MUSIC_BUS, "music", 70)
+	await _check_slider(settings, sfx, "SFX", GameState.SFX_BUS, "sfx", 80)
+	# A change outside any hold (HSlider's own mouse wheel on a desktop) saves and taps at once.
+	var outside_from := _log.size()
+	var outside_sounds := _game.sfx_log.size()
+	music.value = 40
+	var outside: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(_game.music_volume == 40 and (outside as Dictionary)["settings"]["music"] == 40.0 and _game.sfx_log.slice(outside_sounds) == [&"ui_tap"], "a change outside any hold (the mouse wheel) saves at once and taps", "volume %d, sounds %s" % [_game.music_volume, _game.sfx_log.slice(outside_sounds)])
+	_check_logged(outside_from, "^\\[Settings\\] Music slider moved to 40$", "a change outside a hold is logged without (held)")
+	var saved: Variant
+	var sounds := 0
 	var toggles: Array[Button] = [music_toggle, sfx_toggle]
 	var buses: Array[StringName] = [GameState.MUSIC_BUS, GameState.SFX_BUS]
 	for i in toggles.size():
@@ -4789,7 +4755,7 @@ func _test_settings_over_paused_run() -> void:
 	_check(music.has_focus(), "the overlay focuses its music slider", str(root.gui_get_focus_owner()))
 	await _key(KEY_LEFT)
 	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
-	_check(_game.music_volume == 69 and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(69, GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
+	_check(_game.music_volume == 70 - int(TouchSlider.KEY_STEP) and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(70 - int(TouchSlider.KEY_STEP), GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
 	var shots := play.scoring.shots()
 	await _tap(settings.get_node("Safe/ReduceMotionHint") as Control)
 	_check(play.scoring.shots() == shots and play.refused == 0, "a touch on the overlay is no shot", "%d shots" % play.scoring.shots())
@@ -5233,10 +5199,22 @@ func _test_feathers() -> void:
 	for color in feathers.live_colors():
 		colours_used[color.to_html(false)] = true
 	_check(colours_used.size() == Feathers.COLORS["goose"].size(), "the burst uses every colour of the bird", str(colours_used.keys()))
+	_check(feathers.last_burst_at.distance_to(point) < 1.0, "the kill's burst starts at the hit point", "burst at %s, hit at %s" % [feathers.last_burst_at, point])
 	var decoy := await _spawn_flying(play, 16, IN_FIELD_AGE, "decoy")
-	await _touch(_global(play, decoy.transform * LOCAL_BODY))
+	var decoy_point := decoy.transform * LOCAL_BODY
+	await _touch(_global(play, decoy_point))
+	_check(feathers.last_burst_at.distance_to(decoy_point) < 1.0, "the decoy's burst starts at the hit point", "burst at %s, hit at %s" % [feathers.last_burst_at, decoy_point])
 	var newest := Array(feathers.live_colors()).slice(Feathers.FEATHERS_PER_BURST)
 	_check(feathers.live_count() == 2 * Feathers.FEATHERS_PER_BURST and newest.all(func(color: Color) -> bool: return color in Feathers.COLORS["decoy"]), "a decoy hit bursts the pigeon's colours", str(newest))
+	# A steal bursts the stolen bird's feathers where it was shot.
+	var bursts := feathers.bursts
+	var cued := await _cued_bird(play, 17, "goose")
+	for i in roundi(Content.rival_lines().aim_time / FRAME) + 5:
+		if cued.stolen:
+			break
+		await process_frame
+	_check(cued.stolen and feathers.bursts == bursts + 1 and feathers.last_burst_at.distance_to(cued.position) < 1.0 and Array(feathers.live_colors()).slice(-Feathers.FEATHERS_PER_BURST).all(func(color: Color) -> bool: return color in Feathers.COLORS["goose"]),
+		"a steal bursts the goose's feathers where the rival shot it", "stolen %s, %d bursts, at %s, bird at %s" % [cued.stolen, feathers.bursts - bursts, feathers.last_burst_at, cued.position])
 	# The cap: more bursts than it holds keep the newest.
 	var loose := Feathers.new()
 	root.add_child(loose)
@@ -5444,3 +5422,164 @@ func _test_reduce_motion_everywhere() -> void:
 	await _game.transition_finished
 	_check(_game.transition_style() == "wipe", "with reduce motion off the wipe is back", _game.transition_style())
 	_clear_tool_save()
+
+
+## One settings slider (`what` "Music" or "SFX", bus `bus_name`, save key `key`, starting at
+## `start`): a held Right key steps it by TouchSlider.KEY_STEP and each repeat (echo) again,
+## live on the bus and label but unsaved and silent; the key's release saves the final value
+## once with one UI tap; a Left press and release steps it back and saves; a touch at 25%
+## and a drag to 75% apply live, unsaved and silent, and the lift saves once with one tap.
+func _check_slider(settings: Settings, slider: TouchSlider, what: String, bus_name: StringName, key: String, start: int) -> void:
+	var bus := AudioServer.get_bus_index(bus_name)
+	var label := "MusicLabel" if key == "music" else "SfxLabel"
+	var volume := func() -> int: return _game.music_volume if key == "music" else _game.sfx_volume
+	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save_path)) as Dictionary)["settings"][key]
+	slider.grab_focus()
+	var from := _log.size()
+	var sounds := _game.sfx_log.size()
+	await _key_event(KEY_RIGHT, true, false)
+	var step := int(TouchSlider.KEY_STEP)
+	_check(volume.call() == start + step and step >= 5 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(start + step)) and _text_of(settings, label) == "%s %d" % [what, start + step],
+		"%s: a Right press steps the slider by %d (at least 5), the bus and label follow at once" % [what, step], "volume %d, held %s, label %s" % [volume.call(), slider.is_held(), _text_of(settings, label)])
+	for echo in 2:
+		await _key_event(KEY_RIGHT, true, true)
+	_check(volume.call() == start + 3 * step and stored.call() == float(start) and _game.sfx_log.size() == sounds and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")),
+		"%s: the held key's repeats keep stepping, with no save and no tap per repeat" % what, "volume %d, stored %s, sounds %s" % [volume.call(), stored.call(), _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider moved to %d \\(held\\)$" % [what, start + 3 * step], "%s: each step is logged as held" % what)
+	await _key_event(KEY_RIGHT, false, false)
+	var saves := Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size()
+	_check(not slider.is_held() and stored.call() == float(start + 3 * step) and saves == 1 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "%s: releasing the key saves the final value once and taps once" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider released at %d \\(keys released\\); saving$" % [what, start + 3 * step], "%s: the key release is logged" % what)
+	await _key(KEY_LEFT)
+	_check(volume.call() == start + 2 * step and stored.call() == float(start + 2 * step) and slider.has_focus(), "%s: a Left press and release steps back and saves, the focus stays" % what, "volume %d, stored %s" % [volume.call(), stored.call()])
+	# A finger: the press sets the value under it, the drag follows, the lift saves once.
+	var grabber := float(slider.get_theme_icon(&"grabber").get_width())
+	var rect := slider.get_global_rect()
+	var at_quarter := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.25, rect.get_center().y)
+	var at_three_quarters := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.75, rect.get_center().y)
+	var before := stored.call() as float
+	from = _log.size()
+	sounds = _game.sfx_log.size()
+	await _finger(at_quarter, true)
+	await _drag(at_three_quarters)
+	_check(volume.call() == 75 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(75)) and stored.call() == before and _game.sfx_log.size() == sounds,
+		"%s: a touch and a drag set the volume live (bus and label), unsaved and silent while the finger is down" % what, "volume %d, held %s, stored %s, sounds %s" % [volume.call(), slider.is_held(), stored.call(), _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider moved to 25 \\(held\\)$" % what, "%s: the touch is logged as held" % what)
+	await _finger(at_three_quarters, false)
+	saves = Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size()
+	_check(not slider.is_held() and stored.call() == 75.0 and saves == 1 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "%s: lifting the finger saves the volume once and plays the UI tap" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.sfx_log.slice(sounds)])
+	_check_logged(from, "^\\[Settings\\] %s slider released at 75 \\(finger lifted\\); saving$" % what, "%s: the lift is logged" % what)
+
+
+## A key event for `keycode`: pressed or released, an echo (auto-repeat) or not.
+func _key_event(keycode: Key, pressed: bool, echo: bool) -> void:
+	var event := InputEventKey.new()
+	event.keycode = keycode
+	event.physical_keycode = keycode
+	event.pressed = pressed
+	event.echo = echo
+	Input.parse_input_event(event)
+	await process_frame
+
+
+## A touch of finger `index` (TOUCH_INDEX unless given) pressed or lifted at canvas point `at`.
+func _finger(at: Vector2, pressed: bool, index := TOUCH_INDEX) -> void:
+	var touch := InputEventScreenTouch.new()
+	touch.index = index
+	touch.position = root.get_final_transform() * at
+	touch.pressed = pressed
+	Input.parse_input_event(touch)
+	await process_frame
+
+
+## A drag of finger `index` (TOUCH_INDEX unless given) to canvas point `at`.
+func _drag(at: Vector2, index := TOUCH_INDEX) -> void:
+	var drag := InputEventScreenDrag.new()
+	drag.index = index
+	drag.position = root.get_final_transform() * at
+	Input.parse_input_event(drag)
+	await process_frame
+
+
+## A slider hold whose end never arrives still ends, saving its value, and the slider
+## recovers: the rotate overlay showing while a finger is down (GUI input is disabled, so
+## the lift is never delivered) saves the held volume and later touches and keys work; a
+## press by another finger while one is down ends the old hold (saved) and takes over;
+## closing the settings over the paused run with a finger down (Escape, or resuming) saves
+## the held volume (review finding 1).
+func _test_slider_hold_cut_short() -> void:
+	_clear_tool_save()
+	_game.load_game()
+	_game.save_game()
+	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save_path)) as Dictionary)["settings"]["music"]
+	_game.goto(GameState.Flow.SETTINGS)
+	await _game.transition_finished
+	await process_frame
+	var settings := current_scene as Settings
+	var slider := settings.music_slider()
+	var points := _slider_points(slider)
+	var from := _log.size()
+	await _finger(points[0], true)
+	_check(slider.is_held() and _game.music_volume == 25 and stored.call() == 70.0, "a finger down on the music slider holds it at 25, unsaved", "held %s, volume %d" % [slider.is_held(), _game.music_volume])
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.is_rotate_overlay_shown() and not slider.is_held() and stored.call() == 25.0, "the rotate overlay showing mid-press ends the hold and saves the held volume", "held %s, stored %s" % [slider.is_held(), stored.call()])
+	_check_logged(from, "^\\[Settings\\] Music slider released at 25 \\(rotate overlay\\); saving$", "the cut-short hold is logged with its cause")
+	await _finger(points[0], false)
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	await _finger(points[1], true, TOUCH_INDEX + 1)
+	await _finger(points[1], false, TOUCH_INDEX + 1)
+	_check(_game.music_volume == 75 and stored.call() == 75.0 and not slider.is_held(), "after the overlay a later touch moves the slider and its lift saves", "volume %d, stored %s" % [_game.music_volume, stored.call()])
+	from = _log.size()
+	slider.grab_focus()
+	await _key(KEY_RIGHT)
+	_check(_game.music_volume == 80 and stored.call() == 80.0 and not slider.is_held(), "after the overlay a key step is saved on its release (no stuck hold)", "volume %d, stored %s" % [_game.music_volume, stored.call()])
+	# A lift that never comes: the next press (another finger) ends the old hold first.
+	from = _log.size()
+	await _finger(points[0], true)
+	await _finger(points[1], true, TOUCH_INDEX + 1)
+	_check(stored.call() == 25.0 and slider.is_held() and _game.music_volume == 75, "a new touch while a finger is down saves the old hold and takes over", "stored %s, volume %d" % [stored.call(), _game.music_volume])
+	_check_logged(from, "^\\[Settings\\] Music slider released at 25 \\(a new touch took over\\); saving$", "the take-over is logged")
+	await _finger(points[1], false, TOUCH_INDEX + 1)
+	await _finger(points[0], false)
+	_check(stored.call() == 75.0 and not slider.is_held(), "the new finger's lift saves its value; the stale finger's late lift changes nothing", "stored %s" % stored.call())
+	# Over the paused run: Escape (and resuming) close the settings with a finger down.
+	var play := await _start_run(68)
+	for closer: String in ["Escape", "resume"]:
+		play.open_pause("test")
+		await process_frame
+		play.open_settings()
+		await process_frame
+		var overlay_slider := play.settings_overlay().music_slider()
+		var overlay_points := _slider_points(overlay_slider)
+		from = _log.size()
+		await _finger(overlay_points[0], true)
+		await _drag(overlay_points[1])
+		_check(overlay_slider.is_held() and _game.music_volume == 75, "%s: a finger holds the overlay's slider at 75" % closer, "volume %d" % _game.music_volume)
+		if closer == "Escape":
+			await _key(KEY_ESCAPE)
+		else:
+			play.resume()
+			await process_frame
+		_check(play.settings_overlay() == null and stored.call() == 75.0, "%s closes the settings with a finger down and the held volume is saved" % closer, "overlay %s, stored %s" % [play.settings_overlay(), stored.call()])
+		_check_logged(from, "^\\[Settings\\] Music slider released at 75 \\(left the screen\\); saving$", "%s: the closed hold is logged" % closer)
+		await _finger(overlay_points[1], false)
+		_game.set_music_volume(70)
+		if play.is_paused():
+			play.resume()
+	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_clear_tool_save()
+
+
+## The canvas points 25% and 75% along `slider` (HSlider's mapping: values 25 and 75 of 100).
+func _slider_points(slider: TouchSlider) -> Array[Vector2]:
+	var grabber := float(slider.get_theme_icon(&"grabber").get_width())
+	var rect := slider.get_global_rect()
+	var points: Array[Vector2] = []
+	for fraction: float in [0.25, 0.75]:
+		points.append(Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * fraction, rect.get_center().y))
+	return points

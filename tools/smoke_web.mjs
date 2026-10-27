@@ -28,7 +28,7 @@
 //     more, Endless is tapped, requiring its press, "[Play] Run start: mode endless" and the
 //     play scene; between the reload and Time Attack, Settings is tapped where the title logs
 //     it (its press, the settings screen), the music slider is tapped SLIDER_TAP_AT along it
-//     (requiring "[Settings] Music slider moved to N", its release saved and the save logged
+//     (requiring "[Settings] Music slider moved to N", "released at N (finger lifted)" and the save logged
 //     with that volume: the slider follows a real touch and the mouse), Back returns to the
 //     title, and Credits opens and closes the same way;
 //   desktop only, then the backdrop tour: a save that has finished every level of the first
@@ -442,7 +442,7 @@ async function settingsAndCredits(page, logs, pointer, how, shot) {
   const tapFrom = logs.length;
   await pointer.tap(await pagePoint(page, x + w * SLIDER_TAP_AT, y + h / 2));
   const moved = await waitForLog(page, logs, /^\[Settings\] Music slider moved to (\d+)/, `the music slider to follow the ${how} tap`, tapFrom);
-  const released = await waitForLog(page, logs, /^\[Settings\] Music slider released at (\d+); saving$/, `the ${how} tap on the slider to be released and saved`, tapFrom);
+  const released = await waitForLog(page, logs, /^\[Settings\] Music slider released at (\d+) \(finger lifted\); saving$/, `the ${how} tap on the slider to be released and saved`, tapFrom);
   await waitForLog(page, logs, new RegExp(`^\\[Game\\] Saved to user://save\\.json .*music ${released[1]}\\b`), 'the new music volume to be saved', tapFrom);
   await page.waitForTimeout(300);
   await shot('settings');
@@ -610,7 +610,9 @@ async function playPath(page, context, run, logs, logTimes, shot) {
     await page.waitForTimeout(300);
     from = logs.length;
     await page.keyboard.press('ArrowRight');
-    const stepped = await waitForLog(page, logs, /^\[Settings\] Music slider moved to (\d+)$/, 'Right to step the focused music slider', from);
+    // A step key holds the slider (applied live) until it is released, then saves once.
+    await waitForLog(page, logs, /^\[Settings\] Music slider moved to \d+ \(held\)$/, 'Right to step the focused music slider', from);
+    const stepped = await waitForLog(page, logs, /^\[Settings\] Music slider released at (\d+) \(keys released\); saving$/, 'the Right key\'s release to save the step', from);
     await waitForLog(page, logs, new RegExp(`^\\[Game\\] Saved to user://save\\.json .*music ${stepped[1]}\\b`), 'the stepped volume to be saved', from);
     await shot('settings');
     from = logs.length;
