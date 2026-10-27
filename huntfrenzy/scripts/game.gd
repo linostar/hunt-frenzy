@@ -66,6 +66,8 @@ signal page_hidden
 signal save_failed(reason: String)
 ## Emitted when a volume or mute setting changes (the pause menu's toggles follow it).
 signal audio_settings_changed
+## Emitted when the reduce motion setting changes (the settings screen follows it).
+signal reduce_motion_changed(on: bool)
 
 enum Flow { TITLE, PLAY, RESULTS, CHAPTER_SELECT, LEVEL_SELECT }
 
@@ -87,7 +89,7 @@ const TOOL_SAVE_PATH := "user://tool_save.json"
 ## The save format's version. Every change to the format bumps it and appends one step to
 ## save_migrations(), so saves of older versions are upgraded, not discarded; a newer
 ## version is backed up and replaced.
-const SAVE_VERSION := 3
+const SAVE_VERSION := 4
 ## The keys of a save, each with the type its value must have. `bests` maps each of
 ## BEST_MODES to its best score; `levels` maps a level id to {"stars", "score"} (its
 ## Campaign.Record); `settings` holds SETTINGS_KEYS.
@@ -99,9 +101,11 @@ const SAVE_SCORE_MAX := 999999999
 const DROPPED_BACKUPS_MAX := 20
 ## The keys of a saved level entry.
 const LEVEL_KEYS: Array[String] = ["stars", "score"]
-## The saved settings: the music and sound effects volumes (whole 0..VOLUME_MAX) and mutes
-## (true or false). There is no settings screen yet; the audio pass applies them to buses.
-const SETTINGS_KEYS: Array[String] = ["music", "sfx", "music_muted", "sfx_muted"]
+## The saved settings: the music and sound effects volumes (whole 0..VOLUME_MAX), their mutes
+## and reduce_motion (true or false). The settings screen changes them; the volumes and mutes
+## set the audio buses, reduce_motion turns off the screen shake, the transition wipe (a
+## plain fade instead), the pop-ups' bounce and shake and the title's drift.
+const SETTINGS_KEYS: Array[String] = ["music", "sfx", "music_muted", "sfx_muted", "reduce_motion"]
 const VOLUME_SETTINGS: Array[String] = ["music", "sfx"]
 const VOLUME_MAX := 100
 const DEFAULT_MUSIC_VOLUME := 70
@@ -249,6 +253,10 @@ var music_volume := DEFAULT_MUSIC_VOLUME
 var sfx_volume := DEFAULT_SFX_VOLUME
 var music_muted := false
 var sfx_muted := false
+## Settings, persisted in the save: true turns off motion that is only decoration (screen
+## shake, the transition wipe, the pop-ups' bounce and shake, the title's drift); hit stop,
+## feathers and every gameplay cue stay.
+var reduce_motion := false
 ## Why the latest save failed, short enough for the results screen; "" after a save that
 ## worked (on the web: once written; a later IndexedDB failure sets it again).
 var save_error := ""
@@ -619,7 +627,7 @@ func save_game() -> bool:
 		levels[id] = {"stars": progress[id].stars, "score": progress[id].score}
 	var text := JSON.stringify({
 		"version": SAVE_VERSION, "bests": bests.duplicate(), "levels": levels,
-		"settings": {"music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted},
+		"settings": {"music": music_volume, "sfx": sfx_volume, "music_muted": music_muted, "sfx_muted": sfx_muted, "reduce_motion": reduce_motion},
 	}, "  ")
 	var temp := save_path + ".tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
@@ -702,13 +710,13 @@ func _save_failed(message: String, reason: String) -> void:
 
 
 ## What the save holds, for log lines: the Endless and Time Attack bests, the levels
-## finished with their stars, and the settings.
+## finished with their stars, and the settings (", reduce motion" only when it is on).
 func save_summary() -> String:
 	var earned := 0
 	for id in progress:
 		earned += progress[id].stars
 	return "Endless best %d, Time Attack best %d, %d levels finished (%d stars), music %d%s, sfx %d%s" % [
-		best(ENDLESS_MODE), best(TIME_ATTACK_MODE), progress.size(), earned, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""]
+		best(ENDLESS_MODE), best(TIME_ATTACK_MODE), progress.size(), earned, music_volume, " muted" if music_muted else "", sfx_volume, " muted" if sfx_muted else ""] + (", reduce motion" if reduce_motion else "")
 
 
 ## Loads save_path. A missing save starts fresh (a log line only); an older version is
@@ -786,6 +794,7 @@ func _reset_save_data() -> void:
 	sfx_volume = DEFAULT_SFX_VOLUME
 	music_muted = false
 	sfx_muted = false
+	reduce_motion = false
 
 
 ## Where a corrupt save is moved: save.json -> save.corrupt.json.
@@ -861,6 +870,7 @@ func _apply_save(data: Variant) -> String:
 	sfx_volume = int(settings["sfx"])
 	music_muted = settings["music_muted"]
 	sfx_muted = settings["sfx_muted"]
+	reduce_motion = settings["reduce_motion"]
 	return ""
 
 
@@ -924,7 +934,7 @@ static func migrate_save(saved: Dictionary, migrations: Array[Callable], target:
 ## Steps run before the save is validated, so they must read keys with get() and leave
 ## anything malformed for the validation to report.
 static func save_migrations() -> Array[Callable]:
-	return [_save_v1_to_v2, _save_v2_to_v3]
+	return [_save_v1_to_v2, _save_v2_to_v3, _save_v3_to_v4]
 
 
 ## Version 1 -> 2: the campaign arrives (no level finished yet) and the settings are saved,
@@ -945,6 +955,17 @@ static func _save_v2_to_v3(saved: Dictionary) -> void:
 	saved["bests"] = {ENDLESS_MODE: saved["best_endless"], TIME_ATTACK_MODE: 0}
 	saved.erase("best_endless")
 	print("[Game] Save upgrade 2 -> 3: Endless best %s kept as bests.%s, Time Attack best 0" % [_number_text(saved["bests"][ENDLESS_MODE]), ENDLESS_MODE])
+
+
+## Version 3 -> 4: the settings gain reduce_motion, off; everything else is kept. Settings
+## that are not an object are left for the validation to report.
+static func _save_v3_to_v4(saved: Dictionary) -> void:
+	var settings: Variant = saved.get("settings")
+	if not settings is Dictionary:
+		print("[Game] Save upgrade 3 -> 4: no settings object to add reduce_motion to")
+		return
+	(settings as Dictionary)["reduce_motion"] = false
+	print("[Game] Save upgrade 3 -> 4: reduce_motion off, the bests, the campaign progress and the other settings kept")
 
 
 func _discard_save(problem: String) -> void:
@@ -1421,20 +1442,24 @@ func music_player() -> AudioStreamPlayer:
 	return _music_players[_music_current]
 
 
-## Sets the music volume (0..VOLUME_MAX), applies it to the Music bus, logs and saves.
-func set_music_volume(value: int) -> void:
+## Sets the music volume (0..VOLUME_MAX), applies it to the Music bus and logs it; saves
+## unless `save` is false (a slider still held: the settings screen saves on its release).
+func set_music_volume(value: int, save := true) -> void:
 	music_volume = clampi(value, 0, VOLUME_MAX)
-	print("[Audio] Music volume %d" % music_volume)
+	print("[Audio] Music volume %d%s" % [music_volume, "" if save else " (saved once the slider is released)"])
 	_apply_volumes()
-	save_game()
+	if save:
+		save_game()
 
 
-## Sets the sound effects volume (0..VOLUME_MAX), applies it to the SFX bus, logs and saves.
-func set_sfx_volume(value: int) -> void:
+## Sets the sound effects volume (0..VOLUME_MAX), applies it to the SFX bus and logs it;
+## saves unless `save` is false (as set_music_volume).
+func set_sfx_volume(value: int, save := true) -> void:
 	sfx_volume = clampi(value, 0, VOLUME_MAX)
-	print("[Audio] SFX volume %d" % sfx_volume)
+	print("[Audio] SFX volume %d%s" % [sfx_volume, "" if save else " (saved once the slider is released)"])
 	_apply_volumes()
-	save_game()
+	if save:
+		save_game()
 
 
 ## Mutes or unmutes the Music bus at once (keeping music_volume); logs and saves.
@@ -1451,6 +1476,16 @@ func set_sfx_muted(on: bool) -> void:
 	print("[Audio] SFX %s" % ("muted" if on else "unmuted"))
 	_apply_volumes()
 	save_game()
+
+
+## Turns reduce motion on or off (screen shake, the transition wipe, the pop-ups' bounce and
+## shake and the title's drift follow it from their next use); logs, saves and emits
+## reduce_motion_changed.
+func set_reduce_motion(on: bool) -> void:
+	reduce_motion = on
+	print("[Game] Reduce motion %s" % ("on: no screen shake, plain fades, steady pop-ups and title" if on else "off"))
+	save_game()
+	reduce_motion_changed.emit(on)
 
 
 ## The bus volume in dB of setting `volume` (0..VOLUME_MAX): linear in loudness,

@@ -224,8 +224,10 @@ func _tests() -> Array[Callable]:
 		_test_campaign_wave_schedule,
 		_test_campaign_stars_unlocks_and_best,
 		_test_campaign_record_level,
-		_test_save_v1_migrates_to_v3,
-		_test_save_v2_migrates_to_v3,
+		_test_save_v1_migrates_to_v4,
+		_test_save_v2_migrates_to_v4,
+		_test_save_v3_migrates_to_v4,
+		_test_save_reduce_motion_strict,
 		_test_save_settings_and_bad_entries,
 		_test_campaign_level_plays_all_waves,
 		_test_campaign_pass_next_retry_levels,
@@ -772,7 +774,7 @@ func _test_save_and_reload() -> void:
 	_game.load_game()
 	_check(_game.best(GameState.ENDLESS_MODE) == 1234 and _game.best(GameState.TIME_ATTACK_MODE) == 5678, "each mode's best survives a save and reload", str(_game.bests))
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 3.0 and GameState.SAVE_VERSION == 3 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless"), "the save is version 3 with a best per mode", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and GameState.SAVE_VERSION == 4 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless") and saved.get("settings", {}).get("reduce_motion") == false, "the save is version 4 with a best per mode and reduce_motion", str(saved))
 	var endless := Content.mode(GameState.ENDLESS_MODE)
 	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
 	_check(not _game.record_best(endless, 1000) and _game.best(GameState.ENDLESS_MODE) == 1234, "a lower score is not a best", str(_game.bests))
@@ -790,7 +792,7 @@ func _test_save_and_reload() -> void:
 func _test_save_corrupt_and_unknown_version() -> void:
 	var cases := {
 		"{not json": "corrupt (line",
-		JSON.stringify({"version": 4, "best_endless": 5}): "version 4 is newer than this game's 3",
+		JSON.stringify({"version": 5, "best_endless": 5}): "version 5 is newer than this game's 4",
 		JSON.stringify({"version": 0, "best_endless": 5}): "'version' is not a whole number >= 1",
 		JSON.stringify({"version": 1, "best_endless": "lots"}): "bests.endless lots is not a whole number 0..999999999",
 		JSON.stringify({"version": 1, "best_endless": 5, "coins": 3}): "unknown key 'coins'",
@@ -1204,7 +1206,7 @@ func _test_run_ends_on_results() -> void:
 	var stats := _game.flow_args
 	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 100, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 100, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
 	var stolen: int = stats.get("stolen", -1)
 	var rival_score: int = stats.get("rival_score", -1)
 	var steal_line := RegEx.create_from_string("^\\[Play\\] Stolen \\w+ #\\d+ by the rival after a [\\d.]+ s cue: (\\d+) points to the rival")
@@ -1849,7 +1851,7 @@ func _test_time_attack_results() -> void:
 	var stats := _game.flow_args
 	_check(stats.get("mode") == GameState.TIME_ATTACK_MODE and stats.get("score") == 100 and stats.get("best") == 100 and stats.get("new_best") == true and stats.get("rival_steals") == false and stats.get("stolen") == 0 and stats.get("save_error") == "", "the results get the Time Attack run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Time Attack best: 100 \\(was 0\\)$", "the new Time Attack best is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
 	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 56, wave \\d+, time used 60\\.00 of 60\\.00 s, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, %d escaped \\(0 stolen\\), rival score 0, best 100 \\(new best\\)$" % stats.get("escaped", -1), "the run end is logged with the waves, the time used and the score")
 	_check_logged(from, "^\\[Results\\] Mode time_attack: best 100, new best$", "the results log the mode and its best")
 	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
@@ -3091,7 +3093,7 @@ func _test_campaign_record_level() -> void:
 	_check(_game.record_level(dawn_1, 1500), "a first finish with points is a new best", "")
 	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's stars and score are recorded", str(_game.progress.keys()))
 	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 1500, 2 stars \\(passed\\); best 2 stars, score 1500 \\(was never finished\\); dawn_2 unlocked$", "the finished level is logged with its stars, score and unlock")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 0, Time Attack best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
 	_check(saved is Dictionary and saved.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}}, "the save holds the level's best", str(saved))
 	from = _log.size()
@@ -3106,11 +3108,11 @@ func _test_campaign_record_level() -> void:
 	_clear_tool_save()
 
 
-## A version 1 save (the Endless best only) is upgraded through version 2 to version 3: the
+## A version 1 save (the Endless best only) is upgraded through versions 2 and 3 to 4: the
 ## best is kept as the Endless best (Time Attack 0), no level is finished, the settings take
-## their defaults, each step is logged, nothing is reported or backed up, and the upgraded
+## their defaults (reduce motion off), each step is logged, nothing is reported or backed up, and the upgraded
 ## save is written back at once.
-func _test_save_v1_migrates_to_v3() -> void:
+func _test_save_v1_migrates_to_v4() -> void:
 	_clear_tool_save()
 	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 1, "best_endless": 777}))
@@ -3126,18 +3128,20 @@ func _test_save_v1_migrates_to_v3() -> void:
 	_check_logged(from, "^\\[Game\\] Upgraded the save to version 2$", "the step to version 2 is logged")
 	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 777 kept as bests\\.endless, Time Attack best 0$", "the step 2 -> 3 is logged")
 	_check_logged(from, "^\\[Game\\] Upgraded the save to version 3$", "the step to version 3 is logged")
-	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 3, Endless best 777, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
-	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 3$", "writing the upgraded save is logged")
+	_check_logged(from, "^\\[Game\\] Save upgrade 3 -> 4: reduce_motion off, the bests, the campaign progress and the other settings kept$", "the step 3 -> 4 is logged")
+	_check_logged(from, "^\\[Game\\] Upgraded the save to version 4$", "the step to version 4 is logged")
+	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 4, Endless best 777, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 4$", "writing the upgraded save is logged")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 3.0 and saved.get("bests") == {"endless": 777.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false}, "the upgraded save is written as version 3", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 777.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false, "reduce_motion": false}, "the upgraded save is written as version 4", str(saved))
 	_clear_tool_save()
 
 
 ## A version 2 save (the Endless best, campaign progress and settings) is upgraded to
-## version 3: its Endless best becomes bests.endless (Time Attack 0), its progress and
+## version 4 (through 3): its Endless best becomes bests.endless (Time Attack 0), its progress and
 ## settings are kept, the step is logged, nothing is reported or backed up, and it is
 ## written back at once.
-func _test_save_v2_migrates_to_v3() -> void:
+func _test_save_v2_migrates_to_v4() -> void:
 	_clear_tool_save()
 	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 2, "best_endless": 4321, "levels": {"dawn_1": {"stars": 3, "score": 2100}}, "settings": {"music": 30, "sfx": 0, "music_muted": true, "sfx_muted": false}}))
@@ -3150,11 +3154,87 @@ func _test_save_v2_migrates_to_v3() -> void:
 	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v2 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2")), "a v2 save takes only the step 2 -> 3", "a 1 -> 2 line")
 	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 4321 kept as bests\\.endless, Time Attack best 0$", "the v2 -> v3 step is logged")
-	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 2 as version 3$", "writing the v2 save as v3 is logged")
-	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 3, Endless best 4321, Time Attack best 0, 1 levels finished \\(3 stars\\), music 30 muted, sfx 0$", "the upgraded v2 save is written back at once")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 2 as version 4$", "writing the v2 save as v4 is logged")
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 4321, Time Attack best 0, 1 levels finished \\(3 stars\\), music 30 muted, sfx 0$", "the upgraded v2 save is written back at once")
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 3.0 and saved.get("bests") == {"endless": 4321.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {"dawn_1": {"stars": 3.0, "score": 2100.0}}, "the upgraded v2 save is written as version 3", str(saved))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 4321.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {"dawn_1": {"stars": 3.0, "score": 2100.0}}, "the upgraded v2 save is written as version 4", str(saved))
 	_clear_tool_save()
+
+
+## A version 3 save (the step 8 format) is upgraded to version 4: its settings gain
+## reduce_motion (off) and everything else is kept; only the step 3 -> 4 runs, it is
+## logged, nothing is reported or backed up, and the save is written back at once.
+func _test_save_v3_migrates_to_v4() -> void:
+	_clear_tool_save()
+	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"version": 3, "bests": {"endless": 900, "time_attack": 450}, "levels": {"noon_1": {"stars": 2, "score": 3100}}, "settings": {"music": 40, "sfx": 60, "music_muted": false, "sfx_muted": true}}))
+	file.close()
+	_game.reduce_motion = true
+	var errors := _game.reported_errors.size()
+	var from := _log.size()
+	_game.load_game()
+	_check(_game.bests == {"endless": 900, "time_attack": 450} and _game.progress.keys() == ["noon_1"] and _game.progress["noon_1"].score == 3100 and _game.music_volume == 40 and _game.sfx_volume == 60 and not _game.music_muted and _game.sfx_muted and not _game.reduce_motion,
+		"a v3 save migrates keeping its bests, progress and settings, reduce motion off", "bests %s, %s, music %d, reduce motion %s" % [_game.bests, _game.progress.keys(), _game.music_volume, _game.reduce_motion])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v3 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2") or line.begins_with("[Game] Save upgrade 2 -> 3")), "a v3 save takes only the step 3 -> 4", "an earlier step logged")
+	_check_logged(from, "^\\[Game\\] Save upgrade 3 -> 4: reduce_motion off, the bests, the campaign progress and the other settings kept$", "the v3 -> v4 step is logged")
+	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 3 as version 4$", "writing the v3 save as v4 is logged")
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 900.0, "time_attack": 450.0} and saved.get("levels") == {"noon_1": {"stars": 2.0, "score": 3100.0}} and saved.get("settings") == {"music": 40.0, "sfx": 60.0, "music_muted": false, "sfx_muted": true, "reduce_motion": false}, "the upgraded v3 save is written as version 4", str(saved))
+	_clear_tool_save()
+	_game.load_game()
+
+
+## reduce_motion round-trips through the save (and shows in the save's log summary); a v4
+## save whose settings lack it, carry an unknown key beside it or hold a non-bool is corrupt
+## (backed up, reported on the error label with the problem, replaced by a fresh save with
+## it off).
+func _test_save_reduce_motion_strict() -> void:
+	_clear_tool_save()
+	var from := _log.size()
+	_game.reduce_motion = true
+	_game.save_game()
+	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80, reduce motion$", "a save with reduce motion on says so in its log line")
+	_game.reduce_motion = false
+	_game.load_game()
+	_check(_game.reduce_motion, "reduce motion on survives a save and reload", str(_game.reduce_motion))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_check(saved is Dictionary and saved.get("settings", {}).get("reduce_motion") == true, "the save holds settings.reduce_motion", str(saved))
+	var settings := {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}
+	var missing := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": settings})
+	var extra_settings := settings.duplicate()
+	extra_settings["reduce_motion"] = false
+	extra_settings["shake"] = true
+	var extra := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": extra_settings})
+	var wrong_settings := settings.duplicate()
+	wrong_settings["reduce_motion"] = "yes"
+	var wrong := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": wrong_settings})
+	var numeric_settings := settings.duplicate()
+	numeric_settings["reduce_motion"] = 1
+	var numeric := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": numeric_settings})
+	var cases := {
+		missing: "settings must be exactly [\"music\", \"sfx\", \"music_muted\", \"sfx_muted\", \"reduce_motion\"]",
+		extra: "settings must be exactly [\"music\", \"sfx\", \"music_muted\", \"sfx_muted\", \"reduce_motion\"]",
+		wrong: "settings.reduce_motion is not true or false",
+		numeric: "settings.reduce_motion is not true or false",
+	}
+	var error_label := _game.get_node("Fade/ErrorLabel") as Label
+	for text: String in cases:
+		var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+		file.store_string(text)
+		file.close()
+		_game.reduce_motion = true
+		_game.quiet_errors = true
+		var errors := _game.reported_errors.size()
+		_game.load_game()
+		_game.quiet_errors = false
+		var message: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
+		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		_check(message.contains(cases[text]) and message.contains(_game.backup_path()) and error_label.text == message and FileAccess.get_file_as_string(_game.backup_path()) == text and not _game.reduce_motion and fresh is Dictionary and fresh.get("settings", {}).get("reduce_motion") == false,
+			"save %s: backed up, reported on the label, fresh with reduce motion off" % cases[text], message)
+	error_label.hide()
+	_clear_tool_save()
+	_game.load_game()
 
 
 ## The settings (volumes and mutes) round-trip through the save; a save whose settings or
@@ -3209,7 +3289,7 @@ func _test_save_settings_and_bad_entries() -> void:
 	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
 	_check_logged(from, "^\\[Game\\] Backed up the save with 6 dropped campaign entries to user://tool_save\\.dropped\\.json$", "the backup path is logged")
 	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("version") == 3.0 and rewritten.get("bests") == {"endless": 42.0, "time_attack": 0.0}, "the v2 save is written back as v3 without the dropped entries", str(rewritten))
+	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("version") == 4.0 and rewritten.get("bests") == {"endless": 42.0, "time_attack": 0.0}, "the v2 save is written back as v4 without the dropped entries", str(rewritten))
 	# A second save with a bad entry: its backup takes the next free name.
 	var second := JSON.stringify({"version": 2, "best_endless": 42, "levels": {"old_level": {"stars": 3, "score": 999}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
 	file = FileAccess.open(_game.save_path, FileAccess.WRITE)

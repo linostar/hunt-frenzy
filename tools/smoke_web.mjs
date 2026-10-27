@@ -190,17 +190,17 @@ const BACKDROP_TOUR = [
   { shot: 'time_attack', mode: 'Time Attack', backdrop: 'noon', weather: 'wind' },
 ];
 const BACKDROP_SHOT_DELAY_MS = 2500;
-// A version 3 save (GameState.SAVE_VERSION) with every level of the first three chapters
+// A version 4 save (GameState.SAVE_VERSION) with every level of the first three chapters
 // finished, so each chapter's level 1 is open; Godot's web user:// is Emscripten IDBFS in
 // IndexedDB database /userfs, store FILE_DATA, key = the file's path, which the game logs
 // (SAVE_FILE) along with its directories, each stored as an entry of its own.
 const SAVE_FILE = /^\[Game\] Browser storage \(IndexedDB\) is available for user:\/\/save\.json \((\/userfs\/.+)\)$/;
 const TOUR_LEVELS = ['dawn', 'noon', 'sunset'].flatMap((c) => [1, 2, 3, 4, 5, 6].map((i) => `${c}_${i}`));
 const TOUR_SAVE = JSON.stringify({
-  version: 3,
+  version: 4,
   bests: { endless: 0, time_attack: 0 },
   levels: Object.fromEntries(TOUR_LEVELS.map((id) => [id, { stars: 1, score: 1000 }])),
-  settings: { music: 70, sfx: 80, music_muted: false, sfx_muted: false },
+  settings: { music: 70, sfx: 80, music_muted: false, sfx_muted: false, reduce_motion: false },
 });
 
 // Waits until a console line logged at or after index `from` matches `pattern` (a RegExp)
@@ -440,7 +440,7 @@ async function plantTourSave(page, logs) {
   if (error !== '') throw new Error(error);
   const from = logs.length;
   await reloadToTitle(page, logs);
-  await waitForLog(page, logs, new RegExp(`^\\[Game\\] Loaded save from user://save\\.json: version 3, .*, ${TOUR_LEVELS.length} levels finished`), 'the planted save to load', from);
+  await waitForLog(page, logs, new RegExp(`^\\[Game\\] Loaded save from user://save\\.json: version 4, .*, ${TOUR_LEVELS.length} levels finished`), 'the planted save to load', from);
 }
 
 // Starts each BACKDROP_TOUR run from the title, requires its backdrop and weather, takes
