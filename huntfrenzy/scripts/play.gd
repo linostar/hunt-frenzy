@@ -73,7 +73,8 @@ extends Node2D
 ## Sound (Game.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
 ## kill of an armored bird "armored_kill", a splitter "split_pop", the run's golden bird
 ## "golden_chime"; "armored_clank" for a hit short of the bird's hp, "decoy_penalty" for the
-## decoy, "combo_up" when the combo rises; nothing more for a miss), and the shot that uses
+## decoy, "combo_up" when the combo rises; nothing more for a miss; the shot, the plain hit
+## and the escape each at a pitch varied by up to SOUND_PITCH_SPREAD, seeded by the run), and the shot that uses
 ## the last shell then "out_of_shells" (the pool is dry: the birds flee); a shot with no
 ## shells plays only "empty_click". A wave's first spawn plays "wave_start", a cleared wave
 ## "wave_clear", a lost Time Attack wave "wave_lost"; a counted escape "escape"; the rival's
@@ -125,6 +126,10 @@ const COMBO_HECKLE_MIN := 3
 const HECKLE_TIME := 2.5
 ## Seconds (run_clock) the rival sulks after a scored hit, or brags after a miss heckle.
 const RIVAL_REACTION_TIME := 1.2
+## The run's most frequent sounds (VARIED_SOUNDS) play each time at a pitch up to this much
+## (a fraction) off 1, drawn from an RNG seeded by the run seed (the same run sounds the same).
+const SOUND_PITCH_SPREAD := 0.04
+const VARIED_SOUNDS: Array[StringName] = [&"shot", &"hit", &"escape"]
 ## A timed run ticks at each of its last this many whole seconds.
 const COUNTDOWN_SECONDS := 10
 ## The pause menu's mute toggles: the bus and whether it is on.
@@ -172,6 +177,8 @@ var _over := false
 ## transition in) has not hidden yet.
 var _rotated := false
 var _empty_tween: Tween
+## Draws the pitch of each VARIED_SOUNDS sound (seeded in _start_run).
+var _pitch_rng := RandomNumberGenerator.new()
 var _bubble_tween: Tween
 ## The backdrop fading in over _backdrop (null when none is), and its tween.
 var _next_backdrop: Backdrop
@@ -445,6 +452,7 @@ func _start_run() -> void:
 		run_seed = args["seed"]
 		scoring = Scoring.new(mode.combo_cap)
 	rival_lines = Content.rival_lines()
+	_pitch_rng.seed = hash([run_seed, "sound pitch"])
 	if level != null:
 		print("[Play] Run start: level %s (%s %d of %d), seed %d (%d waves%s, no escape limit, combo cap %d, %d shells per hit, rival steals on, linger x%.2f, aim %.2f s, heckle cooldown %.2f s, backdrop %s, weather %s)" % [
 			level.id, chapter.name, level.index, Content.LEVELS_PER_CHAPTER, run_seed, level.waves, ", the last a boss flock" if level.is_boss() else "", level.combo_cap, level.shells_per_hit,
@@ -562,7 +570,7 @@ func _on_shot(at: Vector2) -> void:
 		print("[Play] Shot refused at (%.1f, %.1f): no shells left (wave %d at t %.2f, %d refused)" % [at.x, at.y, wave.index, wave_clock, refused])
 		_show_empty_cue()
 		return
-	_game.play_sfx(&"shot")
+	_play_sound(&"shot")
 	var target := bird_at(point)
 	if target != null and target.spec.penalty > 0:
 		_hit_decoy(target, point, at)
@@ -612,7 +620,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 		print("[Play] Hit %s #%d (hit %d/%d) at (%.1f, %.1f): no points, combo x%d kept, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, multiplier, scoring.score, wave.index, wave_clock, ammo.shells])
 		return
 	var awarded := scoring.hit(target.spec.points)
-	_game.play_sfx(_kill_sound(target.spec))
+	_play_sound(_kill_sound(target.spec))
 	if scoring.multiplier > multiplier:
 		_game.play_sfx(&"combo_up")
 	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier])
@@ -624,6 +632,12 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 		_heckle("combo")
 	if target.spec.split_count > 0:
 		_split(target, point)
+
+
+## Plays sound `id`, a VARIED_SOUNDS one at its next seeded pitch within SOUND_PITCH_SPREAD.
+func _play_sound(id: StringName) -> void:
+	var pitch := _pitch_rng.randf_range(1.0 - SOUND_PITCH_SPREAD, 1.0 + SOUND_PITCH_SPREAD) if id in VARIED_SOUNDS else 1.0
+	_game.play_sfx(id, pitch)
 
 
 ## The sound of a kill: an armored bird's (hp above 1) last hit, a splitter bursting, the
@@ -787,7 +801,7 @@ func _on_bird_escaped(bird: Bird) -> void:
 		print("[Play] Escaped %s #%d (not counted, %s, wave %d at t %.2f)" % [bird.spec.id, bird.number, _escapes(), wave.index, wave_clock])
 		return
 	escaped += 1
-	_game.play_sfx(&"escape")
+	_play_sound(&"escape")
 	print("[Play] Escaped %s #%d (%s, wave %d at t %.2f)" % [bird.spec.id, bird.number, _escapes(), wave.index, wave_clock])
 	_update_hud()
 	if _escape_limit_reached():

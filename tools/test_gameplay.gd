@@ -248,6 +248,7 @@ func _tests() -> Array[Callable]:
 		_test_audio_missing_files_reported,
 		_test_dropped_taps_are_silent,
 		_test_pause_keeps_every_held_sound,
+		_test_frequent_sounds_vary_in_pitch,
 	]
 
 
@@ -3998,7 +3999,7 @@ func _test_audio_every_event_sound() -> void:
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	var from := _log.size()
 	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
-	_check_logged(from, "^\\[Audio\\] SFX shot$", "every sound is logged by the one entry point")
+	_check_logged(from, "^\\[Audio\\] SFX shot x[01]\\.\\d{3}$", "every sound is logged by the one entry point, with its varied pitch")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
 		["splitter", [&"shot", &"split_pop", &"combo_up"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
 	var armored: Bird = null
@@ -4349,6 +4350,52 @@ func _test_pause_keeps_every_held_sound() -> void:
 		"on resuming every held sound continues", "%d in flight" % _game.sounds_in_flight())
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
+
+
+## The shot, the plain hit and the escape each play at a pitch within SOUND_PITCH_SPREAD of
+## 1, not all the same, and the same run seed gives the same pitches.
+func _test_frequent_sounds_vary_in_pitch() -> void:
+	var low := 1.0 - Play.SOUND_PITCH_SPREAD
+	var high := 1.0 + Play.SOUND_PITCH_SPREAD
+	var runs: Array[Array] = []
+	for attempt in 2:
+		var play := await _start_run(97)
+		var shot := (play.get_node("ShotInput") as ShotInput).shot
+		play.set_shell_pool(30)
+		_game.sfx_log.clear()
+		for i in 12:
+			shot.emit(_global(play, SKY_POINTS[i % SKY_POINTS.size()]))
+		runs.append(_pitches_of(&"shot"))
+		if attempt == 1:
+			break
+		var shots: Array[float] = runs[0]
+		_check(shots.size() == 12 and shots.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high) and shots.any(func(pitch: float) -> bool: return pitch != shots[0]),
+			"12 shots play at pitches within %.2f..%.2f, not all the same" % [low, high], str(shots))
+		_game.sfx_log.clear()
+		for i in 3:
+			var bird := await _spawn_flying(play, 60 + i)
+			bird.set_process(false)
+			shot.emit(_global(play, bird.transform * LOCAL_BODY))
+		var hits := _pitches_of(&"hit")
+		_check(hits.size() == 3 and hits.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high) and hits.any(func(pitch: float) -> bool: return pitch != hits[0]),
+			"3 hits play at pitches within the band, not all the same", str(hits))
+		_game.sfx_log.clear()
+		await _escape_counts(play, await _spawn_flying(play, 64, Content.bird("goose").flee_time - 0.5))
+		var escapes := _pitches_of(&"escape")
+		_check(not escapes.is_empty() and escapes.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high and pitch != 1.0), "an escape plays at a varied pitch within the band", str(escapes))
+	_check(runs[0] == runs[1], "the same run seed gives the same shot pitches", "%s vs %s" % runs)
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## The pitches the sounds `id` in sfx_log played at, oldest first.
+func _pitches_of(id: StringName) -> Array[float]:
+	var pitches: Array[float] = []
+	var offset := _game.sfx_pitches.size() - _game.sfx_log.size()
+	for i in _game.sfx_log.size():
+		if _game.sfx_log[i] == id:
+			pitches.append(_game.sfx_pitches[offset + i])
+	return pitches
 
 
 ## A real touch on the sky and a shot emitted straight into `play` (with shells, then with

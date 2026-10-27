@@ -255,8 +255,9 @@ var persist_check := 0
 ## The UI theme check_ui_theme last checked ("" before any; at start, the project's).
 var checked_theme := ""
 ## The ids of the latest sounds played, oldest first (SFX_LOG_SIZE at most; a heckle's blurt
-## is "heckle_<category>"); tests read it.
+## is "heckle_<category>"), and the pitch each played at (1 for a blurt); tests read them.
 var sfx_log: Array[StringName] = []
+var sfx_pitches: Array[float] = []
 ## The loop asked for ("" before the first) and how often it changed (a crossfade each).
 var music_track := ""
 var music_changes := 0
@@ -1163,14 +1164,15 @@ static func audio_silent() -> bool:
 	return AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER
 
 
-## Plays sound effect `id` (one of SFX_IDS) on the SFX bus at `pitch` and logs it. A
+## Plays sound effect `id` (one of SFX_IDS) on the SFX bus at `pitch` and logs it ("[Audio]
+## SFX <id>", with " x<pitch>" when the pitch is not 1). A
 ## missing or unknown sound is reported (once) and plays nothing.
 func play_sfx(id: StringName, pitch := 1.0) -> void:
 	var stream := _sound(id)
 	if stream == null:
 		return
-	_log_sound(id)
-	print("[Audio] SFX %s" % id)
+	_log_sound(id, pitch)
+	print("[Audio] SFX %s%s" % [id, " x%.3f" % pitch if pitch != 1.0 else ""])
 	_start_voice(stream, pitch)
 
 
@@ -1218,10 +1220,13 @@ static func blurt_plan(category: String, line: String) -> Array[Syllable]:
 	return plan
 
 
-func _log_sound(id: StringName) -> void:
+func _log_sound(id: StringName, pitch := 1.0) -> void:
 	sfx_log.append(id)
-	if sfx_log.size() > SFX_LOG_SIZE:
+	sfx_pitches.append(pitch)
+	while sfx_log.size() > SFX_LOG_SIZE:
 		sfx_log.pop_front()
+	while sfx_pitches.size() > sfx_log.size():
+		sfx_pitches.pop_front()
 
 
 ## The stream of sound `id` (SFX_IDS or a syllable), loaded once; a sound that is unknown,
