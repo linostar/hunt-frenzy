@@ -11,6 +11,8 @@ var name := ""
 var backdrop := ""
 ## The chapter's weather (one of Content.WEATHERS): drawn over the backdrop, visual only.
 var weather := ""
+## The music track the chapter's levels play: res://audio/music/<id>.mp3 (Content.music_path).
+var music := ""
 ## The rival steals after a bird's linger_time x this (0 < scale <= 1, never larger than
 ## the chapter before's): he gets quicker chapter by chapter.
 var rival_linger_scale := 1.0

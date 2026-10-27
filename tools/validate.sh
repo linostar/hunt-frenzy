@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Validation gate: asset import, project check (touch-first and landscape rules +
+# Validation gate: sound and music checks (the committed audio matches tools/sfx.py and
+# tools/music.py), asset import, project check (touch-first and landscape rules +
 # strict script compile) and its violation fixtures, palette check (every colour from
 # art/palette.hex) and its fixtures, content tests (data/SCHEMA.md invariants, art
 # included), headless gameplay tests, headless run of the main scene. Exits non-zero on the first failure and points at
@@ -15,7 +16,7 @@ mkdir -p "$LOG_DIR"
 
 fail() {
   echo "FAIL $1 (log: $2)" >&2
-  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main" "$2" >&2 || true
+  grep -E "ERROR|WARNING|check_project|check_palette|test_content|test_gameplay|run_main|sfx|music|import_cache" "$2" >&2 || true
   exit 1
 }
 
@@ -50,13 +51,33 @@ run_script() {
   fi
 }
 
-# On a fresh clone (no import cache) the first import can report errors for
-# resources loaded at startup (a project font or theme) before they are imported.
-# A priming import fills the cache; the checked import below then must be clean.
-# Only cache-miss errors (a not-yet-imported file and the loads that fail because of it)
-# are tolerated there; any other problem (a script or scene parse error) still fails.
+# The sound effects must be byte-identical to their synth (tools/sfx.py), and the music
+# loops must match their recorded render, MP3 bytes and loop flags (tools/music.lock.json;
+# neither check needs an encoder).
+if ! python3 tools/sfx.py --check >"$LOG_DIR/sfx.log" 2>&1 || ! grep -q "^sfx: OK" "$LOG_DIR/sfx.log"; then
+  fail "sound check" "$LOG_DIR/sfx.log"
+fi
+if ! python3 tools/music.py --check >"$LOG_DIR/music.log" 2>&1 || ! grep -q "^music: OK" "$LOG_DIR/music.log"; then
+  fail "music check" "$LOG_DIR/music.log"
+fi
+
+# On a fresh clone (no import cache), and in an existing checkout after new or changed
+# assets arrive (a pull, a branch switch), the first import can report errors for
+# resources loaded at startup (a project font or theme, a scene's texture or sound) before
+# they are imported. A priming import fills the cache; the checked import below then must
+# be clean. Only cache-miss errors (a not-yet-imported file and the loads that fail because
+# of it) are tolerated there; any other problem (a script or scene parse error) still fails.
 CACHE_MISS="Cannot open file 'res://\.godot/imported/|Unable to open file: res://\.godot/imported/|Failed loading resource: res://|referenced non-existent resource at: res://|Error loading custom project (font|theme) 'res://"
-if [ ! -d huntfrenzy/.godot/imported ]; then
+
+# Whether the import cache is stale, by Godot's own rule (tools/import_cache.py: no cache, an
+# asset not imported yet, or one whose content changed since its import; a touch alone is
+# not stale), and that rule's self-test on made-up projects.
+if ! python3 tools/import_cache.py --self-test >"$LOG_DIR/import_cache.log" 2>&1 || ! grep -q "^import_cache: OK" "$LOG_DIR/import_cache.log"; then
+  fail "import cache check self-test" "$LOG_DIR/import_cache.log"
+fi
+cache_state="$(python3 tools/import_cache.py huntfrenzy 2>>"$LOG_DIR/import_cache.log")" || fail "import cache check" "$LOG_DIR/import_cache.log"
+if [ "$cache_state" != "fresh" ]; then
+  echo "Import cache is stale (${cache_state#stale: }): running the priming import"
   godot "$LOG_DIR/import_prime.log" --headless --path huntfrenzy --import || true
   if grep -E "ERROR|WARNING" "$LOG_DIR/import_prime.log" | grep -qvE "$CACHE_MISS"; then
     fail "priming import reported problems besides import-cache misses" "$LOG_DIR/import_prime.log"
@@ -130,7 +151,7 @@ done
 # a malformed copy.
 run_script test_content "$LOG_DIR/content.log"
 run_script test_gameplay "$LOG_DIR/test.log" --fixed-fps 60
-summary="$(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
+summary="$(grep "^sfx: OK" "$LOG_DIR/sfx.log"); $(grep "^import_cache: OK" "$LOG_DIR/import_cache.log"); $(grep "^music: OK" "$LOG_DIR/music.log"); $(grep "^check_project: OK" "$LOG_DIR/check.log"); check fixtures: $fixtures; $(grep "^check_palette: OK" "$LOG_DIR/palette.log"); palette fixtures: $palette_fixtures; $(grep "^test_content: OK" "$LOG_DIR/content.log"); $(grep "^test_gameplay: OK" "$LOG_DIR/test.log")"
 # The main scene (the title) runs 120 frames (2 s at 60 fixed fps) by default; run_main
 # requires the flow state to match the running scene.
 RUN_FRAMES="${RUN_FRAMES:-120}" run_script run_main "$LOG_DIR/run.log" --fixed-fps 60

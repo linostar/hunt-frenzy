@@ -21,6 +21,8 @@ extends Control
 ## again, Levels opens its chapter's level select with this level focused (Retry is focused
 ## without Next).
 ## Laid out in the safe area.
+## Sound: the rival's parting line plays his blurt (Game.play_heckle, "results"); a level's
+## stars each play "star", STAR_SOUND_GAP seconds apart, and a new best then plays "new_best".
 
 const NO_VALUE := "—"
 const STAT_KEYS: Array[String] = ["score", "shots", "hits", "kills", "pigeons", "escaped", "stolen", "rival_score", "rival_line", "rival_steals", "best", "new_best", "save_error"]
@@ -32,6 +34,8 @@ const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for deta
 const PROGRESS_SAVE_ERROR_TEXT := "Your progress could not be saved: %s. See the log for details."
 const ENDLESS_HEADING := "Run over"
 const TIMED_HEADING := "Time up"
+## Seconds between the star sounds (and before the new best's).
+const STAR_SOUND_GAP := 0.35
 
 var _game: GameState
 ## The campaign level of these results, or null (a mode's run).
@@ -156,6 +160,24 @@ func _show_stats(stats: Dictionary) -> void:
 		print("[Results] Mode %s: best %d%s" % [_mode.id, stats["best"], ", new best" if stats["new_best"] else ""])
 	if _level != null:
 		print("[Results] Level %s: %d stars, best %d (%d stars), next %s" % [_level.id, stats["stars"], stats["best"], stats["best_stars"], stats["next_level"] if stats["next_level"] != "" else "none open"])
+	_play_sounds(stats["rival_line"], stats["stars"] if _level != null else 0, stats["new_best"])
+
+
+## The results' sounds: the rival's blurt for `rival_line` at once, then `stars` star sounds
+## and the new best's fanfare (when `new_best`), STAR_SOUND_GAP seconds apart.
+func _play_sounds(rival_line: String, stars: int, new_best: bool) -> void:
+	_game.play_heckle("results", rival_line)
+	var sounds: Array[StringName] = []
+	for i in stars:
+		sounds.append(&"star")
+	if new_best:
+		sounds.append(&"new_best")
+	if sounds.is_empty():
+		return
+	var tween := create_tween()
+	for sound in sounds:
+		tween.tween_interval(STAR_SOUND_GAP)
+		tween.tween_callback(_game.play_sfx.bind(sound))
 
 
 ## Shows `buttons` (hiding the other mode's), chains their focus (left/right and Tab wrap

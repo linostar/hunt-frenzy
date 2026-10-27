@@ -28,7 +28,8 @@
       {"backdrop": "sunset", "weather": "rain"},
       {"backdrop": "night", "weather": "snow"}
     ],
-    "backdrop_waves": 3
+    "backdrop_waves": 3,
+    "music": "endless"
   },
   {
     "id": "time_attack",
@@ -56,6 +57,7 @@
     "backdrops": [
       {"backdrop": "noon", "weather": "wind"}
     ],
-    "backdrop_waves": 1
+    "backdrop_waves": 1,
+    "music": "time_attack"
   }
 ]
