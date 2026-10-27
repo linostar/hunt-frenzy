@@ -1,7 +1,10 @@
-[gd_resource type="Theme" load_steps=11 format=3]
+[gd_resource type="Theme" load_steps=17 format=3]
 
 [ext_resource type="FontFile" path="res://ui/fonts/LilitaOne-Regular.ttf" id="1_display"]
 [ext_resource type="FontFile" path="res://ui/fonts/Nunito-wght.ttf" id="2_body"]
+[ext_resource type="Texture2D" path="res://art/slider_grabber.svg" id="3_grabber"]
+[ext_resource type="Texture2D" path="res://art/slider_grabber_highlight.svg" id="4_grabber_highlight"]
+[ext_resource type="Texture2D" path="res://art/slider_grabber_disabled.svg" id="5_grabber_disabled"]
 
 [sub_resource type="FontVariation" id="FontVariation_body"]
 base_font = ExtResource("2_body")
@@ -107,6 +110,48 @@ corner_radius_top_right = 14
 corner_radius_bottom_right = 14
 corner_radius_bottom_left = 14
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_slider"]
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+bg_color = Color(0.31, 0.365, 0.447, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_grabber_area"]
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+bg_color = Color(0.941, 0.541, 0.141, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_grabber_area_highlight"]
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+bg_color = Color(0.949, 0.714, 0.196, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
 [resource]
 default_font = SubResource("FontVariation_body")
 default_font_size = 20
@@ -123,6 +168,12 @@ Button/styles/hover = SubResource("StyleBoxFlat_hover")
 Button/styles/hover_pressed = SubResource("StyleBoxFlat_pressed")
 Button/styles/normal = SubResource("StyleBoxFlat_normal")
 Button/styles/pressed = SubResource("StyleBoxFlat_pressed")
+HSlider/icons/grabber = ExtResource("3_grabber")
+HSlider/icons/grabber_disabled = ExtResource("5_grabber_disabled")
+HSlider/icons/grabber_highlight = ExtResource("4_grabber_highlight")
+HSlider/styles/grabber_area = SubResource("StyleBoxFlat_grabber_area")
+HSlider/styles/grabber_area_highlight = SubResource("StyleBoxFlat_grabber_area_highlight")
+HSlider/styles/slider = SubResource("StyleBoxFlat_slider")
 HeadingLabel/base_type = &"Label"
 HeadingLabel/colors/font_color = Color(0.984, 0.929, 0.804, 1)
 HeadingLabel/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)

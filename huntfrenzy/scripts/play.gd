@@ -83,10 +83,14 @@ extends Node2D
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
 ## countdown runs on run_clock, so a pause stops it. The pause menu plays "pause" and
 ## "resume" and holds the run's sounds and ducks the music while open (Game.sync_audio_pause);
-## its Music and SFX toggles mute their bus at once (saved).
+## its Music and SFX toggles mute their bus at once (saved). Its Settings button opens the
+## settings screen over the paused run (open_settings: the tree stays paused, the sounds
+## held and the music ducked); its Back (or Escape) closes it and focuses Settings again,
+## and the menu's toggles follow whatever it changed.
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
+const SETTINGS_SCENE := preload("res://scenes/settings.tscn")
 const SHELL_TEXTURE := preload("res://art/shell.svg")
 const RIVAL_IDLE := preload("res://art/rival_idle.svg")
 const RIVAL_AIM := preload("res://art/rival_aim.svg")
@@ -189,6 +193,8 @@ var _last_heckle := -INF
 ## lasts until; aiming takes precedence over it.
 var _reaction: Texture2D
 var _reaction_until := -INF
+## The settings opened over the pause menu (null when closed).
+var _settings: Settings
 
 @onready var _world: Node2D = $World
 @onready var _backdrop: Backdrop = $World/Backdrop
@@ -216,6 +222,9 @@ var _reaction_until := -INF
 @onready var _quit_button: Button = $PauseLayer/PauseMenu/Panel/QuitButton
 @onready var _music_toggle: Button = $PauseLayer/PauseMenu/Panel/MusicToggle
 @onready var _sfx_toggle: Button = $PauseLayer/PauseMenu/Panel/SfxToggle
+@onready var _settings_button: Button = $PauseLayer/PauseMenu/Panel/SettingsButton
+@onready var _pause_layer: CanvasLayer = $PauseLayer
+@onready var _pause_panel: Control = $PauseLayer/PauseMenu/Panel
 
 
 func _ready() -> void:
@@ -229,6 +238,7 @@ func _ready() -> void:
 	_resume_button.pressed.connect(resume)
 	_restart_button.pressed.connect(_restart)
 	_quit_button.pressed.connect(_quit)
+	_settings_button.pressed.connect(open_settings)
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
 	_game.audio_settings_changed.connect(_show_audio_settings)
@@ -374,6 +384,7 @@ func open_pause(cause: String) -> void:
 func resume(cause := "Resume") -> void:
 	if not _pause_menu.visible or _over:
 		return
+	close_settings()
 	_pause_menu.hide()
 	# On the menu voice, while the audio is still paused, so it never takes a held sound's voice.
 	_game.play_sfx(&"resume")
@@ -384,6 +395,37 @@ func resume(cause := "Resume") -> void:
 
 func is_paused() -> bool:
 	return _pause_menu.visible
+
+
+## Opens the settings over the open pause menu (the run stays paused); ignored when the
+## menu is closed or the settings already show. Logged.
+func open_settings() -> void:
+	if not _pause_menu.visible or _settings != null or _over:
+		return
+	_settings = SETTINGS_SCENE.instantiate() as Settings
+	_settings.overlay = true
+	_settings.closed.connect(close_settings)
+	# The menu's dim stays (it is the pause itself); its panel hides under the settings.
+	_pause_panel.hide()
+	_pause_layer.add_child(_settings)
+	print("[Play] Settings opened over the paused run (wave %d at t %.2f%s)" % [wave.index, wave_clock, _clock_note()])
+
+
+## Closes the settings opened over the pause menu and focuses its Settings button again;
+## nothing when they are not open. Logged.
+func close_settings() -> void:
+	if _settings == null:
+		return
+	_settings.queue_free()
+	_settings = null
+	_pause_panel.show()
+	_settings_button.grab_focus(true)
+	print("[Play] Settings closed; back to the pause menu")
+
+
+## The settings open over the pause menu, or null.
+func settings_overlay() -> Settings:
+	return _settings
 
 
 func is_empty_cue_shown() -> bool:
@@ -873,10 +915,12 @@ func _leave(cause: String) -> void:
 	print("[Play] Left the run (%s): %s, seed %d, wave %d, score %d, %d escaped%s; nothing recorded" % [cause, "level " + level.id if level != null else "mode " + mode.id, run_seed, wave.index, scoring.score, escaped, _clock_note()])
 
 
-## Escape (CancelKey, which runs while paused too) opens the pause menu, or resumes the
-## run when the menu is open.
+## Escape (CancelKey, which runs while paused too) opens the pause menu, resumes the run
+## when the menu is open, or closes the settings opened over it.
 func _on_cancel() -> void:
-	if is_paused():
+	if _settings != null:
+		close_settings()
+	elif is_paused():
 		resume("Escape")
 	else:
 		open_pause("Escape")
