@@ -464,8 +464,11 @@ def check():
 
 def check_decode(ffmpeg, mp3, samples):
     """Decodes `mp3` the gapless way (as Godot does) and confirms it is exactly `samples` long."""
-    raw = subprocess.run([ffmpeg, "-v", "error", "-i", str(mp3), "-f", "s16le", "-ac", "1", "-"],
-                         capture_output=True, check=True).stdout
+    result = subprocess.run([ffmpeg, "-v", "error", "-i", str(mp3), "-f", "s16le", "-ac", "1", "-"], capture_output=True)
+    if result.returncode != 0:
+        stderr = result.stderr.decode(errors="replace").strip()
+        raise MusicError(f"ffmpeg failed to decode {mp3} (exit status {result.returncode}): {stderr}")
+    raw = result.stdout
     if len(raw) // 2 != samples:
         raise MusicError(f"{mp3} decodes to {len(raw) // 2} samples, expected {samples}; is lame still writing its LAME tag?")
 
