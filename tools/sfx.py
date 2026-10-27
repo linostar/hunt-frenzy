@@ -19,13 +19,16 @@ Sounds:
                             its pitch and timbre set by the heckle's category.
 
 Every file is peak-normalised to its own level, never above PEAK, so nothing clips; the
-levels set the mix (taps and ticks quiet, shots, the buzzer and fanfares loudest). Each
-file's .import must exist (Godot imports it, so it ships).
+levels set the mix, and --check holds each file's loudness as heard (loudness_of: BS.1770
+K-weighting, the loudest 0.1 s) inside its kind's LOUDNESS_BANDS (events around the shot,
+end-of-run stingers louder, menu sounds quieter), so no sound stands far above its siblings.
+Each file's .import must exist (Godot imports it, so it ships).
 
 Usage (from repo root):
     python3 tools/sfx.py           write every sound into huntfrenzy/audio/sfx/
     python3 tools/sfx.py --check   regenerate in memory and verify the committed files are
-                                   byte-identical, imported and none is stale; prints "sfx: OK"
+                                   byte-identical, imported, inside their loudness bands
+                                   and none is stale; prints "sfx: OK"
 """
 import io
 import math
@@ -356,31 +359,39 @@ def fx_resume(rng):
     return place(buf, ping(note_hz(D6), 0.25, 12.0, GLASS), 0.08)
 
 
-# Every game sound effect: name -> (generator, peak level). The levels make the mix.
+# How loud each kind of sound may be as heard (loudness_of: K-weighted, the loudest 0.1 s,
+# LUFS), (floor, ceiling): a peak level alone does not set loudness (a sustained buzz is far
+# louder than a click of the same peak), so --check holds every file to its kind's band.
+# event: the run's frequent sounds, around the shot and hit (-15.8); stinger: the one-off
+# end-of-run sounds, allowed to stand out; ui: menu sounds, under the events; voice: the
+# rival's syllables.
+LOUDNESS_BANDS = {"event": (-23.0, -13.5), "stinger": (-16.0, -11.0), "ui": (-26.0, -16.0), "voice": (-21.0, -13.0)}
+
+# Every game sound effect: name -> (generator, peak level, loudness band). The levels make the mix.
 EFFECTS = {
-    "shot": (fx_shot, 0.85),
-    "empty_click": (fx_empty_click, 0.5),
-    "out_of_shells": (fx_out_of_shells, 0.22),
-    "hit": (fx_hit, 0.6),
-    "armored_clank": (fx_armored_clank, 0.55),
-    "armored_kill": (fx_armored_kill, 0.65),
-    "split_pop": (fx_split_pop, 0.6),
-    "golden_chime": (fx_golden_chime, 0.55),
-    "decoy_penalty": (fx_decoy_penalty, 0.4),
-    "escape": (fx_escape, 0.35),
-    "wave_start": (fx_wave_start, 0.5),
-    "wave_clear": (fx_wave_clear, 0.5),
-    "wave_lost": (fx_wave_lost, 0.5),
-    "combo_up": (fx_combo_up, 0.3),
-    "rival_aim": (fx_rival_aim, 0.5),
-    "rival_steal": (fx_rival_steal, 0.7),
-    "countdown_tick": (fx_countdown_tick, 0.45),
-    "time_up": (fx_time_up, 0.6),
-    "star": (fx_star, 0.55),
-    "new_best": (fx_new_best, 0.6),
-    "ui_tap": (fx_ui_tap, 0.26),
-    "pause": (fx_pause, 0.35),
-    "resume": (fx_resume, 0.35),
+    "shot": (fx_shot, 0.85, "event"),
+    "empty_click": (fx_empty_click, 0.5, "event"),
+    "out_of_shells": (fx_out_of_shells, 0.22, "event"),
+    "hit": (fx_hit, 0.6, "event"),
+    "armored_clank": (fx_armored_clank, 0.55, "event"),
+    "armored_kill": (fx_armored_kill, 0.6, "event"),
+    "split_pop": (fx_split_pop, 0.6, "event"),
+    "golden_chime": (fx_golden_chime, 0.4, "event"),
+    "decoy_penalty": (fx_decoy_penalty, 0.2, "event"),
+    "escape": (fx_escape, 0.35, "event"),
+    "wave_start": (fx_wave_start, 0.5, "event"),
+    "wave_clear": (fx_wave_clear, 0.5, "event"),
+    "wave_lost": (fx_wave_lost, 0.5, "event"),
+    "combo_up": (fx_combo_up, 0.3, "event"),
+    "rival_aim": (fx_rival_aim, 0.5, "event"),
+    "rival_steal": (fx_rival_steal, 0.7, "event"),
+    "countdown_tick": (fx_countdown_tick, 0.45, "event"),
+    "time_up": (fx_time_up, 0.5, "stinger"),
+    "star": (fx_star, 0.55, "stinger"),
+    "new_best": (fx_new_best, 0.6, "stinger"),
+    "ui_tap": (fx_ui_tap, 0.26, "ui"),
+    "pause": (fx_pause, 0.35, "ui"),
+    "resume": (fx_resume, 0.35, "ui"),
 }
 
 
@@ -424,13 +435,58 @@ def wav_bytes(samples, peak=PEAK):
 def sounds():
     """{file name: WAV bytes} for every sound, in a fixed order."""
     files = {}
-    for name, (generate, peak) in EFFECTS.items():
+    for name, (generate, peak, _band) in EFFECTS.items():
         # Each effect has its own noise seed, so editing one never changes another.
         files[f"{name}.wav"] = wav_bytes(generate(random.Random(f"sfx/{name}")), peak)
     for timbre in TIMBRES:
         for vowel in VOWELS:
             files[f"blurt_{timbre}_{vowel}.wav"] = wav_bytes(blurt(timbre, vowel, random.Random(f"blurt/{timbre}/{vowel}")), BLURT_PEAK)
     return files
+
+
+# Loudness: ITU-R BS.1770 K-weighting (its two filters, derived for RATE), then the mean
+# square over the loudest LOUDNESS_WINDOW seconds (stepped every LOUDNESS_HOP), in LUFS.
+LOUDNESS_WINDOW = 0.1
+LOUDNESS_HOP = 0.01
+
+
+def biquad(samples, b, a):
+    out, x1, x2, y1, y2 = [], 0.0, 0.0, 0.0, 0.0
+    for x in samples:
+        y = b[0] * x + b[1] * x1 + b[2] * x2 - a[0] * y1 - a[1] * y2
+        out.append(y)
+        x2, x1, y2, y1 = x1, x, y1, y
+    return out
+
+
+def k_weighted(samples):
+    """BS.1770's K-weighting: a high shelf (+4 dB above ~1.7 kHz) and a high-pass (~38 Hz)."""
+    k = math.tan(math.pi * 1681.974450955533 / RATE)
+    q = 0.7071752369554196
+    vh = 10 ** (3.999843853973347 / 20)
+    vb = vh ** 0.4996667741545416
+    a0 = 1 + k / q + k * k
+    shelf = biquad(samples, ((vh + vb * k / q + k * k) / a0, 2 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0),
+                   (2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0))
+    k = math.tan(math.pi * 38.13547087602444 / RATE)
+    q = 0.5003270373238773
+    a0 = 1 + k / q + k * k
+    return biquad(shelf, (1.0, -2.0, 1.0), (2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0))
+
+
+def loudness_of(data):
+    """The loudness of WAV bytes as heard: K-weighted, the loudest LOUDNESS_WINDOW, in LUFS."""
+    with wave.open(io.BytesIO(data), "rb") as w:
+        frames = w.readframes(w.getnframes())
+    weighted = k_weighted([v / 32767 for (v,) in struct.iter_unpack("<h", frames)])
+    window, hop = int(LOUDNESS_WINDOW * RATE), int(LOUDNESS_HOP * RATE)
+    squares = [y * y for y in weighted] + [0.0] * window
+    total = sum(squares[:window])
+    loudest = total
+    for start in range(hop, len(weighted), hop):
+        total = sum(squares[start:start + window])
+        loudest = max(loudest, total)
+    return -0.691 + 10 * math.log10(max(loudest / window, 1e-12))
 
 
 def peak_of(data):
@@ -440,6 +496,13 @@ def peak_of(data):
     return max(abs(v) for (v,) in struct.iter_unpack("<h", frames)) / 32767
 
 
+def band_of(name):
+    """The loudness band (LOUDNESS_BANDS) of sound file `name`."""
+    if name.startswith("blurt_"):
+        return "voice"
+    return EFFECTS[name.removesuffix(".wav")][2]
+
+
 def check():
     files = sounds()
     problems = []
@@ -447,6 +510,11 @@ def check():
     for name, data in files.items():
         if peak_of(data) > PEAK:
             problems.append(f"{name} peaks at {peak_of(data):.3f}, above PEAK {PEAK}")
+        band = band_of(name)
+        low, high = LOUDNESS_BANDS[band]
+        loudness = loudness_of(data)
+        if not low <= loudness <= high:
+            problems.append(f"{name} is {loudness:.1f} LUFS, outside its {band} band {low}..{high} LUFS (loudness_of)")
         committed = OUT_DIR / name
         if not committed.exists():
             problems.append(f"{committed.relative_to(ROOT)} missing, run python3 tools/sfx.py")
