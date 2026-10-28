@@ -104,7 +104,7 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `wobble_hz` | float | 0..5 | Wobble frequency (title crossing only). |
 | `flee_time` | float | 0.1..60 | Seconds of flight before it climbs off the top. |
 | `linger_time` | float | 0.1..60 | Seconds of flight after which the rival starts aiming at it (modes with `rival_steals`). Required for every bird, the decoy too (never used for it); `linger_time + aim_time < flee_time` (I13). |
-| `call` | string | sound effect id (`GameState.SFX_IDS`) | The call it gives the moment it starts flying off (at `flee_time`, or when the wave's shells run out), once per bird (I25). |
+| `call` | string | sound effect id (`GameState.SFX_IDS`) | The call it gives the first frame any of its opaque art shows above the grass line (`Bird.appeared`), once per bird; fleeing makes no sound. Today every rising bird meets this on its spawn frame (its climb tilt lifts the art above the line), a split child at its launch (I25). |
 | `call_pitch` | float | 0.5..2 | The pitch its call plays at (1 is the recording's own; `Game.play_sfx`). |
 | `points` | int | 0..100000 | Points of a kill, before the multiplier. 0 only for a decoy (I6). |
 | `hp` | int | 1..5 | Hits to kill. `hp > 1` needs the damaged frames (I3). |

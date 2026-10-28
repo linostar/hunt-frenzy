@@ -22,8 +22,8 @@ Sounds:
     rival_laugh.wav         (one of EFFECTS) the rival's laugh after a steal: a CC0
                             recording (RECORDINGS, credited in the game).
     call_<quack|gosling|pigeon|swift>.wav
-                            (of EFFECTS) the call a bird gives as it starts flying off
-                            (birds.json "call", played at its "call_pitch"): recordings
+                            (of EFFECTS) the call a bird gives as it first shows above the
+                            grass (birds.json "call", played at its "call_pitch"): recordings
                             (RECORDINGS, credited in the game). --check holds each
                             recording's length inside its RECORDINGS range.
 

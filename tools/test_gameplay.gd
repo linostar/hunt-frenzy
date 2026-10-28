@@ -73,10 +73,15 @@ const UNWRITABLE_SAVE_PATH := "user://no_such_dir/save.json"
 const SKY_POINTS: Array[Vector2] = [Vector2(120, 120), Vector2(840, 120), Vector2(480, 100)]
 ## How much faster game time runs while the escape test waits for 10 escapes.
 const FAST_TIME_SCALE := 8.0
+## The age a lower stand-in bird starts at: its own path STAND_IN_AGE seconds before its spawn
+## point, so its art lies wholly under the grass (_test_bird_calls_on_appearing).
+const STAND_IN_AGE := -0.5
 ## One frame at --fixed-fps 60.
 const FRAME := 1.0 / 60.0
 
 var _failures: Array[String] = []
+## Each texture's opaque pixel corners, centred (_drawn_art_top), by texture path.
+var _opaque_corners: Dictionary[String, PackedVector2Array] = {}
 var _passed := 0
 var _deadline_msec := 0
 ## The "Game" autoload; this script compiles before autoloads exist, so it is fetched at start.
@@ -255,7 +260,7 @@ func _tests() -> Array[Callable]:
 		_test_audio_files_match_ids,
 		_test_audio_music_per_screen,
 		_test_audio_every_event_sound,
-		_test_bird_calls_on_fleeing,
+		_test_bird_calls_on_appearing,
 		_test_title_geese_never_call,
 		_test_audio_heckle_blurts,
 		_test_time_attack_countdown,
@@ -4378,13 +4383,13 @@ func _test_audio_every_event_sound() -> void:
 		if not play.flying_birds().is_empty():
 			heard = _game.sfx_log.duplicate()
 			break
-	_check(heard == [&"wave_start"], "the wave's first spawn plays wave_start", str(heard))
+	_check(heard == [&"wave_start", &"call_quack"], "the wave's first spawn plays wave_start, then the goose's call as its art shows above the grass", str(heard))
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	var from := _log.size()
 	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
 	_check_logged(from, "^\\[Audio\\] SFX shot x[01]\\.\\d{3}$", "every sound is logged by the one entry point, with its varied pitch")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
-		["splitter", [&"shot", &"split_pop", &"combo_up"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
+		["splitter", [&"shot", &"split_pop", &"combo_up", &"call_gosling", &"call_gosling"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
 	var armored: Bird = null
 	for entry: Array in cases:
 		var bird := armored
@@ -4818,65 +4823,53 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 	await _game.transition_finished
 
 
-## Every bird type gives its call (spec.call_sound at spec.call_pitch) exactly once the
-## moment it starts flying off, on each of the three ways: its natural flee_time, flee()
-## when the last shell is fired (the out-of-shells sweep), and spawning into an empty pool
-## (setup's fleeing). Each call is the sound Play plays as it handles Bird.started_fleeing,
-## with the bird's pitch, logged as a [Play] line; the bird never calls again (a second
-## flee(), flying on until it escapes). Steals are off, so every bird flies off on its own.
-func _test_bird_calls_on_fleeing() -> void:
+## Every bird type gives its call (spec.call_sound at spec.call_pitch) exactly once, the
+## first frame any of its drawn art shows above the grass line (Play.GRASS_Y). Today a
+## rising bird's climb tilt already lifts its art above the line on its spawn frame, so it
+## calls as it spawns, with shells and spawned into an empty pool (already fleeing) alike;
+## the art is checked with _drawn_art_top, a scan of every opaque pixel the bird's Sprite
+## draws (independent of Bird.art_top's hull). The call is the sound Play plays as it
+## handles Bird.appeared, logged as a [Play] line. Fleeing makes no sound (the last shell's
+## out-of-shells sweep, a second flee()), and the bird never calls again, flying on until
+## it escapes. The rule itself: a stand-in of each type placed lower (the same bird
+## STAND_IN_AGE seconds before its spawn point, its art wholly under the grass) emits
+## nothing until it rises, and emits appeared on the first frame its art shows above the
+## line. A splitter's goslings call on their launch frame. Steals are off, so every bird
+## flies off on its own.
+func _test_bird_calls_on_appearing() -> void:
 	var play := await _start_run(88)
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	play.mode.rival_steals = false
 	var bird_seed := 300
 	for spec in Content.birds():
-		for way: String in ["flee_time", "out of shells", "spawned into an empty pool"]:
+		var call_id := StringName(spec.call_sound)
+		for empty_pool: bool in [false, true]:
+			var way := "spawned into an empty pool, fleeing" if empty_pool else "with shells"
 			bird_seed += 1
-			play.set_shell_pool(5)
 			# Every case's birds escape: keep the run from ending on Endless's escape limit.
 			play.escaped = 0
-			# [times emitted, the sound and pitch Play had just played when it was emitted]
-			var calls: Array = [0, &"", 0.0]
-			var record := func(_bird: Bird) -> void:
-				calls[0] += 1
-				calls[1] = _game.sfx_log.back()
-				calls[2] = _game.sfx_pitches.back()
+			play.set_shell_pool(0 if empty_pool else 5)
 			var from := _log.size()
-			var bird: Bird = null
-			if way == "flee_time":
-				bird = play.spawn_bird(spec.id, bird_seed)
-				bird.age = spec.flee_time - 0.1
-				bird.started_fleeing.connect(record)
-				await process_frame
-				_check(calls[0] == 0 and not bird.is_fleeing(), "%s: no call before its flee_time" % spec.id, "%d calls at age %.2f" % [calls[0], bird.age])
-				for i in 30:
-					if calls[0] > 0:
-						break
-					await process_frame
-				_check(bird.is_fleeing() and bird.age - spec.flee_time < 2.0 * FRAME, "%s: it calls the frame it reaches its flee_time" % spec.id, "age %.3f, flee_time %.2f" % [bird.age, spec.flee_time])
-			elif way == "out of shells":
-				bird = await _spawn_flying(play, bird_seed, IN_FIELD_AGE, spec.id)
-				bird.started_fleeing.connect(record)
-				play.set_shell_pool(1)
-				shot.emit(_global(play, SKY_POINTS[2]))
-				_check(bird.is_fleeing() and play.ammo.is_empty(), "%s: the last shell makes it flee" % spec.id, "fleeing %s" % bird.is_fleeing())
-			else:
-				play.set_shell_pool(0)
-				# The bird calls as it enters the tree (Bird._ready), inside spawn_bird: Play
-				# connected first, so the sounds played by the spawn are the call alone.
-				_game.sfx_log.clear()
-				bird = play.spawn_bird(spec.id, bird_seed)
-				var played := _game.sfx_log.duplicate()
-				var pitches := _game.sfx_pitches.slice(_game.sfx_pitches.size() - played.size())
-				_check(played == [StringName(spec.call_sound)], "%s: spawning into an empty pool plays only its call" % spec.id, str(played))
-				calls = [played.count(StringName(spec.call_sound)), played.back() if not played.is_empty() else &"", pitches.back() if not pitches.is_empty() else 0.0]
-				bird.started_fleeing.connect(record)
-			_check(calls[0] == 1 and calls[1] == StringName(spec.call_sound) and is_equal_approx(calls[2], spec.call_pitch),
-				"%s calls %s x%.2f once as it starts fleeing (%s)" % [spec.id, spec.call_sound, spec.call_pitch, way], "%d calls, last sound %s x%.3f" % [calls[0], calls[1], calls[2]])
-			_check_logged(from, "^\\[Play\\] Call of %s #%d as it flies off: %s x%.2f \\(age \\d+\\.\\d{2}, wave \\d+ at t -?\\d+\\.\\d{2}\\)$" % [spec.id, bird.number, spec.call_sound, spec.call_pitch],
+			var spawned: Array[Bird] = []
+			var heard := _sounds_of(func() -> void: spawned.append(play.spawn_bird(spec.id, bird_seed)))
+			var bird := spawned[0]
+			var pitches := _pitches_of(call_id)
+			var top := _drawn_art_top(play, bird)
+			_check(heard == [call_id] and pitches.size() == 1 and is_equal_approx(pitches[0], spec.call_pitch),
+				"%s calls %s x%.2f once as it spawns (%s)" % [spec.id, call_id, spec.call_pitch, way], "%s at %s" % [heard, pitches])
+			_check(top < Play.GRASS_Y, "%s's art shows above the grass line on its spawn frame (%s)" % [spec.id, way], "art top %.2f, grass line %.0f" % [top, Play.GRASS_Y])
+			_check_logged(from, "^\\[Play\\] Call of %s #%d as it appears above the grass: %s x%.2f \\(art top \\d+\\.\\d, age 0\\.00, wave \\d+ at t -?\\d+\\.\\d{2}\\)$" % [spec.id, bird.number, call_id, spec.call_pitch],
 				"%s's call is logged (%s)" % [spec.id, way])
-			var before := int(calls[0])
-			bird.flee()
+			var again: Array[int] = [0]
+			bird.appeared.connect(func(_caller: Bird) -> void: again[0] += 1)
+			if not empty_pool:
+				bird.age = IN_FIELD_AGE
+				await process_frame
+				play.set_shell_pool(1)
+				var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
+				_check(bird.is_fleeing() and &"out_of_shells" in last_shot and not last_shot.any(func(id: StringName) -> bool: return String(id).begins_with("call_")),
+					"%s: running out of shells makes it flee with no call" % spec.id, str(last_shot))
+			_check(_sounds_of(func() -> void: bird.flee()).is_empty(), "%s: being told to flee again makes no sound (%s)" % [spec.id, way], str(_game.sfx_log))
 			Engine.time_scale = FAST_TIME_SCALE
 			for i in 600:
 				if not is_instance_valid(bird):
@@ -4885,38 +4878,130 @@ func _test_bird_calls_on_fleeing() -> void:
 			Engine.time_scale = 1.0
 			# The frame after a time scale change still runs at the old scale.
 			await process_frame
-			_check(not is_instance_valid(bird) and calls[0] == before, "%s never calls twice: not on a second flee(), nor flying on until it escapes (%s)" % [spec.id, way], "%d calls" % calls[0])
+			_check(not is_instance_valid(bird) and again[0] == 0, "%s never calls again, fleeing and flying on until it escapes (%s)" % [spec.id, way], "%d more calls" % again[0])
+		# The rule on a stand-in placed lower: wholly under the grass, then rising out of it.
+		var stand_in := Play.BIRD_SCENE.instantiate() as Bird
+		stand_in.setup(spec, 900, bird_seed, 1.0, Play.FIELD, false)
+		stand_in.age = STAND_IN_AGE
+		# [times emitted, the drawn art top then]
+		var emitted: Array = [0, INF]
+		stand_in.appeared.connect(func(caller: Bird) -> void:
+			emitted[0] += 1
+			emitted[1] = _drawn_art_top(play, caller))
+		(play.get_node("World/Birds") as Node2D).add_child(stand_in)
+		var hidden := _drawn_art_top(play, stand_in)
+		_check(emitted[0] == 0 and hidden >= Play.GRASS_Y, "a %s stand-in wholly under the grass does not appear" % spec.id, "%d emitted, art top %.2f" % [emitted[0], hidden])
+		var before := hidden
+		var shown_early := -1
+		for i in 120:
+			await process_frame
+			if emitted[0] > 0:
+				break
+			before = _drawn_art_top(play, stand_in)
+			if before < Play.GRASS_Y and shown_early < 0:
+				shown_early = i
+		for i in 10:
+			await process_frame
+		_check(emitted[0] == 1 and shown_early < 0 and before >= Play.GRASS_Y and emitted[1] < Play.GRASS_Y,
+			"a %s stand-in appears once, on the first frame its art shows above the grass line" % spec.id,
+			"%d emitted, art top %.2f the frame before and %.2f then (grass line %.0f), shown without appearing at frame %d" % [emitted[0], before, emitted[1], Play.GRASS_Y, shown_early])
+		stand_in.queue_free()
+	# A splitter's goslings appear mid-air at the split: each calls on its launch frame.
+	play.escaped = 0
+	play.set_shell_pool(5)
+	var splitter := await _spawn_flying(play, 390, IN_FIELD_AGE, "splitter")
+	splitter.set_process(false)
+	var at := _global(play, splitter.transform * LOCAL_BODY)
+	var split_from := _log.size()
+	var split_heard := _sounds_of(func() -> void: shot.emit(at))
+	var goslings: Array[Bird] = []
+	goslings.assign(play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling" and bird.number > splitter.number))
+	var gosling_spec := Content.bird("gosling")
+	_check(goslings.size() == 2 and split_heard.count(StringName(gosling_spec.call_sound)) == 2 and _pitches_of(StringName(gosling_spec.call_sound)).all(func(pitch: float) -> bool: return is_equal_approx(pitch, gosling_spec.call_pitch)),
+		"the split's two goslings each call %s x%.2f on their launch frame" % [gosling_spec.call_sound, gosling_spec.call_pitch], "%d goslings, %s" % [goslings.size(), split_heard])
+	for gosling in goslings:
+		_check(_drawn_art_top(play, gosling) < Play.GRASS_Y, "gosling #%d shows above the grass as it calls" % gosling.number, "art top %.2f" % _drawn_art_top(play, gosling))
+		_check_logged(split_from, "^\\[Play\\] Call of gosling #%d as it appears above the grass: " % gosling.number, "gosling #%d's call is logged" % gosling.number)
+	var later: Array[int] = [0]
+	for gosling in goslings:
+		gosling.appeared.connect(func(_caller: Bird) -> void: later[0] += 1)
+		gosling.flee()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if _all_freed(goslings):
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	_check(later[0] == 0 and _all_freed(goslings), "the goslings never call again, fleeing until they escape", "%d more calls" % later[0])
 	play.mode.rival_steals = true
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
 
-## The title's geese (crossing birds) never call, not even long past their flee_time:
-## Bird.started_fleeing never fires for a crossing bird and no call sound plays.
+## True when every bird of `birds` has been freed (read by index: a freed bird cannot be
+## passed to a typed lambda).
+func _all_freed(birds: Array[Bird]) -> bool:
+	for i in birds.size():
+		if is_instance_valid(birds[i]):
+			return false
+	return true
+
+
+## The highest point (World y) of the opaque pixels (alpha >= Bird.OPAQUE_ALPHA) `bird`'s
+## Sprite draws now: every corner of every opaque pixel of its current texture through the
+## Sprite's global transform, brought into World (so a Birds offset or a scale would show).
+func _drawn_art_top(play: Play, bird: Bird) -> float:
+	var sprite := bird.get_node("Sprite") as Sprite2D
+	if not _opaque_corners.has(sprite.texture.resource_path):
+		var image := sprite.texture.get_image()
+		if image.is_compressed():
+			image.decompress()
+		var corners: Dictionary[Vector2i, bool] = {}
+		for y in image.get_height():
+			for x in image.get_width():
+				if image.get_pixel(x, y).a >= Bird.OPAQUE_ALPHA:
+					for corner: Vector2i in [Vector2i(x, y), Vector2i(x + 1, y), Vector2i(x, y + 1), Vector2i(x + 1, y + 1)]:
+						corners[corner] = true
+		var centred := PackedVector2Array()
+		for corner: Vector2i in corners:
+			centred.append(Vector2(corner) - Vector2(image.get_size()) / 2.0)
+		_opaque_corners[sprite.texture.resource_path] = centred
+	var to_world := (play.get_node("World") as Node2D).get_global_transform().affine_inverse() * sprite.get_global_transform()
+	var top := INF
+	for point in _opaque_corners[sprite.texture.resource_path]:
+		top = minf(top, (to_world * point).y)
+	return top
+
+
+## The title's geese (crossing birds) never call, not even crossing the whole band:
+## Bird.appeared never fires for a crossing bird and no call sound plays.
 func _test_title_geese_never_call() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var calls: Array[String] = []
 	var watched: Dictionary[Bird, bool] = {}
-	var oldest := 0.0
 	_game.sfx_log.clear()
 	Engine.time_scale = 4.0
 	for i in 450:
 		for goose in title.flying_geese():
 			if not watched.has(goose):
 				watched[goose] = true
-				goose.started_fleeing.connect(func(bird: Bird) -> void: calls.append("goose #%d at age %.2f" % [bird.number, bird.age]))
-			oldest = maxf(oldest, goose.age)
+				goose.appeared.connect(func(bird: Bird) -> void: calls.append("goose #%d at age %.2f" % [bird.number, bird.age]))
 		await process_frame
 	Engine.time_scale = 1.0
-	# A goose made older than its flee_time still never calls.
-	var geese := title.flying_geese()
-	if not geese.is_empty():
-		geese[0].age = geese[0].spec.flee_time + 1.0
-		geese[0].flee()
-		await process_frame
+	await process_frame
 	var heard := _game.sfx_log.filter(func(id: StringName) -> bool: return String(id).begins_with("call_"))
-	_check(watched.size() >= 4 and not geese.is_empty() and calls.is_empty() and heard.is_empty(), "the title's geese never call (%d watched, the oldest %.1f s old, one pushed past its flee_time)" % [watched.size(), oldest], "calls %s, sounds %s" % [calls, heard])
+	_check(watched.size() >= 4 and calls.is_empty() and heard.is_empty(), "the title's geese never call (%d watched)" % watched.size(), "calls %s, sounds %s" % [calls, heard])
+	# A crossing goose watched from before it enters the tree, its band wholly above the grass.
+	var crossing := Play.BIRD_SCENE.instantiate() as Bird
+	crossing.setup_crossing(Content.bird("goose"), 99, 4242, Rect2(0, 120, 960, 200))
+	crossing.appeared.connect(func(bird: Bird) -> void: calls.append("crossing goose at age %.2f" % bird.age))
+	title.add_child(crossing)
+	for i in 30:
+		await process_frame
+	_check(calls.is_empty() and crossing.art_top() < Play.GRASS_Y, "a crossing goose shown above the grass from its first frame never emits appeared", str(calls))
+	crossing.queue_free()
 
 
 ## The pitches the sounds `id` in sfx_log played at, oldest first.

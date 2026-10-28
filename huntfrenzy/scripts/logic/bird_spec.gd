@@ -23,7 +23,7 @@ var flee_time := 0.0
 ## never the decoy). linger_time + the rival's aim_time is under flee_time (SCHEMA.md I13).
 var linger_time := 0.0
 ## The sound effect (birds.json "call": one of GameState.SFX_IDS, SCHEMA.md I25) the bird
-## gives as it starts flying off, and the pitch it plays at (Game.play_sfx). Not named `call`,
+## gives as it first shows above the grass (Bird.appeared), and the pitch it plays at (Game.play_sfx). Not named `call`,
 ## which would shadow Object.call.
 var call_sound := ""
 var call_pitch := 1.0
