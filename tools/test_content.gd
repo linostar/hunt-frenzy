@@ -593,12 +593,15 @@ func _test_i10_roster_and_chapters() -> void:
 		["no zigzag bird (pattern zigzag)", "chapter night introduces no bird", "zigzag never appears (not in a mix, not a golden bird, not a split child)"])
 
 
-## I11: every bird fits the field it flies in (Play.FIELD): narrower than it, and its
-## height plus twice its wobble lower than it.
+## I11: every bird fits the field it flies in (Play.FIELD): narrower and lower than it.
+## The wobble (title only) takes no part: a tall-wobbling bird that fits passes.
 func _test_i11_fits_field() -> void:
 	_check(_i11_problems().is_empty(), "I11 every bird fits the field", "\n".join(_i11_problems()))
-	_expect_problems("I11 a bird too tall with its wobble", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = [96, 360]), _i11_problems,
-		["goose: size (96.0, 360.0) with wobble 14.0 does not fit the field (960.0, 384.0)"])
+	_expect_problems("I11 a bird as tall as the field", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = [96, 384]), _i11_problems,
+		["goose: size (96.0, 384.0) does not fit the field (960.0, 384.0)"])
+	_expect_problems("I11 a bird that fits, with a wobble its height plus twice would not", _mutated("birds.json", func(data: Array) -> void:
+		data[0]["size"] = [96, 300]
+		data[0]["wobble"] = 50), _i11_problems, [])
 
 
 ## I12: every hitbox's bounding box is at least HITBOX_SIDE_MIN on each side, so a
@@ -1362,8 +1365,8 @@ func _i10_problems() -> Array[String]:
 func _i11_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
-		if spec.size.x >= Play.FIELD.size.x or spec.size.y + 2.0 * spec.wobble >= Play.FIELD.size.y:
-			problems.append("%s: size %s with wobble %s does not fit the field %s" % [spec.id, spec.size, spec.wobble, Play.FIELD.size])
+		if spec.size.x >= Play.FIELD.size.x or spec.size.y >= Play.FIELD.size.y:
+			problems.append("%s: size %s does not fit the field %s" % [spec.id, spec.size, Play.FIELD.size])
 	return problems
 
 

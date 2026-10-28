@@ -3,9 +3,11 @@ extends RefCounted
 ## The rival hunter's rules. Static only: Play asks and shows, nothing here keeps state.
 ## Steals (modes with rival_steals): once a bird has flown its linger_time the rival aims
 ## at it (the aim cue) for aim_time, measured from the age the cue started at, then fires
-## and never misses. The decoy (his own pigeon) is never aimed at, and a bird that has
-## started fleeing (its shells ran out) drops the cue and gets away. A kill during the
-## cue saves the bird; Play cancels the cue then.
+## and never misses. The decoy (his own pigeon) is never aimed at. He only starts a cue
+## on a bird with at least aim_time left before it flees, so a cue he starts always
+## finishes, unless the wave's shells run out during it: a bird that starts fleeing before
+## its cue has run drops the cue and gets away. A kill during the cue saves the bird;
+## Play cancels the cue then.
 ## One cue at a time: while a cue runs no other starts, and after a cue ends (a steal or a
 ## cancel) the next waits `gap` seconds of run time (may_aim). Among the birds that have
 ## flown their linger_time the cue goes to the one that has flown longest, the lower bird
@@ -22,16 +24,21 @@ const NOT_AIMING := INF
 const STEAL := "steal"
 
 
-## What the rival does about a flying bird now: NONE (not aiming: steals off, the decoy, a
-## fleeing bird, or younger than linger_time), AIMING (start or keep the cue) or FIRE (the
-## cue has run aim_time: steal it). `cue_age` is the age its cue started at, NOT_AIMING
-## before one.
-static func steal_state(age: float, linger_time: float, aim_time: float, cue_age: float, is_decoy: bool, fleeing: bool, steals_on: bool) -> Steal:
-	if not steals_on or is_decoy or fleeing or age < linger_time:
+## What the rival does about a flying bird now: NONE (not aiming: steals off, the decoy,
+## younger than linger_time, uncued with less than aim_time left before it flees, or cued
+## and fleeing before the cue could run), AIMING (start or keep the cue) or FIRE (the cue
+## has run aim_time: steal it). `cue_age` is the age its cue started at, NOT_AIMING before
+## one; `flee_age` the age the bird flees at (min(flee_time, the age its shells ran out)).
+## A cue that runs out by `flee_age` fires even on a frame past it (frames are not exact).
+static func steal_state(age: float, linger_time: float, aim_time: float, cue_age: float, is_decoy: bool, flee_age: float, steals_on: bool) -> Steal:
+	if not steals_on or is_decoy or age < linger_time:
 		return Steal.NONE
-	if cue_age != NOT_AIMING and age >= cue_age + aim_time:
-		return Steal.FIRE
-	return Steal.AIMING
+	if cue_age == NOT_AIMING:
+		return Steal.AIMING if flee_age - age >= aim_time else Steal.NONE
+	if cue_age + aim_time <= flee_age:
+		return Steal.FIRE if age >= cue_age + aim_time else Steal.AIMING
+	# The shells ran out during the cue: the bird gets away once it starts fleeing.
+	return Steal.NONE if age >= flee_age else Steal.AIMING
 
 
 ## Whether a new aim cue may start at `now` (seconds of run time): never while a cue runs

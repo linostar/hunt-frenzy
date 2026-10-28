@@ -38,7 +38,9 @@ extends Node
 ## every Button's press plays "ui_tap" unless it is in OWN_SOUND_GROUP (it plays its own).
 ## A heckle plays a gibberish blurt (play_heckle: blurt_plan strings the rival's syllables,
 ## seeded by the line, pitched and voiced by the category). play_sfx_later plays a sound a
-## moment from now (the rival's laugh after his shot), on the same clock as the blurts. The music is one loop per
+## moment from now (the rival's laugh after his shot), on the same clock as the blurts; a
+## blurt asked for while such a sound is queued or playing waits until it has finished (the
+## rival never talks over his own laugh, the results' parting line included). The music is one loop per
 ## screen (track_for: the title's for the title, the selects, the settings and the
 ## credits, the chapter's or the mode's in a run, the results' on results) on the Music
 ## bus: goto() asks for it as the
@@ -317,6 +319,10 @@ var _held_at := 0.0
 var _blurt_queue: Array[Syllable] = []
 ## Sounds play_sfx_later queued, each at its _clock time (in order).
 var _later_queue: Array[Syllable] = []
+## The _clock time the last play_sfx_later sound ends (queued or playing; shifted by a
+## pause like the sounds), and its id: a blurt waits until then.
+var _later_until := -INF
+var _later_id := &""
 ## Loop file -> its stream, or null when it is missing (reported once).
 var _tracks: Dictionary[String, AudioStream] = {}
 var _music_players: Array[AudioStreamPlayer] = []
@@ -1261,6 +1267,9 @@ func play_sfx_later(id: StringName, delay: float) -> void:
 	var queued := Syllable.new()
 	queued.sound = id
 	queued.at = _clock + delay
+	if queued.at + _sound(id).get_length() > _later_until:
+		_later_until = queued.at + _sound(id).get_length()
+		_later_id = id
 	_later_queue.append(queued)
 	_later_queue.sort_custom(func(a: Syllable, b: Syllable) -> bool: return a.at < b.at)
 	print("[Audio] SFX %s in %.2f s" % [id, delay])
@@ -1273,7 +1282,8 @@ func sfx_waiting() -> int:
 
 ## Plays the rival's blurt for heckle `line` of `category` (blurt_plan) and logs it as
 ## "[Audio] SFX heckle_<category>"; its syllables start one after another on the sound clock
-## (held while paused).
+## (held while paused), from now or, while a play_sfx_later sound (his laugh) is queued or
+## playing, once it has finished (logged with the wait).
 func play_heckle(category: String, line: String) -> void:
 	var plan := blurt_plan(category, line)
 	if plan.is_empty():
@@ -1281,15 +1291,18 @@ func play_heckle(category: String, line: String) -> void:
 		return
 	var id := StringName("heckle_" + category)
 	_log_sound(id)
+	var start := maxf(_clock, _later_until)
 	var heard := PackedStringArray()
 	for syllable in plan:
 		heard.append("%s x%.2f" % [syllable.sound.trim_prefix("blurt_"), syllable.pitch])
 		var queued := Syllable.new()
 		queued.sound = syllable.sound
 		queued.pitch = syllable.pitch
-		queued.at = _clock + syllable.at
+		queued.at = start + syllable.at
 		_blurt_queue.append(queued)
-	print("[Audio] SFX %s: %d syllables (%s) for \"%s\"" % [id, plan.size(), ", ".join(heard), line])
+	_blurt_queue.sort_custom(func(a: Syllable, b: Syllable) -> bool: return a.at < b.at)
+	var wait := ", starting in %.2f s once %s has finished" % [start - _clock, _later_id] if start > _clock else ""
+	print("[Audio] SFX %s: %d syllables (%s) for \"%s\"%s" % [id, plan.size(), ", ".join(heard), line, wait])
 
 
 ## The blurt of heckle `line` in `category`: one syllable per word of the line (at most
@@ -1445,6 +1458,8 @@ func sync_audio_pause() -> void:
 			syllable.at += paused_for
 		for later in _later_queue:
 			later.at += paused_for
+		if _later_until > _held_at:
+			_later_until += paused_for
 		print("[Audio] Resumed after %.2f s: %d sounds continue, the music is back to full" % [paused_for, _held.size()])
 		_held.clear()
 		held_sounds = 0

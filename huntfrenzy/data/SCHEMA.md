@@ -49,7 +49,11 @@ them so they match. Do not leave the code working around the difference.
   cue's start, then shoots it and never misses: it falls as stolen, its `points` (no combo multiplier) go to the
   rival's tally, and it counts as an escape (toward `escape_limit`); a stolen splitter launches no children, and the
   player's combo is untouched. Killing it during the cue saves it (a damaging hit does not); a bird that starts fleeing
-  drops its cue. With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
+  drops its cue. He aims at one bird at a time: while a cue runs no other starts, and after a cue ends (a steal or a
+  cancel) the next waits `Play.RIVAL_AIM_GAP` (1.5 s of run time; a pause does not count). He only starts a cue on a
+  bird with at least `aim_time` left before it flees (`min(flee_time, the age its shells ran out)` minus its age), so
+  a cue he starts always finishes unless the wave's shells run out. Among the birds he may aim at, the cue goes to the
+  one that has flown longest (the lower bird number on a tie). With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
   and the run's heckle count, on a miss, a combo rising to x3 or more and a wave's end (each at most once per
   `cooldown` after the last heckle) and on every steal (no cooldown); the results screen shows a `results` line.
 - **Campaign** (`scripts/logic/campaign.gd`, `Wave.campaign`): a level plays all its `waves` (no escape limit, no
@@ -239,13 +243,18 @@ against a fallback value.
 - **I10** The roster has every kind of bird, each able to appear: a plain bird (not golden), an armored one
   (`hp >= 2`), a splitter, a `zigzag` flier, a golden bird and a decoy. Each chapter introduces at least one bird
   that can appear, and every bird can appear (in a mode's or level's mix, as a `golden_bird` or as a split child).
-- **I11** Every bird fits the field (`Play.FIELD`, 960x384): `size.x < 960` and `size.y + 2 x wobble < 384`.
+- **I11** Every bird fits the field (`Play.FIELD`, 960x384): `size.x < 960` and `size.y < 384`. A run's flight has
+  no wobble, so its cruise band needs only the bird's size. `wobble` takes no part: the title's crossing (the only path
+  that wobbles) cuts the wobble to the room its band leaves above and below the sprite (`Flight._crossing`) and keeps
+  a band too short for the sprite centred, so no wobble can carry a goose out of the title's band.
 - **I12** Every hitbox's bounding box is at least 44 base units on each side (the game's smallest touch target), so a
   fingertip can hit every bird, the splitter's goslings included.
 - **I13** For every bird but the decoy (never stolen), every linger the rival uses plus `aim_time` is under
   `flee_time`: `linger_time x 1` in each mode with `rival_steals`, and `linger_time x rival_linger_scale` in each chapter
-  (the campaign always steals); so every aim cue (at least 0.5 s: `aim_time`'s range) can finish before the bird flees
-  on its own. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
+  (the campaign always steals); so a bird the rival is free to aim at once it lingers can be cued and stolen before it
+  flees on its own. A cue he starts always finishes (he never starts one with less than `aim_time` left), but with one
+  cue at a time and `Play.RIVAL_AIM_GAP` after each, a bird waiting behind another cue or the gap may run out of time
+  and escape un-cued. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
   `data/birds.json [<id>] linger_time: <linger> x <scale> (<modes and chapters>) + aim_time <aim> is not under flee_time
   <flee> (I13: ...)`.
 - **I14** `chapters.json` holds exactly 4 chapters; each `rival_linger_scale` is in (0, 1] and at most the previous

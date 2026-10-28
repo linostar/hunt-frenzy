@@ -199,7 +199,12 @@ func _tests() -> Array[Callable]:
 		_test_rival_poses,
 		_test_rival_one_cue_at_a_time,
 		_test_rival_aim_gap,
+		_test_rival_never_cues_a_short_window,
+		_test_rival_cues_always_finish,
+		_test_rival_laugh_waits_out_a_pause,
+		_test_rival_laugh_before_results_blurt,
 		_test_crosshair_cursor,
+		_test_crosshair_under_rotate_overlay,
 		_test_weather_is_visual_only,
 		_test_backdrop_cycle_and_fade,
 		_test_missing_backdrop_is_reported,
@@ -2569,15 +2574,19 @@ func _test_play_decoy_penalty() -> void:
 func _test_rival_rules() -> void:
 	var none := Rival.NOT_AIMING
 	var cases: Array[Array] = [
-		[Rival.steal_state(3.4, 3.5, 1.0, none, false, false, true), Rival.Steal.NONE, "nothing before linger_time"],
-		[Rival.steal_state(3.5, 3.5, 1.0, none, false, false, true), Rival.Steal.AIMING, "the cue starts at linger_time"],
-		[Rival.steal_state(9.0, 3.5, 1.0, none, false, false, true), Rival.Steal.AIMING, "a bird with no cue yet is aimed at first, never shot at once"],
-		[Rival.steal_state(4.49, 3.5, 1.0, 3.5, false, false, true), Rival.Steal.AIMING, "the cue runs aim_time"],
-		[Rival.steal_state(4.5, 3.5, 1.0, 3.5, false, false, true), Rival.Steal.FIRE, "he fires once the cue has run aim_time"],
-		[Rival.steal_state(5.0, 3.5, 1.0, 4.2, false, false, true), Rival.Steal.AIMING, "aim_time counts from the cue's start"],
-		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, true, false, true), Rival.Steal.NONE, "never the decoy"],
-		[Rival.steal_state(4.0, 3.5, 1.0, 3.5, false, true, true), Rival.Steal.NONE, "a fleeing bird drops the cue"],
-		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, false, false, false), Rival.Steal.NONE, "never with steals off"],
+		[Rival.steal_state(3.4, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.NONE, "nothing before linger_time"],
+		[Rival.steal_state(3.5, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.AIMING, "the cue starts at linger_time"],
+		[Rival.steal_state(9.0, 3.5, 1.0, none, false, 20.0, true), Rival.Steal.AIMING, "a bird with no cue yet is aimed at first, never shot at once"],
+		[Rival.steal_state(5.0, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.AIMING, "a bird with exactly aim_time left may be aimed at"],
+		[Rival.steal_state(5.01, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.NONE, "a bird with less than aim_time left is never aimed at"],
+		[Rival.steal_state(4.49, 3.5, 1.0, 3.5, false, 6.0, true), Rival.Steal.AIMING, "the cue runs aim_time"],
+		[Rival.steal_state(4.5, 3.5, 1.0, 3.5, false, 6.0, true), Rival.Steal.FIRE, "he fires once the cue has run aim_time"],
+		[Rival.steal_state(6.02, 3.5, 1.0, 5.0, false, 6.0, true), Rival.Steal.FIRE, "a cue that runs out at the flee fires on the frame past it"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 4.2, false, 6.0, true), Rival.Steal.AIMING, "aim_time counts from the cue's start"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, true, 6.0, true), Rival.Steal.NONE, "never the decoy"],
+		[Rival.steal_state(3.9, 3.5, 1.0, 3.5, false, 4.0, true), Rival.Steal.AIMING, "a cue keeps running until its bird flees (the shells ran out)"],
+		[Rival.steal_state(4.0, 3.5, 1.0, 3.5, false, 4.0, true), Rival.Steal.NONE, "a bird fleeing before its cue has run drops the cue"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, false, 6.0, false), Rival.Steal.NONE, "never with steals off"],
 	]
 	for case in cases:
 		_check(case[0] == case[1], "Rival.steal_state: " + str(case[2]), "got %s, expected %s" % [case[0], case[1]])
@@ -5876,33 +5885,194 @@ func _test_rival_aim_gap() -> void:
 
 
 ## AC 13: the mouse pointer is the crosshair while the run is live (its texture at most
-## 64 px a side, the hotspot at its centre), the arrow on pause, back to the crosshair on
-## resume, the arrow at the run's end (the results) and on leaving Play; each change logged.
+## 64 px a side), the arrow on pause, back to the crosshair on resume, the arrow at the
+## run's end (the results) and on leaving Play; each change logged. The calls Play made to
+## Input.set_custom_mouse_cursor (Play.cursor_calls, recorded by its one seam) are read:
+## the crosshair with CURSOR_ARROW and its hotspot at the texture's centre, the reset with
+## a null texture.
 func _test_crosshair_cursor() -> void:
 	var size := Play.CROSSHAIR.get_size()
 	_check(size.x <= 64.0 and size.y <= 64.0 and size.x > 0.0, "the crosshair texture is at most 64 px a side", str(size))
+	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, size / 2.0]
+	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
 	var from := _log.size()
 	var play := await _start_run(73)
-	_check(play.crosshair_shown and play.cursor_log == ["crosshair"], "a live run shows the crosshair", str(play.cursor_log))
+	_check(play.crosshair_shown and play.cursor_log == ["crosshair"] and play.cursor_calls == [crosshair_call], "a live run sets the crosshair, its hotspot at its centre", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	_check_logged(from, "^\\[Play\\] Cursor: crosshair$", "the crosshair is logged")
 	play.open_pause("pause button")
-	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)", "the pause menu puts the arrow back", str(play.cursor_log))
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)" and play.cursor_calls.back() == arrow_call, "the pause menu resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	play.resume()
-	_check(play.crosshair_shown and play.cursor_log.back() == "crosshair", "resuming shows the crosshair again", str(play.cursor_log))
+	_check(play.crosshair_shown and play.cursor_log.back() == "crosshair" and play.cursor_calls.back() == crosshair_call, "resuming sets the crosshair again", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	await _key(KEY_ESCAPE)
-	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)", "Escape's pause puts the arrow back", str(play.cursor_log))
+	_check(not play.crosshair_shown and play.cursor_calls.back() == arrow_call, "Escape's pause resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	await _key(KEY_ESCAPE)
-	_check(play.crosshair_shown, "Escape's resume shows the crosshair", str(play.cursor_log))
+	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "Escape's resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	play._end_run()
-	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)", "the run's end (to the results) puts the arrow back", str(play.cursor_log))
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)" and play.cursor_calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.cursor_calls.size() == 6, "every change made exactly one Input call", str(play.cursor_calls))
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.RESULTS, "the run ended on the results", str(_game.state))
 	_check_logged(from, "^\\[Play\\] Cursor: arrow \\(the run is over\\)$", "the arrow is logged with its cause")
 	play = await _start_run(74)
-	play.open_pause("pause button")
-	play.resume()
 	_check(play.crosshair_shown, "a new run shows the crosshair", str(play.cursor_log))
-	var log_of := play.cursor_log
+	var calls := play.cursor_calls
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
-	_check(log_of.back() == "arrow (left the play scene)", "leaving Play puts the arrow back", str(log_of))
+	_check(calls.back() == arrow_call, "leaving Play resets the pointer to the arrow", str(calls))
+
+
+## Finding 3 of the PR 10 review: while the rotate overlay is up the pointer is the arrow,
+## in both orders. Overlay first (upright during the wipe into the run): the run starts
+## under it without ever setting the crosshair; rotating back opens the pause menu (still
+## the arrow) and Resume sets the crosshair. Mid-run: turning upright resets the pointer to
+## the arrow at once.
+func _test_crosshair_under_rotate_overlay() -> void:
+	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, Play.CROSSHAIR.get_size() / 2.0]
+	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
+	await _open_title()
+	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 77})
+	await process_frame
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	await _game.transition_finished
+	await process_frame
+	var play := current_scene as Play
+	_check(_game.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	_check(play.is_paused() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: rotating back opens the pause menu, still the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	play.resume()
+	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "overlay first: Resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.is_rotate_overlay_shown() and not play.crosshair_shown and play.cursor_log.back() == "arrow (rotate overlay)" and play.cursor_calls.back() == arrow_call, "mid-run: turning upright resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	_check(play.is_paused() and not play.crosshair_shown, "mid-run: rotating back leaves the arrow over the pause menu", str(play.cursor_log))
+	play.resume()
+	_check(play.crosshair_shown, "mid-run: Resume sets the crosshair", str(play.cursor_log))
+	await _open_title()
+
+
+## Finding 1 of the PR 10 review: the rival never starts a cue that cannot finish. A golden
+## goose past its linger_time with less than aim_time left before it flees is never cued:
+## it flies off and escapes, and no cue on it is logged.
+func _test_rival_never_cues_a_short_window() -> void:
+	var play := await _start_run(75)
+	play._next_spawn = play.wave.spawns.size()
+	var golden := Content.bird("golden")
+	var aim := Content.rival_lines().aim_time
+	var from := _log.size()
+	var late := play.spawn_bird("golden", 305)
+	late.age = golden.flee_time - aim + 0.1
+	var cued := false
+	for i in 300:
+		await process_frame
+		if not is_instance_valid(late) or not late.is_flying():
+			break
+		cued = cued or late.is_cued()
+	_check(not cued and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue on golden")), "a bird with less than aim_time left before it flees is never cued", "cued %s" % cued)
+	_check_logged(from, "^\\[Play\\] Escaped golden #\\d+ ", "the short-window golden goose escapes un-cued")
+	await _open_title()
+
+
+## Finding 1 of the PR 10 review: in the normal one-cue flow (nobody shoots, so no shells
+## run out) every cue the rival starts ends in a steal: over a whole Endless run and the
+## whole of night_6 (zigzag swifts, the boss flock), at time scale 8, he steals and no cue
+## is ever cancelled as "fled".
+func _test_rival_cues_always_finish() -> void:
+	for start: Callable in [func() -> Play: return await _start_run(76), func() -> Play: return await _start_level("night_6")]:
+		var from := _log.size()
+		var play: Play = await start.call()
+		var name := play.level.id if play.level != null else play.mode.id
+		Engine.time_scale = 8.0
+		for i in 3000:
+			if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+				break
+			await process_frame
+		Engine.time_scale = 1.0
+		var lines := Array(_log.since(from))
+		var cues := lines.filter(func(line: String) -> bool: return line.begins_with("[Play] Aim cue on ") and not line.contains(" cancelled ")).size()
+		var steals := lines.filter(func(line: String) -> bool: return line.begins_with("[Play] Stolen ")).size()
+		var fled := lines.filter(func(line: String) -> bool: return line.contains(" cancelled (fled)"))
+		_check(_game.state == GameState.Flow.RESULTS and steals >= 3 and cues == steals and fled.is_empty(), "%s: every cue started ends in a steal, none cancelled as fled" % name, "%d cues, %d steals, fled: %s" % [cues, steals, fled])
+	await _open_title()
+
+
+## Finding 5 of the PR 10 review: the laugh queued by a steal (Game.play_sfx_later) holds
+## through a pause: paused a few frames after the steal, it does not play while paused
+## (still waiting), and after Resume it plays once the rest of RIVAL_LAUGH_DELAY has run.
+func _test_rival_laugh_waits_out_a_pause() -> void:
+	var play := await _start_run(78)
+	play._next_spawn = play.wave.spawns.size()
+	var cued := await _cued_bird(play, 306, "goose")
+	for i in 120:
+		if cued.stolen:
+			break
+		await process_frame
+	_game.sfx_log.clear()
+	var before := 6
+	for i in before:
+		await process_frame
+	play.open_pause("pause button")
+	for i in 60:
+		await process_frame
+	_check(cued.stolen and not &"rival_laugh" in _game.sfx_log and _game.sfx_waiting() == 1, "a laugh queued before a pause waits through it", "stolen %s, %s, %d waiting" % [cued.stolen, _game.sfx_log, _game.sfx_waiting()])
+	play.resume()
+	var after := 0
+	while not &"rival_laugh" in _game.sfx_log and after < 120:
+		await process_frame
+		after += 1
+	var rest := roundi(Play.RIVAL_LAUGH_DELAY / FRAME) - before
+	_check(absi(after - rest) <= 2 and _game.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
+	await _open_title()
+
+
+## Findings 2 and 5 of the PR 10 review: a steal that ends the run still laughs, the laugh
+## outliving the change to the results screen (with reduce motion's short fade it plays
+## after the scene has changed), and the results' parting blurt starts only once the laugh
+## has finished: its first syllable is at least the laugh's length after the laugh, and its
+## [Audio] line says it waits for rival_laugh. The bubble line shows at once.
+func _test_rival_laugh_before_results_blurt() -> void:
+	var laugh_length := (load("res://audio/sfx/rival_laugh.wav") as AudioStream).get_length()
+	for reduce_motion: bool in [false, true]:
+		var label := "reduce motion" if reduce_motion else "the wipe"
+		_game.set_reduce_motion(reduce_motion)
+		_clear_tool_save()
+		var play := await _start_run(79)
+		play._next_spawn = play.wave.spawns.size()
+		var cued := await _cued_bird(play, 307, "goose")
+		play.escaped = play.mode.escape_limit - 1
+		_game.sfx_log.clear()
+		var from := _log.size()
+		var stolen := false
+		var laugh_clock := -1.0
+		var laugh_on_results := false
+		var blurt_clock := -1.0
+		var waiting := -1
+		for i in 240:
+			await process_frame
+			# The stolen goose frees itself once it has fallen off the screen.
+			stolen = stolen or (is_instance_valid(cued) and cued.stolen)
+			if laugh_clock < 0.0 and &"rival_laugh" in _game.sfx_log:
+				laugh_clock = _game._clock
+				laugh_on_results = current_scene is Results
+			if waiting < 0 and &"heckle_results" in _game.sfx_log:
+				waiting = _game.blurt_syllables_waiting()
+			elif waiting > 0 and blurt_clock < 0.0 and _game.blurt_syllables_waiting() < waiting:
+				blurt_clock = _game._clock
+			if laugh_clock >= 0.0 and blurt_clock >= 0.0:
+				break
+		var order := _game.sfx_log.slice(0, 4)
+		_check(stolen and laugh_clock >= 0.0 and order.find(&"rival_steal") < order.find(&"rival_laugh"), "%s: a run-ending steal laughs after its shot" % label, str(_game.sfx_log))
+		if reduce_motion:
+			_check(laugh_on_results, "%s: the laugh plays after the change to the results screen" % label, "scene %s" % current_scene)
+		_check(blurt_clock >= laugh_clock + laugh_length - FRAME, "%s: the results' blurt starts once the laugh has finished" % label, "laugh at %.3f (%.2f s long), first syllable at %.3f" % [laugh_clock, laugh_length, blurt_clock])
+		_check_logged(from, "^\\[Audio\\] SFX heckle_results: \\d+ syllables \\(.*\\) for \".+\", starting in [\\d.]+ s once rival_laugh has finished$", "%s: the results blurt logs its wait for the laugh" % label)
+		var results := current_scene as Results
+		_check(results != null and (results.get_node("Safe/RivalLine") as Label).visible, "%s: the parting line shows at once" % label, "scene %s" % current_scene)
+	_game.set_reduce_motion(false)
+	_clear_tool_save()
+	await _open_title()

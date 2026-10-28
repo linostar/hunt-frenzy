@@ -221,9 +221,11 @@ var pause_log: Array[String] = []
 ## Countdown ticks played this run (a timed run's last COUNTDOWN_SECONDS).
 var countdown_ticks := 0
 ## True while the mouse pointer is the crosshair; every change, oldest first, as
-## "crosshair" or "arrow (<why>)" (tests read them).
+## "crosshair" or "arrow (<why>)"; and every call made to Input.set_custom_mouse_cursor
+## as [texture (null: the arrow), shape, hotspot] (tests read them).
 var crosshair_shown := false
 var cursor_log: Array[String] = []
+var cursor_calls: Array[Array] = []
 
 var _game: GameState
 var _next_spawn := 0
@@ -312,7 +314,8 @@ func _ready() -> void:
 	_show_audio_settings()
 	_fit()
 	_start_run()
-	# The overlay may have shown before this scene existed (during the fade into the run).
+	# The overlay may have shown before this scene existed (during the fade into the run);
+	# _show_crosshair already kept the arrow then.
 	_rotated = not _over and _game.is_rotate_overlay_shown()
 
 
@@ -894,14 +897,15 @@ func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 ## Asks Rival about every flying bird: keep a running aim cue, drop it (the bird started
 ## fleeing, or steals were turned off), or steal its bird once the cue has run. With no
 ## cue running and the aim gap over (Rival.may_aim), a new cue starts on the eligible bird
-## (one that has flown its linger_time) Rival.aim_target picks: the longest flown.
+## (one that has flown its linger_time with at least aim_time left before it flees)
+## Rival.aim_target picks: the longest flown.
 func _update_steals() -> void:
 	var cue_running := false
 	var eligible: Array[Bird] = []
 	var ages := PackedFloat64Array()
 	var numbers := PackedInt32Array()
 	for bird in flying_birds():
-		match Rival.steal_state(bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, bird.cue_age, bird.spec.penalty > 0, bird.is_fleeing(), steals_on()):
+		match Rival.steal_state(bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, bird.cue_age, bird.spec.penalty > 0, minf(bird.spec.flee_time, bird.flee_at), steals_on()):
 			Rival.Steal.NONE:
 				if bird.is_cued():
 					_cancel_cue(bird, "fled" if bird.is_fleeing() else "rival steals off")
@@ -1007,19 +1011,30 @@ func _react(pose: Texture2D, what: String) -> void:
 
 
 ## Makes the mouse pointer the crosshair (`on`, the run is live) or the default arrow
-## again (`why`: paused, the run is over, the rotate overlay, left the scene); a change is
-## logged and kept in cursor_log, a repeat does nothing.
+## again (`why`: paused, the run is over, the rotate overlay, left the scene); while the
+## rotate overlay is up it is always the arrow (the run is paused under it, whichever came
+## first). A change is logged and kept in cursor_log, a repeat does nothing.
 func _show_crosshair(on: bool, why := "") -> void:
+	if on and _game.is_rotate_overlay_shown():
+		on = false
+		why = "rotate overlay"
 	if on == crosshair_shown:
 		return
 	crosshair_shown = on
 	if on:
-		Input.set_custom_mouse_cursor(CROSSHAIR, Input.CURSOR_ARROW, CROSSHAIR.get_size() / 2.0)
+		_set_cursor(CROSSHAIR, CROSSHAIR.get_size() / 2.0)
 	else:
-		Input.set_custom_mouse_cursor(null)
+		_set_cursor(null, Vector2.ZERO)
 	var shown := "crosshair" if on else "arrow (%s)" % why
 	cursor_log.append(shown)
 	print("[Play] Cursor: %s" % shown)
+
+
+## The one place the pointer is set: Input.set_custom_mouse_cursor(texture, CURSOR_ARROW,
+## hotspot) (null: the default arrow), recorded in cursor_calls exactly as passed.
+func _set_cursor(texture: Texture2D, hotspot: Vector2) -> void:
+	Input.set_custom_mouse_cursor(texture, Input.CURSOR_ARROW, hotspot)
+	cursor_calls.append([texture, Input.CURSOR_ARROW, hotspot])
 
 
 ## Shows a `category` line (Rival.pick_line) in the rival's bubble for HECKLE_TIME, unless
