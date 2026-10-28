@@ -255,6 +255,8 @@ func _tests() -> Array[Callable]:
 		_test_audio_files_match_ids,
 		_test_audio_music_per_screen,
 		_test_audio_every_event_sound,
+		_test_bird_calls_on_fleeing,
+		_test_title_geese_never_call,
 		_test_audio_heckle_blurts,
 		_test_time_attack_countdown,
 		_test_pause_menu_mutes,
@@ -4816,6 +4818,107 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 	await _game.transition_finished
 
 
+## Every bird type gives its call (spec.call_sound at spec.call_pitch) exactly once the
+## moment it starts flying off, on each of the three ways: its natural flee_time, flee()
+## when the last shell is fired (the out-of-shells sweep), and spawning into an empty pool
+## (setup's fleeing). Each call is the sound Play plays as it handles Bird.started_fleeing,
+## with the bird's pitch, logged as a [Play] line; the bird never calls again (a second
+## flee(), flying on until it escapes). Steals are off, so every bird flies off on its own.
+func _test_bird_calls_on_fleeing() -> void:
+	var play := await _start_run(88)
+	var shot := (play.get_node("ShotInput") as ShotInput).shot
+	play.mode.rival_steals = false
+	var bird_seed := 300
+	for spec in Content.birds():
+		for way: String in ["flee_time", "out of shells", "spawned into an empty pool"]:
+			bird_seed += 1
+			play.set_shell_pool(5)
+			# Every case's birds escape: keep the run from ending on Endless's escape limit.
+			play.escaped = 0
+			# [times emitted, the sound and pitch Play had just played when it was emitted]
+			var calls: Array = [0, &"", 0.0]
+			var record := func(_bird: Bird) -> void:
+				calls[0] += 1
+				calls[1] = _game.sfx_log.back()
+				calls[2] = _game.sfx_pitches.back()
+			var from := _log.size()
+			var bird: Bird = null
+			if way == "flee_time":
+				bird = play.spawn_bird(spec.id, bird_seed)
+				bird.age = spec.flee_time - 0.1
+				bird.started_fleeing.connect(record)
+				await process_frame
+				_check(calls[0] == 0 and not bird.is_fleeing(), "%s: no call before its flee_time" % spec.id, "%d calls at age %.2f" % [calls[0], bird.age])
+				for i in 30:
+					if calls[0] > 0:
+						break
+					await process_frame
+				_check(bird.is_fleeing() and bird.age - spec.flee_time < 2.0 * FRAME, "%s: it calls the frame it reaches its flee_time" % spec.id, "age %.3f, flee_time %.2f" % [bird.age, spec.flee_time])
+			elif way == "out of shells":
+				bird = await _spawn_flying(play, bird_seed, IN_FIELD_AGE, spec.id)
+				bird.started_fleeing.connect(record)
+				play.set_shell_pool(1)
+				shot.emit(_global(play, SKY_POINTS[2]))
+				_check(bird.is_fleeing() and play.ammo.is_empty(), "%s: the last shell makes it flee" % spec.id, "fleeing %s" % bird.is_fleeing())
+			else:
+				play.set_shell_pool(0)
+				# The bird calls as it enters the tree (Bird._ready), inside spawn_bird: Play
+				# connected first, so the sounds played by the spawn are the call alone.
+				_game.sfx_log.clear()
+				bird = play.spawn_bird(spec.id, bird_seed)
+				var played := _game.sfx_log.duplicate()
+				var pitches := _game.sfx_pitches.slice(_game.sfx_pitches.size() - played.size())
+				_check(played == [StringName(spec.call_sound)], "%s: spawning into an empty pool plays only its call" % spec.id, str(played))
+				calls = [played.count(StringName(spec.call_sound)), played.back() if not played.is_empty() else &"", pitches.back() if not pitches.is_empty() else 0.0]
+				bird.started_fleeing.connect(record)
+			_check(calls[0] == 1 and calls[1] == StringName(spec.call_sound) and is_equal_approx(calls[2], spec.call_pitch),
+				"%s calls %s x%.2f once as it starts fleeing (%s)" % [spec.id, spec.call_sound, spec.call_pitch, way], "%d calls, last sound %s x%.3f" % [calls[0], calls[1], calls[2]])
+			_check_logged(from, "^\\[Play\\] Call of %s #%d as it flies off: %s x%.2f \\(age \\d+\\.\\d{2}, wave \\d+ at t -?\\d+\\.\\d{2}\\)$" % [spec.id, bird.number, spec.call_sound, spec.call_pitch],
+				"%s's call is logged (%s)" % [spec.id, way])
+			var before := int(calls[0])
+			bird.flee()
+			Engine.time_scale = FAST_TIME_SCALE
+			for i in 600:
+				if not is_instance_valid(bird):
+					break
+				await process_frame
+			Engine.time_scale = 1.0
+			# The frame after a time scale change still runs at the old scale.
+			await process_frame
+			_check(not is_instance_valid(bird) and calls[0] == before, "%s never calls twice: not on a second flee(), nor flying on until it escapes (%s)" % [spec.id, way], "%d calls" % calls[0])
+	play.mode.rival_steals = true
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## The title's geese (crossing birds) never call, not even long past their flee_time:
+## Bird.started_fleeing never fires for a crossing bird and no call sound plays.
+func _test_title_geese_never_call() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var calls: Array[String] = []
+	var watched: Dictionary[Bird, bool] = {}
+	var oldest := 0.0
+	_game.sfx_log.clear()
+	Engine.time_scale = 4.0
+	for i in 450:
+		for goose in title.flying_geese():
+			if not watched.has(goose):
+				watched[goose] = true
+				goose.started_fleeing.connect(func(bird: Bird) -> void: calls.append("goose #%d at age %.2f" % [bird.number, bird.age]))
+			oldest = maxf(oldest, goose.age)
+		await process_frame
+	Engine.time_scale = 1.0
+	# A goose made older than its flee_time still never calls.
+	var geese := title.flying_geese()
+	if not geese.is_empty():
+		geese[0].age = geese[0].spec.flee_time + 1.0
+		geese[0].flee()
+		await process_frame
+	var heard := _game.sfx_log.filter(func(id: StringName) -> bool: return String(id).begins_with("call_"))
+	_check(watched.size() >= 4 and not geese.is_empty() and calls.is_empty() and heard.is_empty(), "the title's geese never call (%d watched, the oldest %.1f s old, one pushed past its flee_time)" % [watched.size(), oldest], "calls %s, sounds %s" % [calls, heard])
+
+
 ## The pitches the sounds `id` in sfx_log played at, oldest first.
 func _pitches_of(id: StringName) -> Array[float]:
 	var pitches: Array[float] = []
@@ -5043,7 +5146,8 @@ func _test_credits_screen() -> void:
 	if credits == null:
 		return
 	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), _text_of(credits, "Lines")]
-	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code", "WeaponGuy", "CC0"]:
+	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code", "evil laugh", "WeaponGuy", "OpenGameArt", "CC0",
+		"Bird calls", "Bert76", "Oona Räisänen", "U.S. Fish and Wildlife Service", "public domain", "Wikimedia Commons"]:
 		_check(needed in text, "the credits say " + needed, text)
 	for font: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
 		var notice := FileAccess.get_file_as_string(font).get_slice("\n\n", 0).replace("\n", " ")

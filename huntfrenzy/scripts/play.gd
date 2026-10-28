@@ -82,7 +82,9 @@ extends Node2D
 ## and the escape each at a pitch varied by up to SOUND_PITCH_SPREAD, seeded by the run), and the shot that uses
 ## the last shell then "out_of_shells" (the pool is dry: the birds flee); a shot with no
 ## shells plays only "empty_click". A wave's first spawn plays "wave_start", a cleared wave
-## "wave_clear", a lost Time Attack wave "wave_lost"; a counted escape "escape"; the rival's
+## "wave_clear", a lost Time Attack wave "wave_lost"; a counted escape "escape"; each bird,
+## the moment it starts flying off (its flee_time, or told to flee as the shells run out:
+## Bird.started_fleeing, once per bird), its call (its spec's call at its call_pitch); the rival's
 ## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
 ## (Game.play_heckle). A timed run ticks ("countdown_tick") once at each of the last
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
@@ -394,6 +396,7 @@ func spawn_bird(bird_id: String, bird_seed: int, from := Flight.NOT_LAUNCHED, he
 	bird.setup(Content.bird(bird_id), _spawned, bird_seed, speed_scale, FIELD, ammo.is_empty(), from, heading)
 	bird.wave_index = wave.index
 	bird.escaped.connect(_on_bird_escaped)
+	bird.started_fleeing.connect(_on_bird_started_fleeing)
 	# A gosling launched by the kill that started a hit stop waits it out with the others
 	# (placed at its launch point first: Bird._ready sets its transform).
 	if _hit_stop_left > 0.0 and from.is_finite():
@@ -1060,6 +1063,14 @@ func _heckle(category: String, blurt := true) -> bool:
 		_game.play_heckle(category, line)
 	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)%s" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen, "" if blurt else ", no blurt"])
 	return true
+
+
+## A bird started flying off: it gives its call (its spec's call at its call_pitch).
+func _on_bird_started_fleeing(bird: Bird) -> void:
+	if _over:
+		return
+	_game.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
+	print("[Play] Call of %s #%d as it flies off: %s x%.2f (age %.2f, wave %d at t %.2f%s)" % [bird.spec.id, bird.number, bird.spec.call_sound, bird.spec.call_pitch, bird.age, wave.index, wave_clock, _clock_note()])
 
 
 func _on_bird_escaped(bird: Bird) -> void:

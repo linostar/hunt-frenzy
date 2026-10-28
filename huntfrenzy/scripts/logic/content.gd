@@ -13,7 +13,8 @@ extends RefCounted
 ## unknown or empty rival line category, a rival line too long for the bubble, not exactly
 ## CHAPTER_COUNT chapters, a chapter whose rival_linger_scale rises above the one before's,
 ## a chapter without exactly its levels 1..LEVELS_PER_CHAPTER, a boss on any level but the
-## last of its chapter, star thresholds that do not rise, and I13: a bird whose scaled
+## last of its chapter, star thresholds that do not rise, a bird's call that is not one of
+## the game's sound effects (I25), and I13: a bird whose scaled
 ## linger_time + the rival's aim_time does not end before it flees) is
 ## collected in errors() as "data/<file> [<entry id>] <field>: <problem>" (rival_lines.json,
 ## a single object, names the line category as the entry, "-" for its top-level fields) and reported with
@@ -61,6 +62,9 @@ const WOBBLE_HZ_MAX := 5.0
 const FLEE_TIME_MAX := 60.0
 ## A bird's linger_time lies in LINGER_TIME_MIN..FLEE_TIME_MAX seconds (always > 0).
 const LINGER_TIME_MIN := 0.1
+## A bird's call (I25) plays at a pitch of CALL_PITCH_MIN..CALL_PITCH_MAX.
+const CALL_PITCH_MIN := 0.5
+const CALL_PITCH_MAX := 2.0
 ## The rival aims for AIM_TIME_MIN..AIM_TIME_MAX seconds (main plan AC 17: a visible cue of
 ## at least 0.5 s), and waits 0..COOLDOWN_MAX seconds between heckles.
 const AIM_TIME_MIN := 0.5
@@ -413,6 +417,21 @@ static func _music(object: Dictionary, key: String) -> String:
 	return id
 
 
+## A sound effect id, one of GameState.SFX_IDS (I25: tools/sfx.py makes each one's file and
+## the game checks they exist at start); "" when it is missing, mistyped or unknown.
+static func _sound(object: Dictionary, key: String) -> String:
+	if not object.has(key):
+		return ""
+	if typeof(object[key]) != TYPE_STRING:
+		_error(key, "expected String, got %s" % type_string(typeof(object[key])))
+		return ""
+	var id: String = object[key]
+	if not StringName(id) in GameState.SFX_IDS:
+		_error(key, "unknown sound effect '%s' (I25: a call must be one of GameState.SFX_IDS)" % id)
+		return ""
+	return id
+
+
 ## A mode's looks: a non-empty array of {"backdrop", "weather"} objects, each a backdrop
 ## with its art and a weather of WEATHERS.
 static func _stages(object: Dictionary, key: String) -> Array[ModeSpec.Stage]:
@@ -464,7 +483,7 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 	var splits: Dictionary[String, String] = {}
 	for entry in entries:
 		var item := BirdSpec.new()
-		item.id = _begin_entry(entry, ["id", "name", "chapter", "pattern", "speed", "wobble", "wobble_hz", "flee_time", "linger_time", "points", "hp", "sprite", "size", "hitbox"], _birds,
+		item.id = _begin_entry(entry, ["id", "name", "chapter", "pattern", "speed", "wobble", "wobble_hz", "flee_time", "linger_time", "call", "call_pitch", "points", "hp", "sprite", "size", "hitbox"], _birds,
 			["splits_into", "split_count", "penalty", "escape_counts"])
 		item.name = _string(entry, "name", NAME_MAX)
 		item.chapter = _reference(entry, "chapter", _chapters, "chapter")
@@ -474,6 +493,8 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 		item.wobble_hz = _float(entry, "wobble_hz", 0.0, WOBBLE_HZ_MAX)
 		item.flee_time = _float(entry, "flee_time", 0.1, FLEE_TIME_MAX)
 		item.linger_time = _float(entry, "linger_time", LINGER_TIME_MIN, FLEE_TIME_MAX)
+		item.call_sound = _sound(entry, "call")
+		item.call_pitch = _float(entry, "call_pitch", CALL_PITCH_MIN, CALL_PITCH_MAX)
 		item.points = _int(entry, "points", 0, POINTS_MAX)
 		item.hp = _int(entry, "hp", 1, HP_MAX)
 		item.sprite = _string(entry, "sprite", NAME_MAX)

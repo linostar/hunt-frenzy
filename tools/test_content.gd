@@ -99,6 +99,7 @@ func _tests() -> Array[Callable]:
 		_test_i22_birds_readable,
 		_test_i23_music_tracks_exist,
 		_test_i24_speed_spread_top_scale,
+		_test_i25_bird_calls,
 	]
 
 
@@ -117,11 +118,11 @@ func _run() -> void:
 		quit(1)
 
 
-## I1-I4, I13-I15 and I23 hold for the real data: the loader checks them, so clean real data
+## I1-I4, I13-I15, I23 and I25 hold for the real data: the loader checks them, so clean real data
 ## means no loader errors.
 func _test_real_data_loads_clean() -> void:
 	Content.reload()
-	_check(Content.errors().is_empty(), "I1-I4, I13-I15 and I23 the real data loads without errors", "\n".join(Content.errors()))
+	_check(Content.errors().is_empty(), "I1-I4, I13-I15, I23 and I25 the real data loads without errors", "\n".join(Content.errors()))
 
 
 ## The lookups return the typed data: the six types plus the gosling, in data order, and
@@ -1531,3 +1532,30 @@ func _i24_problems() -> Array[String]:
 	if is_equal_approx(top, Flight.SPEED_SPREAD_TOP_SCALE):
 		return []
 	return ["Flight.SPEED_SPREAD_TOP_SCALE %.2f is not the highest speed scale in the content, %.2f" % [Flight.SPEED_SPREAD_TOP_SCALE, top]]
+
+
+## I25: every bird's call is one of the game's sound effects (GameState.SFX_IDS) with its
+## file, played at a call_pitch in 0.5..2; the real data gives each type its own call and
+## pitch. An unknown, mistyped or missing call and an out-of-range, mistyped or missing
+## call_pitch are each reported alone.
+func _test_i25_bird_calls() -> void:
+	var expected := {"goose": ["call_quack", 1.0], "armored": ["call_quack", 0.85], "splitter": ["call_quack", 0.93], "gosling": ["call_gosling", 1.0],
+		"zigzag": ["call_swift", 1.0], "golden": ["call_quack", 1.15], "decoy": ["call_pigeon", 1.0]}
+	for spec in Content.birds():
+		var want: Array = expected[spec.id]
+		_check(spec.call_sound == want[0] and is_equal_approx(spec.call_pitch, want[1]), "I25 %s calls %s at x%s" % [spec.id, want[0], want[1]], "%s x%s" % [spec.call_sound, spec.call_pitch])
+		_check(StringName(spec.call_sound) in GameState.SFX_IDS and ResourceLoader.exists(GameState.SFX_PATH % spec.call_sound), "I25 %s's call is a sound effect with its file" % spec.id, GameState.SFX_PATH % spec.call_sound)
+	_expect_load_errors("I25 an unknown call", _mutated("birds.json", func(data: Array) -> void: data[4]["call"] = "call_duck"),
+		["data/birds.json [zigzag] call: unknown sound effect 'call_duck' (I25: a call must be one of GameState.SFX_IDS)"])
+	_expect_load_errors("I25 a call that is not a string", _mutated("birds.json", func(data: Array) -> void: data[0]["call"] = 3),
+		["data/birds.json [goose] call: expected String, got float"])
+	_expect_load_errors("I25 a bird without a call", _mutated("birds.json", func(data: Array) -> void: (data[6] as Dictionary).erase("call")),
+		["data/birds.json [decoy] call: missing key"])
+	_expect_load_errors("I25 a call pitch under 0.5", _mutated("birds.json", func(data: Array) -> void: data[1]["call_pitch"] = 0.4),
+		["data/birds.json [armored] call_pitch: 0.4 is outside 0.5..2.0"])
+	_expect_load_errors("I25 a call pitch over 2", _mutated("birds.json", func(data: Array) -> void: data[5]["call_pitch"] = 2.5),
+		["data/birds.json [golden] call_pitch: 2.5 is outside 0.5..2.0"])
+	_expect_load_errors("I25 a call pitch that is not a number", _mutated("birds.json", func(data: Array) -> void: data[3]["call_pitch"] = "high"),
+		["data/birds.json [gosling] call_pitch: expected float, got String"])
+	_expect_load_errors("I25 a bird without a call pitch", _mutated("birds.json", func(data: Array) -> void: (data[2] as Dictionary).erase("call_pitch")),
+		["data/birds.json [splitter] call_pitch: missing key"])

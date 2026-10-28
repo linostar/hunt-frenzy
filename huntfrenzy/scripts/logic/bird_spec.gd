@@ -22,6 +22,11 @@ var flee_time := 0.0
 ## Seconds of flight after which the rival starts aiming at it (in modes with rival_steals;
 ## never the decoy). linger_time + the rival's aim_time is under flee_time (SCHEMA.md I13).
 var linger_time := 0.0
+## The sound effect (birds.json "call": one of GameState.SFX_IDS, SCHEMA.md I25) the bird
+## gives as it starts flying off, and the pitch it plays at (Game.play_sfx). Not named `call`,
+## which would shadow Object.call.
+var call_sound := ""
+var call_pitch := 1.0
 ## Points a kill scores (before the combo multiplier); 0 for the decoy.
 var points := 0
 ## Hits it takes to kill; every hit before the last shows the damaged frames.

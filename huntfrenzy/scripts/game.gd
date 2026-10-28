@@ -182,6 +182,7 @@ const SFX_IDS: Array[StringName] = [
 	&"shot", &"empty_click", &"out_of_shells", &"hit", &"armored_clank", &"armored_kill", &"split_pop",
 	&"golden_chime", &"decoy_penalty", &"escape", &"wave_start", &"wave_clear", &"wave_lost", &"combo_up",
 	&"rival_aim", &"rival_steal", &"rival_laugh", &"countdown_tick", &"time_up", &"star", &"new_best", &"ui_tap", &"pause", &"resume",
+	&"call_quack", &"call_gosling", &"call_pigeon", &"call_swift",
 ]
 ## Sound effect players: at most this many sounds at once (the oldest gives way). One more
 ## player, the menu voice, plays every sound started while the audio is paused (the pause

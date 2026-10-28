@@ -104,6 +104,8 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `wobble_hz` | float | 0..5 | Wobble frequency (title crossing only). |
 | `flee_time` | float | 0.1..60 | Seconds of flight before it climbs off the top. |
 | `linger_time` | float | 0.1..60 | Seconds of flight after which the rival starts aiming at it (modes with `rival_steals`). Required for every bird, the decoy too (never used for it); `linger_time + aim_time < flee_time` (I13). |
+| `call` | string | sound effect id (`GameState.SFX_IDS`) | The call it gives the moment it starts flying off (at `flee_time`, or when the wave's shells run out), once per bird (I25). |
+| `call_pitch` | float | 0.5..2 | The pitch its call plays at (1 is the recording's own; `Game.play_sfx`). |
 | `points` | int | 0..100000 | Points of a kill, before the multiplier. 0 only for a decoy (I6). |
 | `hp` | int | 1..5 | Hits to kill. `hp > 1` needs the damaged frames (I3). |
 | `sprite` | string | 1..26 chars | Art name (above); every frame must exist (I3). |
@@ -200,7 +202,7 @@ A single object (not an array):
 ---
 
 ## Invariants (`tools/test_content.gd` must check all of these)
-I1-I4, I13-I15 and I23 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
+I1-I4, I13-I15, I23 and I25 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
 (no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I22 are checked only by
 `test_content.gd`, against the real data and on a malformed copy each (with the loader quiet, so the invariant's own
 check is what catches it; I17 and I20's growth and shell parts on a stand-in schedule, since the formulas and
@@ -299,6 +301,9 @@ against a fallback value.
   as `res://audio/music/<id>.mp3` (made by `tools/music.py`): `unknown music track '<id>' (no
   res://audio/music/<id>.mp3)`, a non-snake_case id `'<id>' is not a snake_case music track id`. The title and results
   loops are the game's own (`GameState.TITLE_TRACK`, `RESULTS_TRACK`), checked when the game starts.
+- **I25** Every bird's `call` is one of the game's sound effects, `GameState.SFX_IDS` (each made by `tools/sfx.py`
+  as `res://audio/sfx/<id>.wav`; the game checks every file exists when it starts): `unknown sound effect '<id>' (I25: a
+  call must be one of GameState.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`Content.CALL_PITCH_MIN`..`MAX`, I2).
 
 ## Current content
 | bird | chapter | pattern | speed | flee | linger | points | hp | special | Endless |
@@ -310,6 +315,9 @@ against a fallback value.
 | zigzag | night | zigzag | 175 | 6.0 | 3.5 | 200 | 1 | | wave 7+, weight 3 |
 | golden | dawn | rise | 240 | 4.0 | 2.5 | 500 | 1 | | 8% of slots from wave 2 |
 | decoy | sunset | rise | 120 | 7.0 | 4.0 | 0 | 1 | penalty 200, escape not counted, never stolen (the rival's pigeon in a top hat) | wave 5+, weight 2 |
+
+Calls (a recording each, credited in the game; `tools/sfx.py` RECORDINGS): goose, armored, golden and splitter
+`call_quack` at x1.0, x0.85, x1.15 and x0.93; gosling `call_gosling`; zigzag `call_swift`; decoy `call_pigeon` (each x1.0).
 
 Chapters: dawn (backdrop dawn, mist, music campaign_dawn, rival linger x1.0), noon (noon, wind, campaign_noon, x0.9),
 sunset (sunset, rain, campaign_sunset, x0.8), night (night, snow, campaign_night, x0.7); dawn introduces

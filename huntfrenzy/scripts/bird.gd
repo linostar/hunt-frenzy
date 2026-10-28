@@ -22,10 +22,16 @@ extends Node2D
 ## it neither ages, moves, flaps nor falls until the time is over, and the frame that ends
 ## the hold runs only for what is left of that frame, so the bird loses exactly the hold's
 ## time, as Play's clocks do.
+## The moment a flying bird starts flying off it emits `started_fleeing` (Play plays its call):
+## at its spec's flee_time, when flee() tells it to (the shells ran out), or as it enters the
+## tree when setup() made it flee from the start. It emits it at most once, and never for a
+## crossing bird, a hit one or one the rival shot.
 ## Configure with setup() or setup_crossing() before adding it to the tree.
 
 signal escaped(bird: Bird)
 signal gone(bird: Bird)
+## It started flying off (emitted once at most; never by a crossing bird).
+signal started_fleeing(bird: Bird)
 
 enum State { FLYING, HIT, FALLING }
 
@@ -73,6 +79,8 @@ var _fall_speed := 0.0
 var _track_clock := 0.0
 ## Seconds of hold (hit stop) still to sit out.
 var _held_for := 0.0
+## True once started_fleeing was emitted.
+var _fleeing_signalled := false
 
 @onready var _sprite: Sprite2D = $Sprite
 @onready var _reticle: Sprite2D = $Reticle
@@ -122,6 +130,7 @@ func _ready() -> void:
 	_reticle.scale = Vector2.ONE * RETICLE_SIZE / _reticle.texture.get_size().x
 	transform = _flight_transform()
 	_track()
+	_signal_fleeing()
 
 
 func _process(frame_delta: float) -> void:
@@ -141,6 +150,7 @@ func _process(frame_delta: float) -> void:
 				escaped.emit(self)
 				queue_free()
 				return
+			_signal_fleeing()
 			transform = _flight_transform()
 			_sprite.texture = _textures[_flap_frame()]
 			_track_clock += delta
@@ -226,6 +236,15 @@ func _drop() -> void:
 func flee() -> void:
 	if state == State.FLYING and age < minf(spec.flee_time, flee_at):
 		flee_at = age
+		_signal_fleeing()
+
+
+## Emits started_fleeing the first time a flying play-path bird is fleeing.
+func _signal_fleeing() -> void:
+	if _fleeing_signalled or crossing.has_area() or state != State.FLYING or not is_fleeing():
+		return
+	_fleeing_signalled = true
+	started_fleeing.emit(self)
 
 
 func _flight_transform() -> Transform2D:
