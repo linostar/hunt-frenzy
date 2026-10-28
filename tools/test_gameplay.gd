@@ -1393,9 +1393,10 @@ func _test_save_web_persist_reporting() -> void:
 	error_label.hide()
 
 
-## A hit goose stops on its hit frame upright and facing the way it flew, and falls that
-## way: the whole basis, not only the rotation (a left-facing transform is rotation + PI
-## with scale (1, -1), so zeroing the rotation alone turns it upside down).
+## A hit goose stops on its hit frame upright and facing the way it flew (the whole basis,
+## not only the rotation: a left-facing transform is rotation + PI with scale (1, -1), so
+## zeroing the rotation alone turns it upside down), then falls head-first: its head
+## (the sprite's +x) pitches straight down within FALL_TURN_TIME, still mirrored as it flew.
 func _test_play_hit_frame_keeps_facing() -> void:
 	var play := await _start_run(26)
 	var goose := Content.bird("goose")
@@ -1415,9 +1416,20 @@ func _test_play_hit_frame_keeps_facing() -> void:
 		var hit_y := bird.position.y
 		var upright := Transform2D(Vector2(facing, 0.0), Vector2(0.0, 1.0), Vector2.ZERO)
 		_check(bird.transform.basis_xform(Vector2.RIGHT).is_equal_approx(upright.x) and bird.transform.basis_xform(Vector2.DOWN).is_equal_approx(upright.y), label + ": the hit frame is upright and keeps its facing", "x %s, y %s" % [bird.transform.x, bird.transform.y])
-		for i in roundi(Bird.HIT_HOLD * 60.0) + 10:
+		# The kill's hit stop holds it a little past HIT_HOLD: wait for the fall, then 2 frames.
+		var waited := 0
+		while is_instance_valid(bird) and bird.state != Bird.State.FALLING and waited < 60:
 			await process_frame
-		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and bird.transform.x.is_equal_approx(upright.x) and bird.transform.y.is_equal_approx(upright.y), label + ": it falls upright, facing the same way", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
+			waited += 1
+		for i in 2:
+			await process_frame
+		var turning := is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.transform.x.y > 0.0 and bird.transform.x.y < 0.99
+		_check(turning, label + ": early in the fall it is pitching nose-down, not yet vertical", "x %s" % bird.transform.x if is_instance_valid(bird) else "gone")
+		for i in roundi(Bird.FALL_TURN_TIME * 60.0) + 2:
+			await process_frame
+		var head_down := is_instance_valid(bird) and bird.transform.x.normalized().is_equal_approx(Vector2.DOWN)
+		var mirrored := is_instance_valid(bird) and signf(bird.transform.determinant()) == facing
+		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and head_down and mirrored, label + ": it falls head-first (head straight down), still mirrored as it flew", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
 
 
 ## The grass hides what is behind it: a shot on the grass (at or below the grass line the
