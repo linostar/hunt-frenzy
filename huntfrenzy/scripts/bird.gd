@@ -31,7 +31,7 @@ extends Node2D
 ## starts its untilted box just under the line, and its climb tilt lifts the art's top 0.2
 ## to 11.6 units above it), so it calls as it spawns, fleeing or not; the hull keeps the
 ## rule true if the start ever changes. It emits it at most once, whatever happens after (fleeing, escaping),
-## and never for a crossing bird; fleeing itself makes no sound.
+## and never for a crossing bird (it has no field, so no grass line); fleeing itself makes no sound.
 ## Configure with setup() or setup_crossing() before adding it to the tree.
 
 signal escaped(bird: Bird)
@@ -259,9 +259,11 @@ func art_top() -> float:
 	return top
 
 
-## Emits appeared the first time a flying play-path bird shows art above the grass line.
+## Emits appeared the first time a flying bird shows art above its field's bottom, the grass
+## line. A crossing bird (the title's geese) is never given a field (setup_crossing), so its
+## line is y 0, above its band, and it never appears.
 func _signal_appeared() -> void:
-	if _appeared or crossing.has_area() or state != State.FLYING or art_top() >= field.end.y:
+	if _appeared or state != State.FLYING or art_top() >= field.end.y:
 		return
 	_appeared = true
 	appeared.emit(self)
