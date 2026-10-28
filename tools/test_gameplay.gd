@@ -6071,6 +6071,8 @@ func _test_rival_laugh_before_results_blurt() -> void:
 			_check(laugh_on_results, "%s: the laugh plays after the change to the results screen" % label, "scene %s" % current_scene)
 		_check(blurt_clock >= laugh_clock + laugh_length - FRAME, "%s: the results' blurt starts once the laugh has finished" % label, "laugh at %.3f (%.2f s long), first syllable at %.3f" % [laugh_clock, laugh_length, blurt_clock])
 		_check_logged(from, "^\\[Audio\\] SFX heckle_results: \\d+ syllables \\(.*\\) for \".+\", starting in [\\d.]+ s once rival_laugh has finished$", "%s: the results blurt logs its wait for the laugh" % label)
+		while _game.is_transitioning():
+			await process_frame
 		var results := current_scene as Results
 		_check(results != null and (results.get_node("Safe/RivalLine") as Label).visible, "%s: the parting line shows at once" % label, "scene %s" % current_scene)
 	_game.set_reduce_motion(false)
