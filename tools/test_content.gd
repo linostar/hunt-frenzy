@@ -138,6 +138,16 @@ func _test_lookup_api() -> void:
 	_check(decoy.penalty == 200 and not decoy.escape_counts and decoy.points == 0, "the decoy has a penalty and its escape does not count", "%d %s" % [decoy.penalty, decoy.escape_counts])
 	_check(Content.bird("armored").hp == 2 and Content.bird("armored").frames().size() == 6, "the armored goose has hp 2 and damaged frames", str(Content.bird("armored").frames()))
 	_check(Content.bird("zigzag").pattern == "zigzag", "the zigzag flies the zigzag pattern", Content.bird("zigzag").pattern)
+	# Bird scales its sprite once, from fly_1: a frame imported at another size (its .import's
+	# svg/scale) would draw bigger or smaller than the bird.
+	var off_size: Array[String] = []
+	for spec in Content.birds():
+		var want := (load(spec.texture_path("fly_1")) as Texture2D).get_size()
+		for frame in spec.frames():
+			var got := (load(spec.texture_path(frame)) as Texture2D).get_size()
+			if got != want:
+				off_size.append("%s %s: %s, fly_1 %s" % [spec.id, frame, got, want])
+	_check(off_size.is_empty(), "every frame of a bird imports at its fly_1 size", ", ".join(off_size))
 	var endless := Content.mode("endless")
 	var mix := endless.birds.map(func(e: ModeSpec.Entry) -> String: return "%s@%d" % [e.bird, e.from_wave])
 	_check(mix == ["goose@1", "armored@3", "splitter@5", "decoy@5", "zigzag@7"], "the Endless mix unlocks by wave", str(mix))

@@ -1,16 +1,20 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="72" viewBox="0 0 96 72">
-  <!-- Armored goose, dive: neck stretched straight ahead in its steel helmet, breastplate on, wings folded along the back, eyes crossed out; faces right, centre (48, 36) is the bird's origin. -->
-  <path d="M8 36 C14 32 24 30 36 30 C48 30 58 32 66 34 C72 34 78 33 82 32 C86 30 91 31 92 34 L96 38 L92 41 C90 44 86 45 82 44 C76 44 70 46 66 48 C62 54 52 57 40 57 C28 57 18 53 14 47 C10 46 6 44 3 41 C6 40 7 38 8 36 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M16 48 C28 55 54 56 64 49 C60 54 52 57 40 57 C28 57 20 53 16 48 Z" fill="#4f5d72"/>
-  <path d="M64 34 C72 34 78 33 82 32 C86 30 91 31 92 34 L92 41 C90 44 86 45 82 44 C76 44 70 46 66 48 C67 43 66 38 64 34 Z" fill="#3a4a6e"/>
-  <path d="M79 35 C83 35 85 38 83.5 41.5 C80 41.5 78 38 79 35 Z" fill="#b8c4d0"/>
-  <path d="M92 34 L96 38 L92 41 Z" fill="#1f1a2e"/>
-  <path d="M8 36 C14 32 24 30 36 30 C48 30 58 32 66 34 C72 34 78 33 82 32 C86 30 91 31 92 34 L96 38 L92 41 C90 44 86 45 82 44 C76 44 70 46 66 48 C62 54 52 57 40 57 C28 57 18 53 14 47 C10 46 6 44 3 41 C6 40 7 38 8 36 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M85.5 33.5 L89 37 M89 33.5 L85.5 37" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-  <path d="M62 44 C66 42 70 44 69 48 C67 53 62 56 56 57 C59 53 61 49 62 44 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <ellipse cx="65" cy="48" rx="1.2" ry="1.2" fill="#1f1a2e"/>
-  <path d="M61 37 C52 33 36 33 22 36 C16 37 11 39 7 42 C18 42 30 45 42 46 C52 46 59 43 61 37 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M57 38.5 C47 36.5 32 37.5 15 41 C30 41.5 45 42.5 57 38.5 Z" fill="#b8c4d0"/>
-  <path d="M78 33.5 C79 27 86 25 91 28 C93 29.5 93.5 31.5 93 33.5 C88 32 83 32 78 33.5 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M83 27.5 L84.5 30.5" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round"/>
+  <!-- Armored goose, dive (the head-first fall): wings folded along the back, armour knocked askew, eyes crossed out; faces right, centre (48, 36) is the bird's origin. -->
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M18 48 C30 55 58 56 71 46 C68 53 58 57 44 57 C30 57 22 53 18 48 Z" fill="#4f5d72"/>
+  <path d="M26 31 C36 27 50 27 57 31 C48 30.5 36 31 26 34 Z" fill="#b8c4d0"/>
+  <path d="M58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C68 40 62 35 58 30 Z" fill="#3a4a6e"/>
+  <path d="M76 15 C80 16 81.5 21 78.5 24.5 C75 23.5 73.5 19 76 15 Z" fill="#b8c4d0"/>
+  <path d="M90 14 L95 17 L89 21 Z" fill="#1f1a2e"/>
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M82 12 L86 16 M86 12 L82 16" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M73 14 C73 5 81 1 88 4 C92 6 93 10 92 14 C86 12 79 12 73 14 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M80 4 L82 8 L79 10 L81 13" fill="#6f7f94"/>
+  <path d="M81 2.5 L83 7 L79.5 9.5 L81.5 13" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M65 35 C69 32 75 36 74 44 C73 51 67 56 57 57 C62 50 64 42 65 35 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M67 41 C69 43 69 46 66 48 C67 45 67 43 67 41 Z" fill="#4f5d72"/>
+  <path d="M70 36 L68 41 L71 44 L67 50" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <ellipse cx="71" cy="44" rx="1.2" ry="1.2" fill="#1f1a2e"/>
+  <path d="M62 37 C52 32 36 32 22 35 C15 36 10 38 6 41 C18 42 30 45 42 46 C53 46 61 43 62 37 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M58 38.5 C47 36.5 32 37.5 14 40.5 C30 41.5 45 42.5 58 38.5 Z" fill="#b8c4d0"/>
 </svg>

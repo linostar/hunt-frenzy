@@ -1,12 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="72" viewBox="0 0 96 72">
-  <!-- Goose: brown body, dark neck and head, cream chinstrap, dive: neck stretched straight ahead, wings folded along the back, eyes crossed out; faces right, centre (48, 36) is the bird's origin. -->
-  <path d="M8 36 C14 32 24 30 36 30 C48 30 58 32 66 34 C72 34 78 33 82 32 C86 30 91 31 92 34 L96 38 L92 41 C90 44 86 45 82 44 C76 44 70 46 66 48 C62 54 52 57 40 57 C28 57 18 53 14 47 C10 46 6 44 3 41 C6 40 7 38 8 36 Z" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M16 48 C28 55 54 56 64 49 C60 54 52 57 40 57 C28 57 20 53 16 48 Z" fill="#5e4d3e"/>
-  <path d="M64 34 C72 34 78 33 82 32 C86 30 91 31 92 34 L92 41 C90 44 86 45 82 44 C76 44 70 46 66 48 C67 43 66 38 64 34 Z" fill="#2b263b"/>
-  <path d="M79 35 C83 35 85 38 83.5 41.5 C80 41.5 78 38 79 35 Z" fill="#fbedcd"/>
-  <path d="M92 34 L96 38 L92 41 Z" fill="#1f1a2e"/>
-  <path d="M8 36 C14 32 24 30 36 30 C48 30 58 32 66 34 C72 34 78 33 82 32 C86 30 91 31 92 34 L96 38 L92 41 C90 44 86 45 82 44 C76 44 70 46 66 48 C62 54 52 57 40 57 C28 57 18 53 14 47 C10 46 6 44 3 41 C6 40 7 38 8 36 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round"/>
-  <path d="M85.5 33.5 L89 37 M89 33.5 L85.5 37" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
-  <path d="M61 37 C52 33 36 33 22 36 C16 37 11 39 7 42 C18 42 30 45 42 46 C52 46 59 43 61 37 Z" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M57 38.5 C47 36.5 32 37.5 15 41 C30 41.5 45 42.5 57 38.5 Z" fill="#b8a58c"/>
+  <!-- Goose: brown body, dark neck and head, cream chinstrap, dive (the head-first fall): wings folded along the back, eyes crossed out; faces right, centre (48, 36) is the bird's origin. -->
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M18 48 C30 55 58 56 71 46 C68 53 58 57 44 57 C30 57 22 53 18 48 Z" fill="#5e4d3e"/>
+  <path d="M26 31 C36 27 50 27 57 31 C48 30.5 36 31 26 34 Z" fill="#b8a58c"/>
+  <path d="M58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C68 40 62 35 58 30 Z" fill="#2b263b"/>
+  <path d="M76 15 C80 16 81.5 21 78.5 24.5 C75 23.5 73.5 19 76 15 Z" fill="#fbedcd"/>
+  <path d="M90 14 L95 17 L89 21 Z" fill="#1f1a2e"/>
+  <path d="M20 31 C30 26 48 26 58 30 C62 24 68 16 75 11 C80 8 88 9 90 14 L95 17 L89 21 C85 24 80 24 77 26 C72 30 70 36 72 42 C72 52 60 57 44 57 C30 57 20 52 16 45 C12 45 7 43 4 40 C7 38 8 36 6 32 C11 31 16 31 20 31 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="M82 12 L86 16 M86 12 L82 16" fill="none" stroke="#ffffff" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M62 37 C52 32 36 32 22 35 C15 36 10 38 6 41 C18 42 30 45 42 46 C53 46 61 43 62 37 Z" fill="#8a7560" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M58 38.5 C47 36.5 32 37.5 14 40.5 C30 41.5 45 42.5 58 38.5 Z" fill="#b8a58c"/>
 </svg>
