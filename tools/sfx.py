@@ -17,6 +17,8 @@ Sounds:
                             TIMBRES and vowel of VOWELS (a voiced source through two vowel
                             formants); Game.play_heckle strings them into a seeded blurt,
                             its pitch and timbre set by the heckle's category.
+    rival_laugh.wav         (one of EFFECTS) the rival's "ha-ha-ha" after a steal, in his
+                            blurt voice (blurt()), LAUGH_SECONDS long; --check holds it there.
 
 Every file is peak-normalised to its own level, never above PEAK, so nothing clips; the
 levels set the mix, and --check holds each file's loudness as heard (loudness_of: BS.1770
@@ -311,6 +313,27 @@ def fx_rival_steal(rng):
     return place(buf, lowpass(shot, [900.0] * len(shot)), 0.16, 0.35)
 
 
+# The rival's laugh after a steal: LAUGH_HAS "ha"s in his gruff blurt voice, LAUGH_GAP
+# seconds apart, each LAUGH_HA_SECONDS long, stepping down in pitch (LAUGH_PITCHES x
+# BLURT_BASE_HZ): 0.2 + 2 x 0.25 = 0.7 s in all (0.6..1.0 s: the plan's AC 8).
+LAUGH_HAS = 3
+LAUGH_GAP = 0.25
+LAUGH_HA_SECONDS = 0.2
+LAUGH_PITCHES = (1.25, 1.12, 1.0)
+# --check holds the laugh's length to this range (seconds).
+LAUGH_SECONDS = (0.6, 1.0)
+
+
+def fx_rival_laugh(rng):
+    """The rival laughing at his steal: "ha-ha-ha", each "ha" a breathy h into a gruff "a"."""
+    buf = []
+    for i in range(LAUGH_HAS):
+        at = i * LAUGH_GAP
+        place(buf, highpassed(noise(0.05, rng, [(0, 3000), (1, 1500)], attack=0.005, release=0.03)), at, 0.25)
+        place(buf, blurt("gruff", "a", rng, LAUGH_HA_SECONDS, BLURT_BASE_HZ * LAUGH_PITCHES[i]), at + 0.03)
+    return buf
+
+
 def fx_countdown_tick(rng):
     """One of the last ten seconds: a woodblock tick."""
     buf = ping(1250.0, 0.06, 70.0, ((1.0, 1.0), (2.9, 0.3)))
@@ -385,6 +408,7 @@ EFFECTS = {
     "combo_up": (fx_combo_up, 0.3, "event"),
     "rival_aim": (fx_rival_aim, 0.5, "event"),
     "rival_steal": (fx_rival_steal, 0.7, "event"),
+    "rival_laugh": (fx_rival_laugh, 0.5, "voice"),
     "countdown_tick": (fx_countdown_tick, 0.45, "event"),
     "time_up": (fx_time_up, 0.5, "stinger"),
     "star": (fx_star, 0.55, "stinger"),
@@ -395,20 +419,21 @@ EFFECTS = {
 }
 
 
-def blurt(timbre, vowel, rng):
-    """One syllable of the rival's gibberish: a voiced source at BLURT_BASE_HZ (Godot sets
-    the pitch when it plays) through the vowel's two formants. gruff: a saw with a rough
-    wobble; nasal: a narrow pulse with a third, nasal formant; hoot: a soft triangle with breath."""
-    n = int(BLURT_SECONDS * RATE)
+def blurt(timbre, vowel, rng, seconds=BLURT_SECONDS, base_hz=BLURT_BASE_HZ):
+    """One syllable of the rival's gibberish: a voiced source at `base_hz` (BLURT_BASE_HZ for
+    the blurt files: Godot sets the pitch when it plays) through the vowel's two formants,
+    `seconds` long. gruff: a saw with a rough wobble; nasal: a narrow pulse with a third,
+    nasal formant; hoot: a soft triangle with breath."""
+    n = int(seconds * RATE)
     f1, f2 = VOWELS[vowel]
     if timbre == "gruff":
-        freqs = [BLURT_BASE_HZ * (0.92 + 0.08 * (1 - i / n)) * (1.0 + 0.03 * math.sin(2 * math.pi * 28.0 * i / RATE)) for i in range(n)]
+        freqs = [base_hz * (0.92 + 0.08 * (1 - i / n)) * (1.0 + 0.03 * math.sin(2 * math.pi * 28.0 * i / RATE)) for i in range(n)]
         source = [s + rng.uniform(-0.15, 0.15) for s in oscillate(freqs, saw)]
     elif timbre == "nasal":
-        freqs = [BLURT_BASE_HZ * (1.0 + 0.1 * i / n) for i in range(n)]
+        freqs = [base_hz * (1.0 + 0.1 * i / n) for i in range(n)]
         source = oscillate(freqs, pulse(0.15))
     elif timbre == "hoot":
-        freqs = [BLURT_BASE_HZ * (1.05 - 0.1 * i / n) for i in range(n)]
+        freqs = [base_hz * (1.05 - 0.1 * i / n) for i in range(n)]
         source = [s + rng.uniform(-0.25, 0.25) for s in oscillate(freqs, triangle)]
     else:
         raise SfxError(f"unknown timbre '{timbre}' (known: {', '.join(TIMBRES)})")
@@ -489,6 +514,12 @@ def loudness_of(data):
     return -0.691 + 10 * math.log10(max(loudest / window, 1e-12))
 
 
+def seconds_of(data):
+    """The length of WAV bytes in seconds."""
+    with wave.open(io.BytesIO(data), "rb") as w:
+        return w.getnframes() / w.getframerate()
+
+
 def peak_of(data):
     """The largest absolute sample of WAV bytes, as a fraction of full scale."""
     with wave.open(io.BytesIO(data), "rb") as w:
@@ -515,6 +546,8 @@ def check():
         loudness = loudness_of(data)
         if not low <= loudness <= high:
             problems.append(f"{name} is {loudness:.1f} LUFS, outside its {band} band {low}..{high} LUFS (loudness_of)")
+        if name == "rival_laugh.wav" and not LAUGH_SECONDS[0] <= seconds_of(data) <= LAUGH_SECONDS[1]:
+            problems.append(f"{name} is {seconds_of(data):.2f} s long, outside {LAUGH_SECONDS[0]}..{LAUGH_SECONDS[1]} s")
         committed = OUT_DIR / name
         if not committed.exists():
             problems.append(f"{committed.relative_to(ROOT)} missing, run python3 tools/sfx.py")

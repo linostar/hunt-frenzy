@@ -98,6 +98,7 @@ func _tests() -> Array[Callable]:
 		_test_i21_hitbox_covers_body,
 		_test_i22_birds_readable,
 		_test_i23_music_tracks_exist,
+		_test_i24_speed_spread_top_scale,
 	]
 
 
@@ -1010,7 +1011,8 @@ func _perfect_player(mode: ModeSpec, plan: Wave.Plan) -> Dictionary:
 	for spawn in plan.spawns:
 		var spec := Content.bird(spawn.bird_id)
 		if spec.penalty == 0:
-			targets.append([spec, spawn.time, spawn.time + _field_entry_age(spec, spawn.bird_seed, plan.speed_scale), spec.hp])
+			var speed_scale := plan.speed_scale * Flight.speed_factor(spawn.bird_seed, plan.speed_scale)
+			targets.append([spec, spawn.time, spawn.time + _field_entry_age(spec, spawn.bird_seed, speed_scale), spec.hp])
 	var free := -INF
 	while not targets.is_empty():
 		var next := 0
@@ -1486,3 +1488,28 @@ func _check(condition: bool, test_name: String, detail: String) -> void:
 		print("test_content: pass " + test_name)
 	else:
 		_failures.append("%s: %s" % [test_name, detail])
+
+
+## I24: Flight.SPEED_SPREAD_TOP_SCALE is the highest speed scale in the content (every
+## level's and boss flock's speed_scale, every mode's speed_cap); a mutated night boss at
+## x1.8 makes it wrong.
+func _test_i24_speed_spread_top_scale() -> void:
+	_check(_i24_problems().is_empty(), "I24 the speed spread tops out at the content's highest speed scale", str(_i24_problems()))
+	var night_6 := Content.level("night_6")
+	var was := night_6.boss.speed_scale
+	night_6.boss.speed_scale = 1.8
+	_check(_i24_problems() == ["Flight.SPEED_SPREAD_TOP_SCALE 1.60 is not the highest speed scale in the content, 1.80"], "I24 a faster boss flock fails", str(_i24_problems()))
+	night_6.boss.speed_scale = was
+
+
+func _i24_problems() -> Array[String]:
+	var top := 0.0
+	for level in Content.levels():
+		top = maxf(top, level.speed_scale)
+		if level.is_boss():
+			top = maxf(top, level.boss.speed_scale)
+	for mode in Content.modes():
+		top = maxf(top, mode.speed_cap)
+	if is_equal_approx(top, Flight.SPEED_SPREAD_TOP_SCALE):
+		return []
+	return ["Flight.SPEED_SPREAD_TOP_SCALE %.2f is not the highest speed scale in the content, %.2f" % [Flight.SPEED_SPREAD_TOP_SCALE, top]]

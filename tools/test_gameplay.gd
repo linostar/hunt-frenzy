@@ -155,6 +155,10 @@ func _tests() -> Array[Callable]:
 		_test_flight_hitbox,
 		_test_flight_every_type_deterministic_and_in_field,
 		_test_flight_zigzag_reverses,
+		_test_flight_straight_segments_and_turns,
+		_test_flight_reflects_at_band_edges,
+		_test_flight_crossing_keeps_its_wobble,
+		_test_flight_per_bird_speed,
 		_test_flight_launch_and_split_headings,
 		_test_wave_schedule,
 		_test_wave_time_attack_schedule,
@@ -193,6 +197,9 @@ func _tests() -> Array[Callable]:
 		_test_rival_heckle_cooldown,
 		_test_rival_layout_and_pass_through,
 		_test_rival_poses,
+		_test_rival_one_cue_at_a_time,
+		_test_rival_aim_gap,
+		_test_crosshair_cursor,
 		_test_weather_is_visual_only,
 		_test_backdrop_cycle_and_fade,
 		_test_missing_backdrop_is_reported,
@@ -1063,7 +1070,7 @@ func _test_play_empty_pool_refuses() -> void:
 	Engine.time_scale = 1.0
 	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.flying_birds().is_empty(), "the wave ends once its fleeing birds are gone, and the next starts with full shells", "wave %d, %d shells" % [play.wave.index, play.ammo.shells])
 	_check(play.escaped == 4 and not is_instance_valid(bird), "every bird of the emptied wave fled and escaped", "%d escaped" % play.escaped)
-	_check_logged(from, "^\\[Play\\] Spawned goose #\\d+ \\(wave 1, seed -?\\d+\\) at t [\\d.]+, fleeing \\(no shells\\)$", "a spawn is logged with its wave and seed")
+	_check_logged(from, "^\\[Play\\] Spawned goose #\\d+ \\(wave 1, seed -?\\d+, speed x[\\d.]+\\) at t [\\d.]+, fleeing \\(no shells\\)$", "a spawn is logged with its wave and seed")
 	_check_logged(from, "^\\[Play\\] Escaped goose #\\d+ \\(4/10, wave 1 at t [\\d.]+\\)$", "an escape is logged with the escaped total")
 	_check_logged(from, "^\\[Play\\] Wave 2 start: 3 birds \\((goose|golden), (goose|golden), (goose|golden)\\), 9 shells, speed x1\\.06$", "the next wave start is logged")
 
@@ -1783,12 +1790,18 @@ func _test_time_attack_leftover_overlaps_next_wave() -> void:
 		if bird != leftover:
 			bird.age = maxf(bird.age, IN_FIELD_AGE)
 	await process_frame
-	for bird in play.flying_birds():
+	# Newest first, each held still while shot: a shot hits the frontmost (newest) bird under
+	# it, so no older bird in the way takes it, and the touch (handled a frame later) lands.
+	var targets := play.flying_birds()
+	targets.reverse()
+	for bird in targets:
 		if bird == leftover:
 			continue
+		bird.set_process(false)
 		for shot in bird.spec.hp:
 			if bird.is_flying():
 				await _touch(_global(play, bird.transform * LOCAL_BODY))
+		bird.set_process(true)
 	var frames := 0
 	while play.wave.index == 2 and frames < 10:
 		await process_frame
@@ -1990,17 +2003,18 @@ func _test_flight_every_type_deterministic_and_in_field() -> void:
 
 
 ## A zigzag bird reverses its horizontal heading at least once in every window of
-## Flight.ZIGZAG_INTERVAL_MAX seconds until it flees (20 seeds), and from the first
-## reversal on its path differs from the rise path of the same seed; a goose of the same
-## speed holds its heading through such a window.
+## Flight.ZIGZAG_INTERVAL_MAX seconds from the start of its cruise until it flees (20
+## seeds), and from its first turn on its path differs from the rise path of the same
+## seed; a rise bird of the same speed holds its heading through such a window.
 func _test_flight_zigzag_reverses() -> void:
 	var zigzag := Content.bird("zigzag")
 	var step := 1.0 / 120.0
 	var problems: Array[String] = []
 	for bird_seed in 20:
-		var last_turn := 0.0
+		var entry := Flight.entry_age(zigzag, bird_seed, Play.FIELD)
+		var last_turn := entry
 		var last_sign := 0.0
-		var age := 0.0
+		var age := entry
 		while age <= zigzag.flee_time:
 			var vx := Flight.velocity(zigzag, bird_seed, age, Play.FIELD).x
 			if absf(vx) > 1.0:
@@ -2012,44 +2026,231 @@ func _test_flight_zigzag_reverses() -> void:
 				break
 			age += step
 	_check(problems.is_empty(), "a zigzag reverses at least once per %.2f s window until it flees" % Flight.ZIGZAG_INTERVAL_MAX, str(problems))
-	# The seeded reversals alone: where Flight's signed horizontal travel turns (unlike the
-	# velocity, it leaves out the bounces off the field's edges). Every interval between two
-	# (from age 0 on) lies in ZIGZAG_INTERVAL_MIN..MAX (within the sampling step), and the
-	# first interval differs between seeds.
-	var fine := 1.0 / 480.0
+	# The seeded turns alone (Flight.turn_ages; unlike the velocity, they leave out the
+	# bounces off the field's edges): every interval from the start of the cruise lies in
+	# ZIGZAG_INTERVAL_MIN..MAX, each reverses the horizontal travel, and the first interval
+	# differs between seeds.
 	var intervals: Array[float] = []
+	var unturned: Array[String] = []
 	var first_intervals: Dictionary[int, bool] = {}
 	for bird_seed in 20:
-		var turned := 0.0
-		var direction := 1.0
-		var last := Flight._travel(zigzag, bird_seed, 0.0)
-		var age := fine
-		while age <= zigzag.flee_time:
-			var now := Flight._travel(zigzag, bird_seed, age)
-			if signf(now - last) == -direction:
-				direction = -direction
-				if turned == 0.0:
-					first_intervals[roundi(age * 100.0)] = true
-				intervals.append(age - turned)
-				turned = age
-			last = now
-			age += fine
-	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.ZIGZAG_INTERVAL_MIN - 2.0 * fine or interval > Flight.ZIGZAG_INTERVAL_MAX + 2.0 * fine)
+		var entry := Flight.entry_age(zigzag, bird_seed, Play.FIELD)
+		var turns := Flight.turn_ages(zigzag, bird_seed, entry, zigzag.flee_time)
+		var previous := entry
+		for turn in turns:
+			intervals.append(turn - previous)
+			previous = turn
+			var before := Flight._offset(zigzag, bird_seed, turn - 0.01, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var at := Flight._offset(zigzag, bird_seed, turn, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var after := Flight._offset(zigzag, bird_seed, turn + 0.01, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			if signf(at.x - before.x) != -signf(after.x - at.x):
+				unturned.append("seed %d at %.2f" % [bird_seed, turn])
+		if not turns.is_empty():
+			first_intervals[roundi((turns[0] - entry) * 100.0)] = true
+	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.ZIGZAG_INTERVAL_MIN or interval > Flight.ZIGZAG_INTERVAL_MAX)
 	_check(intervals.size() >= 20 * 6 and outside.is_empty(), "every zigzag interval lies in %.2f..%.2f s" % [Flight.ZIGZAG_INTERVAL_MIN, Flight.ZIGZAG_INTERVAL_MAX], "%d intervals, outside: %s" % [intervals.size(), outside])
+	_check(unturned.is_empty(), "every zigzag turn reverses its horizontal travel", str(unturned))
 	_check(first_intervals.size() >= 10, "the zigzag intervals vary between seeds", "%d distinct first intervals over 20 seeds: %s" % [first_intervals.size(), first_intervals.keys()])
+	var entry_3 := Flight.entry_age(zigzag, 3, Play.FIELD)
+	var first_turn := Flight.turn_ages(zigzag, 3, entry_3, zigzag.flee_time)[0]
 	var start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
-	var later := Flight.position(zigzag, 3, 2.0, Play.FIELD)
+	var entered := Flight.position(zigzag, 3, entry_3, Play.FIELD)
+	var later := Flight.position(zigzag, 3, first_turn + 0.5, Play.FIELD)
 	# The same spec flying the rise pattern (restored below).
 	zigzag.pattern = "rise"
 	var rise_start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
-	var rise_later := Flight.position(zigzag, 3, 2.0, Play.FIELD)
+	var rise_entered := Flight.position(zigzag, 3, entry_3, Play.FIELD)
+	var rise_later := Flight.position(zigzag, 3, first_turn + 0.5, Play.FIELD)
 	var held := true
 	var first_sign := signf(Flight.velocity(zigzag, 3, 0.1, Play.FIELD).x)
 	for i in roundi(Flight.ZIGZAG_INTERVAL_MAX * 120.0):
 		held = held and signf(Flight.velocity(zigzag, 3, 0.1 + i * step, Play.FIELD).x) == first_sign
 	zigzag.pattern = "zigzag"
-	_check(start.is_equal_approx(rise_start) and not later.is_equal_approx(rise_later), "the zigzag starts like a rise and then departs from it", "%s %s vs %s %s" % [start, later, rise_start, rise_later])
+	_check(start.is_equal_approx(rise_start) and entered.is_equal_approx(rise_entered) and not later.is_equal_approx(rise_later), "the zigzag climbs in like a rise and departs from it after its first turn", "%s %s %s vs %s %s %s" % [start, entered, later, rise_start, rise_entered, rise_later])
 	_check(held, "the rise pattern holds its heading through the same window", "turned")
+
+
+## AC 1, 2 and 4 of the straight flight: between two turns (and away from a bounce) a
+## bird's centre moves on a straight line at constant speed, so its tilt holds (20 seeds
+## of the goose and of a launched gosling, every 0.25 s stretch inside a segment whose
+## velocity never changes sign: no point is 0.5 units off the chord); a rise bird turns at
+## seeded TURN_INTERVAL_MIN..MAX intervals from the start of its cruise to a heading
+## FLIGHT_ANGLE_MIN..MAX from the horizontal; the same inputs give the same path.
+func _test_flight_straight_segments_and_turns() -> void:
+	var goose := Content.bird("goose")
+	var gosling := Content.bird("gosling")
+	var stretches := 0
+	var bent: Array[String] = []
+	var unsteady: Array[String] = []
+	for launched: bool in [false, true]:
+		var spec := gosling if launched else goose
+		var from := Vector2(480, 250) if launched else Flight.NOT_LAUNCHED
+		var heading := Flight.split_headings(2)[0] if launched else Vector2.ZERO
+		for bird_seed in 20:
+			var entry := Flight.entry_age(spec, bird_seed, Play.FIELD, 1.0, from, heading)
+			var bounds := PackedFloat64Array([entry])
+			bounds.append_array(Flight.turn_ages(spec, bird_seed, entry, spec.flee_time))
+			for i in bounds.size() - 1:
+				var t := bounds[i] + 0.02
+				while t + 0.25 < bounds[i + 1] - 0.02:
+					var points: Array[Vector2] = []
+					var signs := {}
+					var tilts := {}
+					for k in 11:
+						var age := t + 0.025 * k
+						points.append(Flight.position(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading))
+						var moving := Flight.velocity(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading)
+						signs[Vector2(signf(moving.x), signf(moving.y))] = true
+						tilts[snappedf(Flight.transform_at(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading).get_rotation(), 0.001)] = true
+					t += 0.25
+					if signs.size() != 1:
+						continue
+					stretches += 1
+					var chord := Geometry2D.get_closest_point_to_segment_uncapped(points[5], points[0], points[10]).distance_to(points[5])
+					var worst := 0.0
+					for point in points:
+						worst = maxf(worst, Geometry2D.get_closest_point_to_segment_uncapped(point, points[0], points[10]).distance_to(point))
+					var gaps := points[1].distance_to(points[0]) - points[10].distance_to(points[9])
+					if worst >= 0.5 or chord >= 0.5 or absf(gaps) > 0.01:
+						bent.append("%s seed %d at %.2f: %.2f off the chord, steps differ by %.3f" % [spec.id, bird_seed, t - 0.25, worst, gaps])
+					if tilts.size() != 1:
+						unsteady.append("%s seed %d at %.2f: tilts %s" % [spec.id, bird_seed, t - 0.25, tilts.keys()])
+	_check(stretches >= 200 and bent.is_empty(), "between turns a bird flies a straight line at constant speed (no wobble)", "%d stretches, bent: %s" % [stretches, bent.slice(0, 5)])
+	_check(unsteady.is_empty(), "the facing and tilt hold steady between two turns", str(unsteady.slice(0, 5)))
+	# Turns: seeded intervals in TURN_INTERVAL_MIN..MAX from the cruise's start, and the new
+	# heading (the velocity just after the turn, away from a bounce) 30-60 degrees off the
+	# horizontal; the first turn really changes the velocity.
+	var intervals: Array[float] = []
+	var angles: Array[String] = []
+	var changed := 0
+	var first_turns: Dictionary[int, bool] = {}
+	for bird_seed in 20:
+		var entry := Flight.entry_age(goose, bird_seed, Play.FIELD)
+		var turns := Flight.turn_ages(goose, bird_seed, entry, 60.0)
+		var previous := entry
+		for turn in turns:
+			intervals.append(turn - previous)
+			previous = turn
+		var turn := turns[0]
+		first_turns[roundi((turn - entry) * 100.0)] = true
+		var before := Flight.velocity(goose, bird_seed, turn - 0.05, Play.FIELD)
+		var after := Flight.velocity(goose, bird_seed, turn + 0.05, Play.FIELD)
+		if not before.is_equal_approx(after):
+			changed += 1
+		var angle := rad_to_deg(atan2(absf(after.y), absf(after.x)))
+		if angle < rad_to_deg(Flight.FLIGHT_ANGLE_MIN) - 0.01 or angle > rad_to_deg(Flight.FLIGHT_ANGLE_MAX) + 0.01:
+			angles.append("seed %d: %.1f degrees" % [bird_seed, angle])
+	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.TURN_INTERVAL_MIN or interval > Flight.TURN_INTERVAL_MAX)
+	_check(intervals.size() >= 20 * 20 and outside.is_empty(), "every rise turn interval lies in %.1f..%.1f s" % [Flight.TURN_INTERVAL_MIN, Flight.TURN_INTERVAL_MAX], "%d intervals, outside: %s" % [intervals.size(), outside])
+	_check(first_turns.size() >= 10 and changed >= 18, "the first turn's time varies by seed and changes the heading", "%d distinct first turns, %d of 20 changed" % [first_turns.size(), changed])
+	_check(angles.is_empty(), "a new heading is %.0f-%.0f degrees from the horizontal" % [rad_to_deg(Flight.FLIGHT_ANGLE_MIN), rad_to_deg(Flight.FLIGHT_ANGLE_MAX)], str(angles))
+	# Seed 7's first turn: before it the climb holds its heading since the cruise started.
+	var entry_7 := Flight.entry_age(goose, 7, Play.FIELD)
+	var turn_7 := Flight.turn_ages(goose, 7, entry_7, 60.0)[0]
+	_check(Flight.turn_ages(goose, 7, entry_7, 60.0) == Flight.turn_ages(goose, 7, entry_7, 60.0) and Flight.position(goose, 7, turn_7 + 0.3, Play.FIELD, 1.3) == Flight.position(goose, 7, turn_7 + 0.3, Play.FIELD, 1.3), "turns and positions are the same for the same inputs", "differ")
+
+
+## AC 2: a bird reflects off the cruise band's edges. A goose at 3x speed over 20 seeds:
+## wherever the horizontal velocity flips away from a turn its centre is at a side edge of
+## the band and its vertical velocity is unchanged; wherever the vertical velocity flips
+## away from a turn it is at the top or bottom of the band and its horizontal velocity is
+## unchanged.
+func _test_flight_reflects_at_band_edges() -> void:
+	var goose := Content.bird("goose")
+	var side := 0
+	var top_bottom := 0
+	var problems: Array[String] = []
+	var step := 1.0 / 240.0
+	# One-sided velocities over a short window: away from a bounce each is its segment's.
+	var moving := func(bird_seed: int, age: float) -> Vector2:
+		return (Flight.position(goose, bird_seed, age + 0.001, Play.FIELD, 3.0) - Flight.position(goose, bird_seed, age, Play.FIELD, 3.0)) / 0.001
+	for bird_seed in 20:
+		var entry := Flight.entry_age(goose, bird_seed, Play.FIELD, 3.0)
+		var turns := Flight.turn_ages(goose, bird_seed, entry, goose.flee_time)
+		var age := entry + 0.05
+		while age + 3.0 * step < goose.flee_time - 0.05:
+			var a: Vector2 = moving.call(bird_seed, age)
+			var b: Vector2 = moving.call(bird_seed, age + step)
+			var near_turn := Array(turns).any(func(turn: float) -> bool: return absf(turn - age) < 0.05)
+			if near_turn or (signf(a.x) != -signf(b.x) and signf(a.y) != -signf(b.y)):
+				age += step
+				continue
+			# The bounce lies within (age, age + step + 0.001): compare the velocities a step
+			# before and after it, and look at the position across it.
+			var before: Vector2 = moving.call(bird_seed, age - step)
+			var after: Vector2 = moving.call(bird_seed, age + 2.0 * step)
+			var at := Flight.position(goose, bird_seed, age + step / 2.0, Play.FIELD, 3.0)
+			if absf(before.length() - goose.speed * 3.0) > 1.0 or absf(after.length() - goose.speed * 3.0) > 1.0:
+				# A corner: a second bounce falls inside the window; the clean ones are counted.
+				age += 3.0 * step
+				continue
+			if signf(a.x) == -signf(b.x):
+				side += 1
+				var edge := minf(absf(at.x - Flight.path_x_low(goose, Play.FIELD)), absf(at.x - Flight.path_x_high(goose, Play.FIELD)))
+				if edge > 4.0 or absf(after.x + before.x) > 1.0 or absf(after.y - before.y) > 1.0:
+					problems.append("seed %d side bounce at %.3f: %.1f from the edge, v %s -> %s" % [bird_seed, age, edge, before, after])
+			else:
+				top_bottom += 1
+				var edge := minf(absf(at.y - Flight.path_y_low(goose, Play.FIELD)), absf(at.y - Flight.path_y_high(goose, Play.FIELD)))
+				if edge > 4.0 or absf(after.y + before.y) > 1.0 or absf(after.x - before.x) > 1.0:
+					problems.append("seed %d top/bottom bounce at %.3f: %.1f from the edge, v %s -> %s" % [bird_seed, age, edge, before, after])
+			age += 3.0 * step
+	_check(side >= 20 and top_bottom >= 20 and problems.is_empty(), "a bird reflects off the band's side, top and bottom edges", "%d side, %d top/bottom bounces, problems %s" % [side, top_bottom, problems.slice(0, 5)])
+
+
+## AC 5: the title's geese keep their level, wobbling crossing path: the height swings by
+## the wobble (cut to the band) about a level line while x moves at a constant speed.
+func _test_flight_crossing_keeps_its_wobble() -> void:
+	var goose := Content.bird("goose")
+	var band := Rect2(0, 120, 1170, 220)
+	var plan := Flight._crossing(goose, 5, band, 1.0)
+	var problems: Array[String] = []
+	var low := INF
+	var high := -INF
+	for i in 241:
+		var age := i / 60.0
+		var at := Flight.crossing_position(goose, 5, age, band)
+		var expected := Vector2(plan["start_x"] + plan["direction"] * plan["speed"] * age, plan["y"] + plan["wobble"] * sin(TAU * goose.wobble_hz * age + plan["phase"]))
+		if not at.is_equal_approx(expected):
+			problems.append("age %.2f: %s, not %s" % [age, at, expected])
+		low = minf(low, at.y)
+		high = maxf(high, at.y)
+	_check(problems.is_empty() and high - low > goose.wobble, "the title's crossing path still wobbles about its level line", "%s, swing %.1f" % [problems.slice(0, 3), high - low])
+
+
+## AC 6 and 7: each bird's speed factor is seeded (the same seed, the same factor;
+## different seeds, different factors), within 1 -/+ 0.05 at speed scale 1 and 1 -/+ 0.20
+## at the top scale 1.6 (and filling those ranges), the spread rising linearly between and
+## clamped outside; Play multiplies the wave's speed scale by it for every bird it spawns,
+## goslings included, in Endless and in a campaign level.
+func _test_flight_per_bird_speed() -> void:
+	_check(Flight.speed_factor(4242, 1.3) == Flight.speed_factor(4242, 1.3), "a bird's speed factor is the same for the same seed", "differs")
+	_check(Flight.speed_factor(1, 1.3) != Flight.speed_factor(2, 1.3), "two seeds give two speed factors", "%f and %f" % [Flight.speed_factor(1, 1.3), Flight.speed_factor(2, 1.3)])
+	for case: Array in [[1.0, 0.05], [1.6, 0.2]]:
+		var scale: float = case[0]
+		var spread: float = case[1]
+		var lowest := INF
+		var highest := -INF
+		for bird_seed in 400:
+			var factor := Flight.speed_factor(bird_seed, scale)
+			lowest = minf(lowest, factor)
+			highest = maxf(highest, factor)
+		_check(lowest >= 1.0 - spread - 0.000001 and highest <= 1.0 + spread + 0.000001 and lowest < 1.0 - spread * 0.9 and highest > 1.0 + spread * 0.9, "at speed scale %.1f the factors fill 1 -/+ %.2f" % [scale, spread], "%.4f..%.4f" % [lowest, highest])
+	_check(is_equal_approx(Flight.speed_spread(1.3), 0.125) and is_equal_approx(Flight.speed_spread(0.8), 0.05) and is_equal_approx(Flight.speed_spread(2.0), 0.2), "the spread rises linearly from 0.05 at x1 to 0.20 at x1.6, clamped", "%.3f %.3f %.3f" % [Flight.speed_spread(1.3), Flight.speed_spread(0.8), Flight.speed_spread(2.0)])
+	var play := await _start_run(31)
+	var goose := play.spawn_bird("goose", 555)
+	var gosling := play.spawn_bird("gosling", 556, Vector2(480, 250), Flight.split_headings(2)[0])
+	_check(is_equal_approx(goose.speed_scale, play.wave.speed_scale * Flight.speed_factor(555, play.wave.speed_scale)) and is_equal_approx(gosling.speed_scale, play.wave.speed_scale * Flight.speed_factor(556, play.wave.speed_scale)), "Endless: a bird and a gosling fly at the wave's speed scale x their own factor", "%f, %f at x%.2f" % [goose.speed_scale, gosling.speed_scale, play.wave.speed_scale])
+	play = await _start_level("night_6")
+	var swift := play.spawn_bird("zigzag", 557)
+	_check(is_equal_approx(swift.speed_scale, play.wave.speed_scale * Flight.speed_factor(557, play.wave.speed_scale)) and swift.speed_scale != play.wave.speed_scale, "a level: a bird flies at the wave's speed scale x its own factor", "%f at x%.2f" % [swift.speed_scale, play.wave.speed_scale])
+	var from := _log.size()
+	for i in 200:
+		await process_frame
+		if play.flying_birds().size() > 1:
+			break
+	_check_logged(from, "^\\[Play\\] Spawned \\w+ #\\d+ \\(wave 1, seed -?\\d+, speed x\\d\\.\\d{3}\\) at t ", "a spawn logs the bird's own speed scale")
+	await _open_title()
 
 
 ## A launched bird (a splitter's gosling) starts exactly at its launch point; the two split
@@ -2382,6 +2583,11 @@ func _test_rival_rules() -> void:
 		_check(case[0] == case[1], "Rival.steal_state: " + str(case[2]), "got %s, expected %s" % [case[0], case[1]])
 	_check(not Rival.may_heckle("miss", 3.9, 0.0, 4.0) and Rival.may_heckle("miss", 4.0, 0.0, 4.0) and Rival.may_heckle("wave_end", 0.0, -INF, 4.0), "Rival.may_heckle: a miss or wave-end line waits for the cooldown (none before the first)", "")
 	_check(Rival.may_heckle(Rival.STEAL, 0.1, 0.0, 4.0), "Rival.may_heckle: a steal line skips the cooldown", "")
+	_check(Rival.may_aim(false, 0.0, -INF, 1.5) and not Rival.may_aim(true, 9.0, -INF, 1.5), "Rival.may_aim: a first cue may start, never a second while one runs", "")
+	_check(not Rival.may_aim(false, 11.49, 10.0, 1.5) and Rival.may_aim(false, 11.5, 10.0, 1.5), "Rival.may_aim: after a cue ends the next waits the gap", "")
+	_check(Rival.aim_target(PackedFloat64Array([3.6, 4.2, 3.9]), PackedInt32Array([1, 2, 3])) == 1, "Rival.aim_target: the bird that has flown longest", "")
+	_check(Rival.aim_target(PackedFloat64Array([4.0, 4.0, 3.0]), PackedInt32Array([7, 5, 2])) == 1, "Rival.aim_target: a tie goes to the lower bird number", "")
+	_check(Rival.aim_target(PackedFloat64Array(), PackedInt32Array()) == -1, "Rival.aim_target: none eligible", "")
 	var lines := Content.rival_lines().lines["miss"]
 	var first: Array[String] = []
 	var again: Array[String] = []
@@ -2414,7 +2620,7 @@ func _test_rival_cue_and_steal() -> void:
 	var reticle := bird.get_node("Reticle") as Sprite2D
 	_check(bird.is_cued() and bird.cue_age >= linger and bird.cue_age <= linger + FRAME + 0.001, "the cue starts when the goose reaches its linger_time", "cue_age %.3f, linger %.2f" % [bird.cue_age, linger])
 	_check(reticle.visible and play.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.is_rival_aiming()])
-	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, wave, time and tallies")
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; (no cue before|[\\d.]+ s since the last cue ended), aim gap 1\\.50 s\\) \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, the choice, the aim gap, wave, time and tallies")
 	var escaped := play.escaped
 	var cued_until := 0.0
 	for i in roundi(aim * 60.0) + 10:
@@ -2428,9 +2634,9 @@ func _test_rival_cue_and_steal() -> void:
 	_check(play.stolen == 1 and play.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.stolen, play.rival_score, escaped, play.escaped])
 	_check(play.scoring.multiplier == 3, "a steal leaves the player's combo alone", "x%d" % play.scoring.multiplier)
 	_check(_text(play, "Rival") == "Rival 100" and _text(play, "Escaped") == "Escaped %d/10" % play.escaped and not play.is_rival_aiming(), "the HUD shows the rival's score and the escape; he lowers his gun", "%s, %s" % [_text(play, "Rival"), _text(play, "Escaped")])
-	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\)$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
+	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\); he laughs in 0\\.30 s, no new cue for the 1\\.50 s aim gap$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
 	_check(Content.rival_lines().lines["steal"].has(play.heckle_shown()) and play.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.heckle_shown(), play.heckles])
-	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\)$", "the steal heckle is logged with its category and line")
+	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\), no blurt$", "the steal heckle is logged with its category and line")
 	var number := bird.number
 	for i in 120:
 		if not is_instance_valid(bird):
@@ -2449,7 +2655,7 @@ func _test_rival_kill_during_cue() -> void:
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	_check(not bird.is_flying() and not bird.stolen and play.scoring.score == 100 and play.scoring.kills == 1, "a kill during the cue scores as usual", "score %d, stolen %s" % [play.scoring.score, bird.stolen])
 	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.is_rival_aiming()])
-	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cancelled cue is logged with its cause")
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\); no new cue for the 1\\.50 s aim gap$" % bird.number, "the cancelled cue is logged with its cause and the aim gap")
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		await process_frame
 	_check(play.stolen == 0 and play.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.stolen)
@@ -4183,11 +4389,22 @@ func _test_audio_every_event_sound() -> void:
 	var cued := await _cued_bird(play, 48, "goose")
 	_check(cued.is_cued() and _game.sfx_log.count(&"rival_aim") >= 1, "the rival's aim cue plays rival_aim", str(_game.sfx_log))
 	_game.sfx_log.clear()
+	var steal_from := _log.size()
 	for i in 120:
 		if cued.stolen:
 			break
 		await process_frame
-	_check(cued.stolen and _game.sfx_log.count(&"rival_steal") >= 1 and &"heckle_steal" in _game.sfx_log, "the rival's steal plays rival_steal and his steal heckle", str(_game.sfx_log))
+	var line := play.heckle_shown()
+	var waited := 0
+	while not &"rival_laugh" in _game.sfx_log and waited < 120:
+		await process_frame
+		waited += 1
+	_check(cued.stolen and _game.sfx_log.count(&"rival_steal") == 1 and _game.sfx_log.count(&"rival_laugh") == 1 and _game.sfx_log.find(&"rival_steal") < _game.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.sfx_log))
+	_check(absi(waited - roundi(Play.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
+	_check(line != "" and not &"heckle_steal" in _game.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.sfx_log])
+	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
+	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
+	_check_logged(steal_from, "^\\[Play\\] Heckle \\(steal\\) #\\d+: \".+\" \\(.*\\), no blurt$", "the steal heckle is logged without a blurt")
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
 	_game.sfx_log.clear()
 	await _tap(pause_button)
@@ -5583,3 +5800,107 @@ func _slider_points(slider: TouchSlider) -> Array[Vector2]:
 	for fraction: float in [0.25, 0.75]:
 		points.append(Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * fraction, rect.get_center().y))
 	return points
+
+
+## AC 10: the rival aims at one bird at a time. Two geese past their linger_time at once:
+## the cue goes to the one that has flown longest (the other is younger and has the lower
+## number, so the age decides), and until that one is stolen no frame ever has two cues and
+## the younger goose is never aimed at; after the steal the aim gap keeps it uncued too.
+func _test_rival_one_cue_at_a_time() -> void:
+	var play := await _start_run(71)
+	# No wave birds: only the two geese below fly.
+	play._next_spawn = play.wave.spawns.size()
+	var younger := play.spawn_bird("goose", 301)
+	var older := play.spawn_bird("goose", 302)
+	younger.age = 3.6
+	older.age = 3.7
+	var most_cues := 0
+	var younger_cued := false
+	for i in 200:
+		await process_frame
+		var cued := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.is_cued()).size()
+		most_cues = maxi(most_cues, cued)
+		younger_cued = younger_cued or (is_instance_valid(younger) and younger.is_cued())
+		if older.stolen:
+			break
+	_check(older.stolen and most_cues == 1 and not younger_cued, "with two geese eligible the rival aims only at the one flown longest, and steals it", "stolen %s, at most %d cues at once, the younger cued %s" % [older.stolen, most_cues, younger_cued])
+	var steal_clock := play.run_clock
+	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < Play.RIVAL_AIM_GAP - 2.0 * FRAME:
+		younger_cued = younger_cued or younger.is_cued()
+		await process_frame
+	_check(not younger_cued, "after a steal no new cue starts during the aim gap", "the younger goose was cued %.2f s after the steal" % (play.run_clock - steal_clock))
+	await _open_title()
+
+
+## AC 11: after a cue cancelled by the player's shot, an eligible goose waits RIVAL_AIM_GAP
+## seconds of run time; a pause in between does not count (the frames paused add to the
+## wait, the run clock does not move); the cue then starts within a frame of the gap's end
+## and its log names the gap.
+func _test_rival_aim_gap() -> void:
+	var play := await _start_run(72)
+	play._next_spawn = play.wave.spawns.size()
+	play.set_shell_pool(10)
+	var first := await _cued_bird(play, 303, "goose")
+	var waiting := play.spawn_bird("goose", 304)
+	waiting.age = 3.0
+	_check(first.is_cued() and not waiting.is_cued(), "a first goose is cued", "cued %s" % first.is_cued())
+	first.set_process(false)
+	await _touch(_global(play, first.transform * LOCAL_BODY))
+	first.set_process(true)
+	_check(first.state != Bird.State.FLYING and not first.is_cued(), "the player's shot kills the cued goose and cancels the cue", "state %d" % first.state)
+	var cancel_clock := play.run_clock
+	var from := _log.size()
+	var paused_frames := 0
+	var frames := 0
+	var early := false
+	while not waiting.is_cued() and frames < 400:
+		if frames == 30:
+			play.open_pause("pause button")
+			var clock := play.run_clock
+			for i in 60:
+				await process_frame
+				paused_frames += 1
+			_check(play.run_clock == clock and not waiting.is_cued(), "the aim gap stands still while paused", "clock %.3f -> %.3f" % [clock, play.run_clock])
+			play.resume()
+		await process_frame
+		frames += 1
+		if waiting.is_cued() and play.run_clock - cancel_clock < Play.RIVAL_AIM_GAP:
+			early = true
+	var waited := play.run_clock - cancel_clock
+	_check(waiting.is_cued() and not early and waited < Play.RIVAL_AIM_GAP + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % Play.RIVAL_AIM_GAP, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
+	_check(frames + paused_frames > roundi(Play.RIVAL_AIM_GAP / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; 1\\.5\\d s since the last cue ended, aim gap 1\\.50 s\\) " % waiting.number, "the cue after the gap logs the time since the last cue and the gap")
+	await _open_title()
+
+
+## AC 13: the mouse pointer is the crosshair while the run is live (its texture at most
+## 64 px a side, the hotspot at its centre), the arrow on pause, back to the crosshair on
+## resume, the arrow at the run's end (the results) and on leaving Play; each change logged.
+func _test_crosshair_cursor() -> void:
+	var size := Play.CROSSHAIR.get_size()
+	_check(size.x <= 64.0 and size.y <= 64.0 and size.x > 0.0, "the crosshair texture is at most 64 px a side", str(size))
+	var from := _log.size()
+	var play := await _start_run(73)
+	_check(play.crosshair_shown and play.cursor_log == ["crosshair"], "a live run shows the crosshair", str(play.cursor_log))
+	_check_logged(from, "^\\[Play\\] Cursor: crosshair$", "the crosshair is logged")
+	play.open_pause("pause button")
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)", "the pause menu puts the arrow back", str(play.cursor_log))
+	play.resume()
+	_check(play.crosshair_shown and play.cursor_log.back() == "crosshair", "resuming shows the crosshair again", str(play.cursor_log))
+	await _key(KEY_ESCAPE)
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)", "Escape's pause puts the arrow back", str(play.cursor_log))
+	await _key(KEY_ESCAPE)
+	_check(play.crosshair_shown, "Escape's resume shows the crosshair", str(play.cursor_log))
+	play._end_run()
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)", "the run's end (to the results) puts the arrow back", str(play.cursor_log))
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.RESULTS, "the run ended on the results", str(_game.state))
+	_check_logged(from, "^\\[Play\\] Cursor: arrow \\(the run is over\\)$", "the arrow is logged with its cause")
+	play = await _start_run(74)
+	play.open_pause("pause button")
+	play.resume()
+	_check(play.crosshair_shown, "a new run shows the crosshair", str(play.cursor_log))
+	var log_of := play.cursor_log
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_check(log_of.back() == "arrow (left the play scene)", "leaving Play puts the arrow back", str(log_of))

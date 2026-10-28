@@ -51,8 +51,13 @@ extends Node2D
 ## raising his gun) and runs aim_time; a kill during it saves the bird (a damaging hit
 ## does not), a bird that starts fleeing drops it, and once it has run the rival fires
 ## and never misses: the bird falls as stolen, its points (no combo) go to his tally, it
-## counts as an escape (stolen birds can end the run), the player's combo is untouched
-## and a stolen splitter launches no goslings. With rival_steals off he only heckles. He
+## counts as an escape (stolen birds can end the run), the player's combo is untouched,
+## a stolen splitter launches no goslings, and he laughs ("rival_laugh",
+## RIVAL_LAUGH_DELAY after his shot; his steal line shows without its blurt). He aims at
+## one bird at a time (Rival.may_aim): when several have flown their linger_time, the cue
+## goes to the one that has flown longest (the lower number on a tie: Rival.aim_target),
+## and after a steal or a cancelled cue he waits RIVAL_AIM_GAP seconds of run_clock (a
+## pause does not count) before the next cue. With rival_steals off he only heckles. He
 ## heckles (a Rival.pick_line line in the bubble for HECKLE_TIME) on a miss, a combo
 ## rising to COMBO_HECKLE_MIN or more and a wave's end, at most once per cooldown, and on
 ## every steal; the results screen shows one more line. His pose follows the run: he
@@ -99,6 +104,11 @@ extends Node2D
 ## the multiplier (combo) and shake (penalty), then rise and fade. With reduce motion on,
 ## there is no shake and the pop-ups only rise and fade (the combo ones still larger); the
 ## hit stop and the feathers stay.
+## Each bird flies at the wave's speed scale x its own seeded factor (Flight.speed_factor,
+## also for goslings), so a flock never moves in lockstep.
+## Cursor: while the run is live (started, not paused, not over) the mouse pointer is the
+## crosshair (CROSSHAIR, its hotspot at its centre); pausing, the run's end (the results)
+## and leaving Play put the default arrow back (logged "[Play] Cursor: ...").
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
@@ -130,6 +140,8 @@ const RIVAL_IDLE := preload("res://art/rival_idle.svg")
 const RIVAL_AIM := preload("res://art/rival_aim.svg")
 const RIVAL_SULK := preload("res://art/rival_sulk.svg")
 const RIVAL_BRAG := preload("res://art/rival_brag.svg")
+## The mouse pointer while the run is live (64x64 at most; its hotspot is its centre).
+const CROSSHAIR := preload("res://art/crosshair.svg")
 ## The 960x540 base the playfield is laid out in.
 const BASE_SIZE := Vector2(960, 540)
 const HUD_BAR_HEIGHT := 56.0
@@ -164,6 +176,10 @@ const COMBO_HECKLE_MIN := 3
 const HECKLE_TIME := 2.5
 ## Seconds (run_clock) the rival sulks after a scored hit, or brags after a miss heckle.
 const RIVAL_REACTION_TIME := 1.2
+## Seconds of run_clock after a steal or a cancelled cue before the rival aims again.
+const RIVAL_AIM_GAP := 1.5
+## Seconds after the rival's shot (rival_steal) that his laugh (rival_laugh) starts.
+const RIVAL_LAUGH_DELAY := 0.3
 ## The run's most frequent sounds (VARIED_SOUNDS) play each time at a pitch up to this much
 ## (a fraction) off 1, drawn from an RNG seeded by the run seed (the same run sounds the same).
 const SOUND_PITCH_SPREAD := 0.04
@@ -204,6 +220,10 @@ var wave_clock := 0.0
 var pause_log: Array[String] = []
 ## Countdown ticks played this run (a timed run's last COUNTDOWN_SECONDS).
 var countdown_ticks := 0
+## True while the mouse pointer is the crosshair; every change, oldest first, as
+## "crosshair" or "arrow (<why>)" (tests read them).
+var crosshair_shown := false
+var cursor_log: Array[String] = []
 
 var _game: GameState
 var _next_spawn := 0
@@ -223,6 +243,8 @@ var _next_backdrop: Backdrop
 var _backdrop_tween: Tween
 ## The run_clock of the last heckle shown (-INF before any).
 var _last_heckle := -INF
+## The run_clock the last aim cue ended at, by a steal or a cancel (-INF before any).
+var _last_cue_end := -INF
 ## The rival's reaction (RIVAL_SULK or RIVAL_BRAG, null for none) and the run_clock it
 ## lasts until; aiming takes precedence over it.
 var _reaction: Texture2D
@@ -295,7 +317,7 @@ func _ready() -> void:
 
 
 ## Window and app focus or visibility loss pauses the run (notifications arrive while
-## the tree is paused too; open_pause ignores repeats).
+## the tree is paused too; open_pause ignores repeats); leaving the tree puts the arrow back.
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_WINDOW_FOCUS_OUT:
@@ -304,6 +326,9 @@ func _notification(what: int) -> void:
 			open_pause("app lost focus")
 		NOTIFICATION_APPLICATION_PAUSED:
 			open_pause("app paused or hidden")
+		NOTIFICATION_EXIT_TREE:
+			# Whatever ends the scene, the arrow comes back.
+			_show_crosshair(false, "left the play scene")
 
 
 func _process(frame_delta: float) -> void:
@@ -342,7 +367,7 @@ func _process(frame_delta: float) -> void:
 		if _next_spawn == 1:
 			_game.play_sfx(&"wave_start")
 		var bird := spawn_bird(spawn.bird_id, spawn.bird_seed)
-		print("[Play] Spawned %s #%d (wave %d, seed %d) at t %.2f%s" % [spawn.bird_id, bird.number, wave.index, spawn.bird_seed, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
+		print("[Play] Spawned %s #%d (wave %d, seed %d, speed x%.3f) at t %.2f%s" % [spawn.bird_id, bird.number, wave.index, spawn.bird_seed, bird.speed_scale, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
 	_update_steals()
 	if _over:
 		return
@@ -362,7 +387,8 @@ func _process(frame_delta: float) -> void:
 func spawn_bird(bird_id: String, bird_seed: int, from := Flight.NOT_LAUNCHED, heading := Vector2.ZERO) -> Bird:
 	_spawned += 1
 	var bird := BIRD_SCENE.instantiate() as Bird
-	bird.setup(Content.bird(bird_id), _spawned, bird_seed, wave.speed_scale, FIELD, ammo.is_empty(), from, heading)
+	var speed_scale := wave.speed_scale * Flight.speed_factor(bird_seed, wave.speed_scale)
+	bird.setup(Content.bird(bird_id), _spawned, bird_seed, speed_scale, FIELD, ammo.is_empty(), from, heading)
 	bird.wave_index = wave.index
 	bird.escaped.connect(_on_bird_escaped)
 	# A gosling launched by the kill that started a hit stop waits it out with the others
@@ -430,6 +456,7 @@ func open_pause(cause: String) -> void:
 	if _pause_menu.visible:
 		return
 	_pause_menu.show()
+	_show_crosshair(false, "paused")
 	_game.play_sfx(&"pause")
 	_resume_button.grab_focus(true)
 	pause_log.append(cause)
@@ -448,6 +475,7 @@ func resume(cause := "Resume") -> void:
 	_game.play_sfx(&"resume")
 	get_tree().paused = false
 	_game.sync_audio_pause()
+	_show_crosshair(true)
 	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
 
 
@@ -564,6 +592,7 @@ func _start_run() -> void:
 		_time_label.visible = mode.is_timed()
 		_rival_label.visible = mode.rival_steals
 	_start_wave(1)
+	_show_crosshair(true)
 
 
 ## A run that cannot start: `message` is reported, nothing runs, and the menu offers only
@@ -862,36 +891,52 @@ func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): penalty %d, -%d, combo reset, score %d (%d pigeons hit, wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.penalty, deducted, scoring.score, scoring.penalties, wave.index, wave_clock, ammo.shells])
 
 
-## Asks Rival about every flying bird: start or keep its aim cue, drop it (the bird
-## started fleeing, or steals were turned off), or steal it once the cue has run.
+## Asks Rival about every flying bird: keep a running aim cue, drop it (the bird started
+## fleeing, or steals were turned off), or steal its bird once the cue has run. With no
+## cue running and the aim gap over (Rival.may_aim), a new cue starts on the eligible bird
+## (one that has flown its linger_time) Rival.aim_target picks: the longest flown.
 func _update_steals() -> void:
+	var cue_running := false
+	var eligible: Array[Bird] = []
+	var ages := PackedFloat64Array()
+	var numbers := PackedInt32Array()
 	for bird in flying_birds():
 		match Rival.steal_state(bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, bird.cue_age, bird.spec.penalty > 0, bird.is_fleeing(), steals_on()):
 			Rival.Steal.NONE:
 				if bird.is_cued():
 					_cancel_cue(bird, "fled" if bird.is_fleeing() else "rival steals off")
 			Rival.Steal.AIMING:
-				if not bird.is_cued():
-					_start_cue(bird)
+				if bird.is_cued():
+					cue_running = true
+				else:
+					eligible.append(bird)
+					ages.append(bird.age)
+					numbers.append(bird.number)
 			Rival.Steal.FIRE:
 				_steal(bird)
 				if _over:
 					return
+	if eligible.is_empty() or not Rival.may_aim(cue_running, run_clock, _last_cue_end, RIVAL_AIM_GAP):
+		return
+	_start_cue(eligible[Rival.aim_target(ages, numbers)], eligible.size())
 
 
-func _start_cue(bird: Bird) -> void:
+## Starts the rival's aim cue on `bird`, picked among `eligible` birds.
+func _start_cue(bird: Bird, eligible: int) -> void:
 	bird.set_cue(true)
 	_update_rival_pose()
 	_game.play_sfx(&"rival_aim")
-	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (wave %d at t %.2f, rival score %d, %d stolen)" % [
-		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, wave.index, wave_clock, rival_score, stolen])
+	var since := "no cue before" if _last_cue_end == -INF else "%.2f s since the last cue ended" % (run_clock - _last_cue_end)
+	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (the longest flown of %d eligible; %s, aim gap %.2f s) (wave %d at t %.2f, rival score %d, %d stolen)" % [
+		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, eligible, since, RIVAL_AIM_GAP, wave.index, wave_clock, rival_score, stolen])
 
 
 func _cancel_cue(bird: Bird, cause: String) -> void:
 	var held := bird.age - bird.cue_age
 	bird.set_cue(false)
+	_last_cue_end = run_clock
 	_update_rival_pose()
-	print("[Play] Aim cue on %s #%d cancelled (%s) after %.2f s (wave %d at t %.2f, rival score %d, %d stolen)" % [bird.spec.id, bird.number, cause, held, wave.index, wave_clock, rival_score, stolen])
+	print("[Play] Aim cue on %s #%d cancelled (%s) after %.2f s (wave %d at t %.2f, rival score %d, %d stolen); no new cue for the %.2f s aim gap" % [bird.spec.id, bird.number, cause, held, wave.index, wave_clock, rival_score, stolen, RIVAL_AIM_GAP])
 
 
 ## The rival fires: the bird falls as stolen, its points go to his tally (no combo) and it
@@ -899,16 +944,19 @@ func _cancel_cue(bird: Bird, cause: String) -> void:
 func _steal(bird: Bird) -> void:
 	var held := bird.age - bird.cue_age
 	bird.steal()
+	_last_cue_end = run_clock
 	_update_rival_pose()
 	_game.play_sfx(&"rival_steal")
+	_game.play_sfx_later(&"rival_laugh", RIVAL_LAUGH_DELAY)
 	_feathers.burst(bird.position, bird.spec.sprite)
 	shake("steal")
 	stolen += 1
 	rival_score += bird.spec.points
 	escaped += 1
-	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %s escaped, combo x%d kept (wave %d at t %.2f)" % [
-		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, _escapes(), scoring.multiplier, wave.index, wave_clock])
-	_heckle(Rival.STEAL)
+	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %s escaped, combo x%d kept (wave %d at t %.2f); he laughs in %.2f s, no new cue for the %.2f s aim gap" % [
+		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, _escapes(), scoring.multiplier, wave.index, wave_clock, RIVAL_LAUGH_DELAY, RIVAL_AIM_GAP])
+	# He laughs instead of blurting his steal line.
+	_heckle(Rival.STEAL, false)
 	_update_hud()
 	if _escape_limit_reached():
 		_end_run()
@@ -958,10 +1006,27 @@ func _react(pose: Texture2D, what: String) -> void:
 	print("[Play] Rival %s (wave %d at t %.2f)" % [what, wave.index, wave_clock])
 
 
+## Makes the mouse pointer the crosshair (`on`, the run is live) or the default arrow
+## again (`why`: paused, the run is over, the rotate overlay, left the scene); a change is
+## logged and kept in cursor_log, a repeat does nothing.
+func _show_crosshair(on: bool, why := "") -> void:
+	if on == crosshair_shown:
+		return
+	crosshair_shown = on
+	if on:
+		Input.set_custom_mouse_cursor(CROSSHAIR, Input.CURSOR_ARROW, CROSSHAIR.get_size() / 2.0)
+	else:
+		Input.set_custom_mouse_cursor(null)
+	var shown := "crosshair" if on else "arrow (%s)" % why
+	cursor_log.append(shown)
+	print("[Play] Cursor: %s" % shown)
+
+
 ## Shows a `category` line (Rival.pick_line) in the rival's bubble for HECKLE_TIME, unless
 ## the cooldown since the last heckle has not passed yet (Rival.may_heckle; steal lines
-## always show). Both are logged. Returns whether the line showed.
-func _heckle(category: String) -> bool:
+## always show), with his gibberish blurt unless `blurt` is false (a steal: he laughs).
+## Both are logged. Returns whether the line showed.
+func _heckle(category: String, blurt := true) -> bool:
 	if not Rival.may_heckle(category, run_clock, _last_heckle, rival_lines.cooldown):
 		print("[Play] Heckle (%s) skipped: cooldown, %.2f of %.2f s since the last (wave %d at t %.2f, rival score %d, %d stolen)" % [
 			category, run_clock - _last_heckle, rival_lines.cooldown, wave.index, wave_clock, rival_score, stolen])
@@ -976,8 +1041,9 @@ func _heckle(category: String) -> bool:
 	_bubble_tween = create_tween()
 	_bubble_tween.tween_interval(HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
-	_game.play_heckle(category, line)
-	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen])
+	if blurt:
+		_game.play_heckle(category, line)
+	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)%s" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen, "" if blurt else ", no blurt"])
 	return true
 
 
@@ -1033,6 +1099,7 @@ func _end_run() -> void:
 ## next scene must not start paused).
 func _stop() -> void:
 	_over = true
+	_show_crosshair(false, "the run is over")
 	_end_shake()
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	_pause_menu.hide()
@@ -1077,6 +1144,7 @@ func _on_cancel() -> void:
 func _on_rotate_overlay_changed(shown: bool) -> void:
 	if shown:
 		_rotated = not _over
+		_show_crosshair(false, "rotate overlay")
 	elif _rotated or is_paused():
 		_rotated = false
 		open_pause("rotate overlay")

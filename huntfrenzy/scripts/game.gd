@@ -37,7 +37,8 @@ extends Node
 ## logs "[Audio] SFX <id>" and plays it on the SFX bus from a pool of SFX_VOICES players;
 ## every Button's press plays "ui_tap" unless it is in OWN_SOUND_GROUP (it plays its own).
 ## A heckle plays a gibberish blurt (play_heckle: blurt_plan strings the rival's syllables,
-## seeded by the line, pitched and voiced by the category). The music is one loop per
+## seeded by the line, pitched and voiced by the category). play_sfx_later plays a sound a
+## moment from now (the rival's laugh after his shot), on the same clock as the blurts. The music is one loop per
 ## screen (track_for: the title's for the title, the selects, the settings and the
 ## credits, the chapter's or the mode's in a run, the results' on results) on the Music
 ## bus: goto() asks for it as the
@@ -178,7 +179,7 @@ const SFX_PATH := "res://audio/sfx/%s.wav"
 const SFX_IDS: Array[StringName] = [
 	&"shot", &"empty_click", &"out_of_shells", &"hit", &"armored_clank", &"armored_kill", &"split_pop",
 	&"golden_chime", &"decoy_penalty", &"escape", &"wave_start", &"wave_clear", &"wave_lost", &"combo_up",
-	&"rival_aim", &"rival_steal", &"countdown_tick", &"time_up", &"star", &"new_best", &"ui_tap", &"pause", &"resume",
+	&"rival_aim", &"rival_steal", &"rival_laugh", &"countdown_tick", &"time_up", &"star", &"new_best", &"ui_tap", &"pause", &"resume",
 ]
 ## Sound effect players: at most this many sounds at once (the oldest gives way). One more
 ## player, the menu voice, plays every sound started while the audio is paused (the pause
@@ -314,6 +315,8 @@ var _held: Array[AudioStreamPlayer] = []
 var _held_at := 0.0
 ## The syllables of blurts still to start, each at its _clock time (in order).
 var _blurt_queue: Array[Syllable] = []
+## Sounds play_sfx_later queued, each at its _clock time (in order).
+var _later_queue: Array[Syllable] = []
 ## Loop file -> its stream, or null when it is missing (reported once).
 var _tracks: Dictionary[String, AudioStream] = {}
 var _music_players: Array[AudioStreamPlayer] = []
@@ -1146,6 +1149,9 @@ func _process(delta: float) -> void:
 	while not audio_paused and not _blurt_queue.is_empty() and _blurt_queue[0].at <= _clock:
 		var syllable: Syllable = _blurt_queue.pop_front()
 		_start_voice(_sound(syllable.sound), syllable.pitch)
+	while not audio_paused and not _later_queue.is_empty() and _later_queue[0].at <= _clock:
+		var later: Syllable = _later_queue.pop_front()
+		play_sfx(later.sound, later.pitch)
 
 
 ## Closing the window: a stream still playing at quit keeps its playback (and the stream)
@@ -1244,6 +1250,25 @@ func play_sfx(id: StringName, pitch := 1.0) -> void:
 	_log_sound(id, pitch)
 	print("[Audio] SFX %s%s" % [id, " x%.3f" % pitch if pitch != 1.0 else ""])
 	_start_voice(stream, pitch)
+
+
+## Plays sound effect `id` (one of SFX_IDS) `delay` seconds from now through play_sfx (logged
+## then); the wait runs on the sound clock, so it holds while the audio is paused and
+## outlives a scene change. An unknown or missing sound is reported now and never queued.
+func play_sfx_later(id: StringName, delay: float) -> void:
+	if _sound(id) == null:
+		return
+	var queued := Syllable.new()
+	queued.sound = id
+	queued.at = _clock + delay
+	_later_queue.append(queued)
+	_later_queue.sort_custom(func(a: Syllable, b: Syllable) -> bool: return a.at < b.at)
+	print("[Audio] SFX %s in %.2f s" % [id, delay])
+
+
+## The sounds play_sfx_later queued and not started yet.
+func sfx_waiting() -> int:
+	return _later_queue.size()
 
 
 ## Plays the rival's blurt for heckle `line` of `category` (blurt_plan) and logs it as
@@ -1418,6 +1443,8 @@ func sync_audio_pause() -> void:
 			_sfx_until[_sfx_players.find(player)] += paused_for
 		for syllable in _blurt_queue:
 			syllable.at += paused_for
+		for later in _later_queue:
+			later.at += paused_for
 		print("[Audio] Resumed after %.2f s: %d sounds continue, the music is back to full" % [paused_for, _held.size()])
 		_held.clear()
 		held_sounds = 0

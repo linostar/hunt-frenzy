@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+  <!-- Crosshair: the player's mouse pointer during a run, a white ring and gapped ticks with an ink outline (unlike the rival's crimson reticle); hotspot at the centre (24, 24). -->
+  <circle cx="24" cy="24" r="14" fill="none" stroke="#1f1a2e" stroke-width="6"/>
+  <circle cx="24" cy="24" r="14" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+  <path d="M24 3 L24 15 M24 33 L24 45 M3 24 L15 24 M33 24 L45 24" fill="none" stroke="#1f1a2e" stroke-width="5.5" stroke-linecap="round"/>
+  <path d="M24 3 L24 15 M24 33 L24 45 M3 24 L15 24 M33 24 L45 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
+  <ellipse cx="24" cy="24" rx="2.5" ry="2.5" fill="#ffed99" stroke="#1f1a2e" stroke-width="1.5"/>
+</svg>

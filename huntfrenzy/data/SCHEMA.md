@@ -27,11 +27,15 @@ them so they match. Do not leave the code working around the difference.
 ## Game rules the data relies on
 - **Flight** (`scripts/logic/flight.gd`): a bird rises from fully below the grass line at a seeded x and heading (30-60
   degrees above the horizontal) into the field (`Play.FIELD`, x 0-960, y 56-440: below the HUD bar, above the grass),
-  then bounces inside it with a seeded-phase vertical wobble. At `flee_time` (or at once when the wave's shells run out)
-  it climbs straight up, and it has escaped once fully above the screen top. A `zigzag` bird also reverses its
-  horizontal heading at seeded intervals (`Flight.ZIGZAG_INTERVAL_MIN`..`MAX`, 0.35-0.8 s). A split child is launched
-  from the hit point (kept inside the field) on a heading from `Flight.split_headings` (fanned 100 degrees around
-  straight up).
+  then flies straight segments inside it at constant velocity, without wobble: it bounces off the field's edges
+  (reflecting the matching velocity component) and turns to a new seeded heading (30-60 degrees from the
+  horizontal, up or down, left or right) at seeded intervals: a `rise` bird every `Flight.TURN_INTERVAL_MIN`..`MAX`
+  (1.0-2.5 s), a `zigzag` bird every `Flight.ZIGZAG_INTERVAL_MIN`..`MAX` (0.35-0.8 s), always reversing its
+  horizontal heading. At `flee_time` (or at once when the wave's shells run out) it climbs straight up, and it has
+  escaped once fully above the screen top. A split child is launched from the hit point (kept inside the field) on a
+  heading from `Flight.split_headings` (fanned 100 degrees around straight up). Each bird flies at its `speed` x the
+  wave's speed scale x its own seeded factor within 1 -/+ s (`Flight.speed_factor`), s rising linearly from 0.05 at
+  speed scale 1 to 0.20 at `Flight.SPEED_SPREAD_TOP_SCALE` (1.6, I24), clamped.
 - **Hits** (`Play`): a shot hits the frontmost flying bird whose hitbox polygon holds the point (above the grass line).
   A hit short of the bird's `hp` damages it (no points, the combo multiplier unchanged; it flies on with its damaged
   frames); the killing hit scores `points` x the multiplier and raises it (up to the mode's `combo_cap`). Killing a
@@ -92,8 +96,8 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `chapter` | string | chapter id (chapters.json) | The campaign chapter that introduces the type (I19). |
 | `pattern` | string | `"rise" \| "zigzag"` | Flight pattern (above). |
 | `speed` | float | 1..1000 | Base units per second, before the wave's speed scale. |
-| `wobble` | float | 0..100 | Vertical wobble amplitude in base units. |
-| `wobble_hz` | float | 0..5 | Wobble frequency. |
+| `wobble` | float | 0..100 | Vertical wobble amplitude in base units, on the title's crossing path only (a run's flight has none). |
+| `wobble_hz` | float | 0..5 | Wobble frequency (title crossing only). |
 | `flee_time` | float | 0.1..60 | Seconds of flight before it climbs off the top. |
 | `linger_time` | float | 0.1..60 | Seconds of flight after which the rival starts aiming at it (modes with `rival_steals`). Required for every bird, the decoy too (never used for it); `linger_time + aim_time < flee_time` (I13). |
 | `points` | int | 0..100000 | Points of a kill, before the multiplier. 0 only for a decoy (I6). |
@@ -259,7 +263,7 @@ against a fallback value.
   one); every bird a chapter introduces spawns in at least one of its levels' fixed-seed waves (a split child counts
   when its parent spawns); a golden bird spawns in every chapter.
 - **I20** Endless and Time Attack are fair, by a simulation of the real data that uses `Wave.for_mode`, `Ammo` and
-  `Flight` as play does, over 60 run seeds and the waves a run can reach: Endless's waves 1-10, and every wave of a
+  `Flight` as play does (each bird at its own `Flight.speed_factor`), over 60 run seeds and the waves a run can reach: Endless's waves 1-10, and every wave of a
   timed mode that starts before its `time_limit` even if each wave ended the moment its last bird spawned (each
   wave's lead-in counted: 11 waves for Time Attack). In each: (a) a wave never has fewer birds or a lower speed scale
   than the one before; (b) its shells cover every hit its birds need (an `Ammo` of the wave's shells never refuses
@@ -279,6 +283,9 @@ against a fallback value.
   the other backdrops (real art: sunset's violet 4.00:1 is the day's weakest, the night's sky 4.06:1). The main fills'
   contrasts are printed for the record (a sky-coloured bird such as the golden goose on the sunset sky relies on its
   outline).
+- **I24** `Flight.SPEED_SPREAD_TOP_SCALE` (where the per-bird speed spread reaches its 0.20 top) is the highest speed
+  scale in the content: the largest of every level's `speed_scale`, every boss flock's `speed_scale` and every
+  mode's `speed_cap` (1.6: the night boss and Endless).
 - **I23** Every music track the data names (a chapter's `music`, a mode's `music`) is a snake_case id whose loop exists
   as `res://audio/music/<id>.mp3` (made by `tools/music.py`): `unknown music track '<id>' (no
   res://audio/music/<id>.mp3)`, a non-snake_case id `'<id>' is not a snake_case music track id`. The title and results
