@@ -17,8 +17,9 @@ Sounds:
                             TIMBRES and vowel of VOWELS (a voiced source through two vowel
                             formants); Game.play_heckle strings them into a seeded blurt,
                             its pitch and timbre set by the heckle's category.
-    rival_laugh.wav         (one of EFFECTS) the rival's "ha-ha-ha" after a steal, in his
-                            blurt voice (blurt()), LAUGH_SECONDS long; --check holds it there.
+    rival_laugh.wav         (one of EFFECTS) the rival's snicker after a steal, "heh-heh-
+                            heh-heh-HA!" (laugh_syllable()), LAUGH_SECONDS long; --check
+                            holds it there.
 
 Every file is peak-normalised to its own level, never above PEAK, so nothing clips; the
 levels set the mix, and --check holds each file's loudness as heard (loudness_of: BS.1770
@@ -313,25 +314,41 @@ def fx_rival_steal(rng):
     return place(buf, lowpass(shot, [900.0] * len(shot)), 0.16, 0.35)
 
 
-# The rival's laugh after a steal: LAUGH_HAS "ha"s in his gruff blurt voice, LAUGH_GAP
-# seconds apart, each LAUGH_HA_SECONDS long, stepping down in pitch (LAUGH_PITCHES x
-# BLURT_BASE_HZ): 0.2 + 2 x 0.25 = 0.7 s in all (0.6..1.0 s: the plan's AC 8).
-LAUGH_HAS = 3
-LAUGH_GAP = 0.25
-LAUGH_HA_SECONDS = 0.2
-LAUGH_PITCHES = (1.25, 1.12, 1.0)
+# The rival's laugh after a steal, a naughty snicker: LAUGH_HEHS nasal "heh"s at
+# LAUGH_HEH_HZ, LAUGH_HEH_GAP seconds apart, then a bright mocking "HA" at LAUGH_HA_HZ that
+# lifts and wavers: 0.02 + 4 x 0.105 + 0.04 + 0.34 = 0.8 s in all (0.6..1.0 s: the plan's AC 8).
+LAUGH_HEH_HZ = (360.0, 400.0, 370.0, 410.0)
+LAUGH_HEH_GAP = 0.105
+LAUGH_HEH_SECONDS = 0.08
+LAUGH_HA_HZ = 440.0
+LAUGH_HA_SECONDS = 0.32
+# A bright "a" and a nasal "e" (formant Hz, Q, gain): higher than VOWELS, a small sharp voice.
+LAUGH_A = ((1000.0, 4.0, 1.0), (1600.0, 6.0, 0.7), (3000.0, 9.0, 0.25))
+LAUGH_E = ((500.0, 4.0, 1.0), (2300.0, 7.0, 0.8), (3200.0, 9.0, 0.3), (2700.0, 9.0, 0.4))
 # --check holds the laugh's length to this range (seconds).
 LAUGH_SECONDS = (0.6, 1.0)
 
 
+def laugh_syllable(rng, hz, glide, seconds, formants, width, vibrato, breath):
+    """One laugh syllable: a breathy h, then a pulse of `width` gliding from `hz` to
+    `hz` x `glide` (with a 7 Hz `vibrato` depth) through `formants`."""
+    n = int(seconds * RATE)
+    freqs = [hz * (1 + (glide - 1) * i / n) * (1 + vibrato * math.sin(2 * math.pi * 7.0 * i / RATE)) for i in range(n)]
+    source = oscillate(freqs, pulse(width))
+    voiced = [0.0] * n
+    for centre, q, gain in formants:
+        voiced = [v + gain * b for v, b in zip(voiced, bandpass(source, centre, q))]
+    buf = place([], highpassed(noise(0.035, rng, [(0, 5000), (1, 3500)], attack=0.003, release=0.02)), 0.0, breath)
+    return place(buf, [v * e for v, e in zip(voiced, envelope(n, 0.008, 0.04))], 0.02)
+
+
 def fx_rival_laugh(rng):
-    """The rival laughing at his steal: "ha-ha-ha", each "ha" a breathy h into a gruff "a"."""
+    """The rival snickering at his steal: "heh-heh-heh-heh-HA!"."""
     buf = []
-    for i in range(LAUGH_HAS):
-        at = i * LAUGH_GAP
-        place(buf, highpassed(noise(0.05, rng, [(0, 3000), (1, 1500)], attack=0.005, release=0.03)), at, 0.25)
-        place(buf, blurt("gruff", "a", rng, LAUGH_HA_SECONDS, BLURT_BASE_HZ * LAUGH_PITCHES[i]), at + 0.03)
-    return buf
+    for i, hz in enumerate(LAUGH_HEH_HZ):
+        place(buf, laugh_syllable(rng, hz, 0.9, LAUGH_HEH_SECONDS, LAUGH_E, 0.18, 0.0, 0.2), i * LAUGH_HEH_GAP)
+    ha = laugh_syllable(rng, LAUGH_HA_HZ, 1.15, LAUGH_HA_SECONDS, LAUGH_A, 0.3, 0.05, 0.12)
+    return place(buf, ha, len(LAUGH_HEH_HZ) * LAUGH_HEH_GAP + 0.04)
 
 
 def fx_countdown_tick(rng):
@@ -408,7 +425,7 @@ EFFECTS = {
     "combo_up": (fx_combo_up, 0.3, "event"),
     "rival_aim": (fx_rival_aim, 0.5, "event"),
     "rival_steal": (fx_rival_steal, 0.7, "event"),
-    "rival_laugh": (fx_rival_laugh, 0.5, "voice"),
+    "rival_laugh": (fx_rival_laugh, 0.3, "voice"),
     "countdown_tick": (fx_countdown_tick, 0.45, "event"),
     "time_up": (fx_time_up, 0.5, "stinger"),
     "star": (fx_star, 0.55, "stinger"),
