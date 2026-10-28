@@ -73,10 +73,15 @@ const UNWRITABLE_SAVE_PATH := "user://no_such_dir/save.json"
 const SKY_POINTS: Array[Vector2] = [Vector2(120, 120), Vector2(840, 120), Vector2(480, 100)]
 ## How much faster game time runs while the escape test waits for 10 escapes.
 const FAST_TIME_SCALE := 8.0
+## The age a lower stand-in bird starts at: its own path STAND_IN_AGE seconds before its spawn
+## point, so its art lies wholly under the grass (_test_bird_calls_on_appearing).
+const STAND_IN_AGE := -0.5
 ## One frame at --fixed-fps 60.
 const FRAME := 1.0 / 60.0
 
 var _failures: Array[String] = []
+## Each texture's opaque pixel corners, centred (_drawn_art_top), by texture path.
+var _opaque_corners: Dictionary[String, PackedVector2Array] = {}
 var _passed := 0
 var _deadline_msec := 0
 ## The "Game" autoload; this script compiles before autoloads exist, so it is fetched at start.
@@ -155,6 +160,10 @@ func _tests() -> Array[Callable]:
 		_test_flight_hitbox,
 		_test_flight_every_type_deterministic_and_in_field,
 		_test_flight_zigzag_reverses,
+		_test_flight_straight_segments_and_turns,
+		_test_flight_reflects_at_band_edges,
+		_test_flight_crossing_keeps_its_wobble,
+		_test_flight_per_bird_speed,
 		_test_flight_launch_and_split_headings,
 		_test_wave_schedule,
 		_test_wave_time_attack_schedule,
@@ -193,6 +202,14 @@ func _tests() -> Array[Callable]:
 		_test_rival_heckle_cooldown,
 		_test_rival_layout_and_pass_through,
 		_test_rival_poses,
+		_test_rival_one_cue_at_a_time,
+		_test_rival_aim_gap,
+		_test_rival_never_cues_a_short_window,
+		_test_rival_cues_always_finish,
+		_test_rival_laugh_waits_out_a_pause,
+		_test_rival_laugh_before_results_blurt,
+		_test_crosshair_cursor,
+		_test_crosshair_under_rotate_overlay,
 		_test_weather_is_visual_only,
 		_test_backdrop_cycle_and_fade,
 		_test_missing_backdrop_is_reported,
@@ -243,6 +260,8 @@ func _tests() -> Array[Callable]:
 		_test_audio_files_match_ids,
 		_test_audio_music_per_screen,
 		_test_audio_every_event_sound,
+		_test_bird_calls_on_appearing,
+		_test_title_geese_never_call,
 		_test_audio_heckle_blurts,
 		_test_time_attack_countdown,
 		_test_pause_menu_mutes,
@@ -1063,7 +1082,7 @@ func _test_play_empty_pool_refuses() -> void:
 	Engine.time_scale = 1.0
 	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.flying_birds().is_empty(), "the wave ends once its fleeing birds are gone, and the next starts with full shells", "wave %d, %d shells" % [play.wave.index, play.ammo.shells])
 	_check(play.escaped == 4 and not is_instance_valid(bird), "every bird of the emptied wave fled and escaped", "%d escaped" % play.escaped)
-	_check_logged(from, "^\\[Play\\] Spawned goose #\\d+ \\(wave 1, seed -?\\d+\\) at t [\\d.]+, fleeing \\(no shells\\)$", "a spawn is logged with its wave and seed")
+	_check_logged(from, "^\\[Play\\] Spawned goose #\\d+ \\(wave 1, seed -?\\d+, speed x[\\d.]+\\) at t [\\d.]+, fleeing \\(no shells\\)$", "a spawn is logged with its wave and seed")
 	_check_logged(from, "^\\[Play\\] Escaped goose #\\d+ \\(4/10, wave 1 at t [\\d.]+\\)$", "an escape is logged with the escaped total")
 	_check_logged(from, "^\\[Play\\] Wave 2 start: 3 birds \\((goose|golden), (goose|golden), (goose|golden)\\), 9 shells, speed x1\\.06$", "the next wave start is logged")
 
@@ -1381,9 +1400,10 @@ func _test_save_web_persist_reporting() -> void:
 	error_label.hide()
 
 
-## A hit goose stops on its hit frame upright and facing the way it flew, and falls that
-## way: the whole basis, not only the rotation (a left-facing transform is rotation + PI
-## with scale (1, -1), so zeroing the rotation alone turns it upside down).
+## A hit goose stops on its hit frame upright and facing the way it flew (the whole basis,
+## not only the rotation: a left-facing transform is rotation + PI with scale (1, -1), so
+## zeroing the rotation alone turns it upside down), then dives head-first seen from behind:
+## its dive frame (drawn upright, head down, back to the camera), neither turned nor mirrored.
 func _test_play_hit_frame_keeps_facing() -> void:
 	var play := await _start_run(26)
 	var goose := Content.bird("goose")
@@ -1403,9 +1423,17 @@ func _test_play_hit_frame_keeps_facing() -> void:
 		var hit_y := bird.position.y
 		var upright := Transform2D(Vector2(facing, 0.0), Vector2(0.0, 1.0), Vector2.ZERO)
 		_check(bird.transform.basis_xform(Vector2.RIGHT).is_equal_approx(upright.x) and bird.transform.basis_xform(Vector2.DOWN).is_equal_approx(upright.y), label + ": the hit frame is upright and keeps its facing", "x %s, y %s" % [bird.transform.x, bird.transform.y])
-		for i in roundi(Bird.HIT_HOLD * 60.0) + 10:
+		# The kill's hit stop holds it a little past HIT_HOLD: wait for the fall, then 2 frames.
+		var waited := 0
+		while is_instance_valid(bird) and bird.state != Bird.State.FALLING and waited < 60:
 			await process_frame
-		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and bird.transform.x.is_equal_approx(upright.x) and bird.transform.y.is_equal_approx(upright.y), label + ": it falls upright, facing the same way", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
+			waited += 1
+		for i in 2:
+			await process_frame
+		var plain := is_instance_valid(bird) and bird.transform.x.is_equal_approx(Vector2.RIGHT) and bird.transform.y.is_equal_approx(Vector2.DOWN)
+		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and plain, label + ": it falls on its upright back view, neither turned nor mirrored", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
+		var shown := (bird.get_node("Sprite") as Sprite2D).texture.resource_path if is_instance_valid(bird) else "gone"
+		_check(shown == goose.texture_path("dive"), label + ": it shows its dive frame (its back, wings folded, head down) as it falls", shown)
 
 
 ## The grass hides what is behind it: a shot on the grass (at or below the grass line the
@@ -1783,12 +1811,18 @@ func _test_time_attack_leftover_overlaps_next_wave() -> void:
 		if bird != leftover:
 			bird.age = maxf(bird.age, IN_FIELD_AGE)
 	await process_frame
-	for bird in play.flying_birds():
+	# Newest first, each held still while shot: a shot hits the frontmost (newest) bird under
+	# it, so no older bird in the way takes it, and the touch (handled a frame later) lands.
+	var targets := play.flying_birds()
+	targets.reverse()
+	for bird in targets:
 		if bird == leftover:
 			continue
+		bird.set_process(false)
 		for shot in bird.spec.hp:
 			if bird.is_flying():
 				await _touch(_global(play, bird.transform * LOCAL_BODY))
+		bird.set_process(true)
 	var frames := 0
 	while play.wave.index == 2 and frames < 10:
 		await process_frame
@@ -1990,17 +2024,18 @@ func _test_flight_every_type_deterministic_and_in_field() -> void:
 
 
 ## A zigzag bird reverses its horizontal heading at least once in every window of
-## Flight.ZIGZAG_INTERVAL_MAX seconds until it flees (20 seeds), and from the first
-## reversal on its path differs from the rise path of the same seed; a goose of the same
-## speed holds its heading through such a window.
+## Flight.ZIGZAG_INTERVAL_MAX seconds from the start of its cruise until it flees (20
+## seeds), and from its first turn on its path differs from the rise path of the same
+## seed; a rise bird of the same speed holds its heading through such a window.
 func _test_flight_zigzag_reverses() -> void:
 	var zigzag := Content.bird("zigzag")
 	var step := 1.0 / 120.0
 	var problems: Array[String] = []
 	for bird_seed in 20:
-		var last_turn := 0.0
+		var entry := Flight.entry_age(zigzag, bird_seed, Play.FIELD)
+		var last_turn := entry
 		var last_sign := 0.0
-		var age := 0.0
+		var age := entry
 		while age <= zigzag.flee_time:
 			var vx := Flight.velocity(zigzag, bird_seed, age, Play.FIELD).x
 			if absf(vx) > 1.0:
@@ -2012,44 +2047,231 @@ func _test_flight_zigzag_reverses() -> void:
 				break
 			age += step
 	_check(problems.is_empty(), "a zigzag reverses at least once per %.2f s window until it flees" % Flight.ZIGZAG_INTERVAL_MAX, str(problems))
-	# The seeded reversals alone: where Flight's signed horizontal travel turns (unlike the
-	# velocity, it leaves out the bounces off the field's edges). Every interval between two
-	# (from age 0 on) lies in ZIGZAG_INTERVAL_MIN..MAX (within the sampling step), and the
-	# first interval differs between seeds.
-	var fine := 1.0 / 480.0
+	# The seeded turns alone (Flight.turn_ages; unlike the velocity, they leave out the
+	# bounces off the field's edges): every interval from the start of the cruise lies in
+	# ZIGZAG_INTERVAL_MIN..MAX, each reverses the horizontal travel, and the first interval
+	# differs between seeds.
 	var intervals: Array[float] = []
+	var unturned: Array[String] = []
 	var first_intervals: Dictionary[int, bool] = {}
 	for bird_seed in 20:
-		var turned := 0.0
-		var direction := 1.0
-		var last := Flight._travel(zigzag, bird_seed, 0.0)
-		var age := fine
-		while age <= zigzag.flee_time:
-			var now := Flight._travel(zigzag, bird_seed, age)
-			if signf(now - last) == -direction:
-				direction = -direction
-				if turned == 0.0:
-					first_intervals[roundi(age * 100.0)] = true
-				intervals.append(age - turned)
-				turned = age
-			last = now
-			age += fine
-	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.ZIGZAG_INTERVAL_MIN - 2.0 * fine or interval > Flight.ZIGZAG_INTERVAL_MAX + 2.0 * fine)
+		var entry := Flight.entry_age(zigzag, bird_seed, Play.FIELD)
+		var turns := Flight.turn_ages(zigzag, bird_seed, entry, zigzag.flee_time)
+		var previous := entry
+		for turn in turns:
+			intervals.append(turn - previous)
+			previous = turn
+			var before := Flight._offset(zigzag, bird_seed, turn - 0.01, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var at := Flight._offset(zigzag, bird_seed, turn, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var after := Flight._offset(zigzag, bird_seed, turn + 0.01, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			if signf(at.x - before.x) != -signf(after.x - at.x):
+				unturned.append("seed %d at %.2f" % [bird_seed, turn])
+		if not turns.is_empty():
+			first_intervals[roundi((turns[0] - entry) * 100.0)] = true
+	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.ZIGZAG_INTERVAL_MIN or interval > Flight.ZIGZAG_INTERVAL_MAX)
 	_check(intervals.size() >= 20 * 6 and outside.is_empty(), "every zigzag interval lies in %.2f..%.2f s" % [Flight.ZIGZAG_INTERVAL_MIN, Flight.ZIGZAG_INTERVAL_MAX], "%d intervals, outside: %s" % [intervals.size(), outside])
+	_check(unturned.is_empty(), "every zigzag turn reverses its horizontal travel", str(unturned))
 	_check(first_intervals.size() >= 10, "the zigzag intervals vary between seeds", "%d distinct first intervals over 20 seeds: %s" % [first_intervals.size(), first_intervals.keys()])
+	var entry_3 := Flight.entry_age(zigzag, 3, Play.FIELD)
+	var first_turn := Flight.turn_ages(zigzag, 3, entry_3, zigzag.flee_time)[0]
 	var start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
-	var later := Flight.position(zigzag, 3, 2.0, Play.FIELD)
+	var entered := Flight.position(zigzag, 3, entry_3, Play.FIELD)
+	var later := Flight.position(zigzag, 3, first_turn + 0.5, Play.FIELD)
 	# The same spec flying the rise pattern (restored below).
 	zigzag.pattern = "rise"
 	var rise_start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
-	var rise_later := Flight.position(zigzag, 3, 2.0, Play.FIELD)
+	var rise_entered := Flight.position(zigzag, 3, entry_3, Play.FIELD)
+	var rise_later := Flight.position(zigzag, 3, first_turn + 0.5, Play.FIELD)
 	var held := true
 	var first_sign := signf(Flight.velocity(zigzag, 3, 0.1, Play.FIELD).x)
 	for i in roundi(Flight.ZIGZAG_INTERVAL_MAX * 120.0):
 		held = held and signf(Flight.velocity(zigzag, 3, 0.1 + i * step, Play.FIELD).x) == first_sign
 	zigzag.pattern = "zigzag"
-	_check(start.is_equal_approx(rise_start) and not later.is_equal_approx(rise_later), "the zigzag starts like a rise and then departs from it", "%s %s vs %s %s" % [start, later, rise_start, rise_later])
+	_check(start.is_equal_approx(rise_start) and entered.is_equal_approx(rise_entered) and not later.is_equal_approx(rise_later), "the zigzag climbs in like a rise and departs from it after its first turn", "%s %s %s vs %s %s %s" % [start, entered, later, rise_start, rise_entered, rise_later])
 	_check(held, "the rise pattern holds its heading through the same window", "turned")
+
+
+## AC 1, 2 and 4 of the straight flight: between two turns (and away from a bounce) a
+## bird's centre moves on a straight line at constant speed, so its tilt holds (20 seeds
+## of the goose and of a launched gosling, every 0.25 s stretch inside a segment whose
+## velocity never changes sign: no point is 0.5 units off the chord); a rise bird turns at
+## seeded TURN_INTERVAL_MIN..MAX intervals from the start of its cruise to a heading
+## FLIGHT_ANGLE_MIN..MAX from the horizontal; the same inputs give the same path.
+func _test_flight_straight_segments_and_turns() -> void:
+	var goose := Content.bird("goose")
+	var gosling := Content.bird("gosling")
+	var stretches := 0
+	var bent: Array[String] = []
+	var unsteady: Array[String] = []
+	for launched: bool in [false, true]:
+		var spec := gosling if launched else goose
+		var from := Vector2(480, 250) if launched else Flight.NOT_LAUNCHED
+		var heading := Flight.split_headings(2)[0] if launched else Vector2.ZERO
+		for bird_seed in 20:
+			var entry := Flight.entry_age(spec, bird_seed, Play.FIELD, 1.0, from, heading)
+			var bounds := PackedFloat64Array([entry])
+			bounds.append_array(Flight.turn_ages(spec, bird_seed, entry, spec.flee_time))
+			for i in bounds.size() - 1:
+				var t := bounds[i] + 0.02
+				while t + 0.25 < bounds[i + 1] - 0.02:
+					var points: Array[Vector2] = []
+					var signs := {}
+					var tilts := {}
+					for k in 11:
+						var age := t + 0.025 * k
+						points.append(Flight.position(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading))
+						var moving := Flight.velocity(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading)
+						signs[Vector2(signf(moving.x), signf(moving.y))] = true
+						tilts[snappedf(Flight.transform_at(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading).get_rotation(), 0.001)] = true
+					t += 0.25
+					if signs.size() != 1:
+						continue
+					stretches += 1
+					var chord := Geometry2D.get_closest_point_to_segment_uncapped(points[5], points[0], points[10]).distance_to(points[5])
+					var worst := 0.0
+					for point in points:
+						worst = maxf(worst, Geometry2D.get_closest_point_to_segment_uncapped(point, points[0], points[10]).distance_to(point))
+					var gaps := points[1].distance_to(points[0]) - points[10].distance_to(points[9])
+					if worst >= 0.5 or chord >= 0.5 or absf(gaps) > 0.01:
+						bent.append("%s seed %d at %.2f: %.2f off the chord, steps differ by %.3f" % [spec.id, bird_seed, t - 0.25, worst, gaps])
+					if tilts.size() != 1:
+						unsteady.append("%s seed %d at %.2f: tilts %s" % [spec.id, bird_seed, t - 0.25, tilts.keys()])
+	_check(stretches >= 200 and bent.is_empty(), "between turns a bird flies a straight line at constant speed (no wobble)", "%d stretches, bent: %s" % [stretches, bent.slice(0, 5)])
+	_check(unsteady.is_empty(), "the facing and tilt hold steady between two turns", str(unsteady.slice(0, 5)))
+	# Turns: seeded intervals in TURN_INTERVAL_MIN..MAX from the cruise's start, and the new
+	# heading (the velocity just after the turn, away from a bounce) 30-60 degrees off the
+	# horizontal; the first turn really changes the velocity.
+	var intervals: Array[float] = []
+	var angles: Array[String] = []
+	var changed := 0
+	var first_turns: Dictionary[int, bool] = {}
+	for bird_seed in 20:
+		var entry := Flight.entry_age(goose, bird_seed, Play.FIELD)
+		var turns := Flight.turn_ages(goose, bird_seed, entry, 60.0)
+		var previous := entry
+		for turn in turns:
+			intervals.append(turn - previous)
+			previous = turn
+		var turn := turns[0]
+		first_turns[roundi((turn - entry) * 100.0)] = true
+		var before := Flight.velocity(goose, bird_seed, turn - 0.05, Play.FIELD)
+		var after := Flight.velocity(goose, bird_seed, turn + 0.05, Play.FIELD)
+		if not before.is_equal_approx(after):
+			changed += 1
+		var angle := rad_to_deg(atan2(absf(after.y), absf(after.x)))
+		if angle < rad_to_deg(Flight.FLIGHT_ANGLE_MIN) - 0.01 or angle > rad_to_deg(Flight.FLIGHT_ANGLE_MAX) + 0.01:
+			angles.append("seed %d: %.1f degrees" % [bird_seed, angle])
+	var outside := intervals.filter(func(interval: float) -> bool: return interval < Flight.TURN_INTERVAL_MIN or interval > Flight.TURN_INTERVAL_MAX)
+	_check(intervals.size() >= 20 * 20 and outside.is_empty(), "every rise turn interval lies in %.1f..%.1f s" % [Flight.TURN_INTERVAL_MIN, Flight.TURN_INTERVAL_MAX], "%d intervals, outside: %s" % [intervals.size(), outside])
+	_check(first_turns.size() >= 10 and changed >= 18, "the first turn's time varies by seed and changes the heading", "%d distinct first turns, %d of 20 changed" % [first_turns.size(), changed])
+	_check(angles.is_empty(), "a new heading is %.0f-%.0f degrees from the horizontal" % [rad_to_deg(Flight.FLIGHT_ANGLE_MIN), rad_to_deg(Flight.FLIGHT_ANGLE_MAX)], str(angles))
+	# Seed 7's first turn: before it the climb holds its heading since the cruise started.
+	var entry_7 := Flight.entry_age(goose, 7, Play.FIELD)
+	var turn_7 := Flight.turn_ages(goose, 7, entry_7, 60.0)[0]
+	_check(Flight.turn_ages(goose, 7, entry_7, 60.0) == Flight.turn_ages(goose, 7, entry_7, 60.0) and Flight.position(goose, 7, turn_7 + 0.3, Play.FIELD, 1.3) == Flight.position(goose, 7, turn_7 + 0.3, Play.FIELD, 1.3), "turns and positions are the same for the same inputs", "differ")
+
+
+## AC 2: a bird reflects off the cruise band's edges. A goose at 3x speed over 20 seeds:
+## wherever the horizontal velocity flips away from a turn its centre is at a side edge of
+## the band and its vertical velocity is unchanged; wherever the vertical velocity flips
+## away from a turn it is at the top or bottom of the band and its horizontal velocity is
+## unchanged.
+func _test_flight_reflects_at_band_edges() -> void:
+	var goose := Content.bird("goose")
+	var side := 0
+	var top_bottom := 0
+	var problems: Array[String] = []
+	var step := 1.0 / 240.0
+	# One-sided velocities over a short window: away from a bounce each is its segment's.
+	var moving := func(bird_seed: int, age: float) -> Vector2:
+		return (Flight.position(goose, bird_seed, age + 0.001, Play.FIELD, 3.0) - Flight.position(goose, bird_seed, age, Play.FIELD, 3.0)) / 0.001
+	for bird_seed in 20:
+		var entry := Flight.entry_age(goose, bird_seed, Play.FIELD, 3.0)
+		var turns := Flight.turn_ages(goose, bird_seed, entry, goose.flee_time)
+		var age := entry + 0.05
+		while age + 3.0 * step < goose.flee_time - 0.05:
+			var a: Vector2 = moving.call(bird_seed, age)
+			var b: Vector2 = moving.call(bird_seed, age + step)
+			var near_turn := Array(turns).any(func(turn: float) -> bool: return absf(turn - age) < 0.05)
+			if near_turn or (signf(a.x) != -signf(b.x) and signf(a.y) != -signf(b.y)):
+				age += step
+				continue
+			# The bounce lies within (age, age + step + 0.001): compare the velocities a step
+			# before and after it, and look at the position across it.
+			var before: Vector2 = moving.call(bird_seed, age - step)
+			var after: Vector2 = moving.call(bird_seed, age + 2.0 * step)
+			var at := Flight.position(goose, bird_seed, age + step / 2.0, Play.FIELD, 3.0)
+			if absf(before.length() - goose.speed * 3.0) > 1.0 or absf(after.length() - goose.speed * 3.0) > 1.0:
+				# A corner: a second bounce falls inside the window; the clean ones are counted.
+				age += 3.0 * step
+				continue
+			if signf(a.x) == -signf(b.x):
+				side += 1
+				var edge := minf(absf(at.x - Flight.path_x_low(goose, Play.FIELD)), absf(at.x - Flight.path_x_high(goose, Play.FIELD)))
+				if edge > 4.0 or absf(after.x + before.x) > 1.0 or absf(after.y - before.y) > 1.0:
+					problems.append("seed %d side bounce at %.3f: %.1f from the edge, v %s -> %s" % [bird_seed, age, edge, before, after])
+			else:
+				top_bottom += 1
+				var edge := minf(absf(at.y - Flight.path_y_low(goose, Play.FIELD)), absf(at.y - Flight.path_y_high(goose, Play.FIELD)))
+				if edge > 4.0 or absf(after.y + before.y) > 1.0 or absf(after.x - before.x) > 1.0:
+					problems.append("seed %d top/bottom bounce at %.3f: %.1f from the edge, v %s -> %s" % [bird_seed, age, edge, before, after])
+			age += 3.0 * step
+	_check(side >= 20 and top_bottom >= 20 and problems.is_empty(), "a bird reflects off the band's side, top and bottom edges", "%d side, %d top/bottom bounces, problems %s" % [side, top_bottom, problems.slice(0, 5)])
+
+
+## AC 5: the title's geese keep their level, wobbling crossing path: the height swings by
+## the wobble (cut to the band) about a level line while x moves at a constant speed.
+func _test_flight_crossing_keeps_its_wobble() -> void:
+	var goose := Content.bird("goose")
+	var band := Rect2(0, 120, 1170, 220)
+	var plan := Flight._crossing(goose, 5, band, 1.0)
+	var problems: Array[String] = []
+	var low := INF
+	var high := -INF
+	for i in 241:
+		var age := i / 60.0
+		var at := Flight.crossing_position(goose, 5, age, band)
+		var expected := Vector2(plan["start_x"] + plan["direction"] * plan["speed"] * age, plan["y"] + plan["wobble"] * sin(TAU * goose.wobble_hz * age + plan["phase"]))
+		if not at.is_equal_approx(expected):
+			problems.append("age %.2f: %s, not %s" % [age, at, expected])
+		low = minf(low, at.y)
+		high = maxf(high, at.y)
+	_check(problems.is_empty() and high - low > goose.wobble, "the title's crossing path still wobbles about its level line", "%s, swing %.1f" % [problems.slice(0, 3), high - low])
+
+
+## AC 6 and 7: each bird's speed factor is seeded (the same seed, the same factor;
+## different seeds, different factors), within 1 -/+ 0.05 at speed scale 1 and 1 -/+ 0.20
+## at the top scale 1.6 (and filling those ranges), the spread rising linearly between and
+## clamped outside; Play multiplies the wave's speed scale by it for every bird it spawns,
+## goslings included, in Endless and in a campaign level.
+func _test_flight_per_bird_speed() -> void:
+	_check(Flight.speed_factor(4242, 1.3) == Flight.speed_factor(4242, 1.3), "a bird's speed factor is the same for the same seed", "differs")
+	_check(Flight.speed_factor(1, 1.3) != Flight.speed_factor(2, 1.3), "two seeds give two speed factors", "%f and %f" % [Flight.speed_factor(1, 1.3), Flight.speed_factor(2, 1.3)])
+	for case: Array in [[1.0, 0.05], [1.6, 0.2]]:
+		var scale: float = case[0]
+		var spread: float = case[1]
+		var lowest := INF
+		var highest := -INF
+		for bird_seed in 400:
+			var factor := Flight.speed_factor(bird_seed, scale)
+			lowest = minf(lowest, factor)
+			highest = maxf(highest, factor)
+		_check(lowest >= 1.0 - spread - 0.000001 and highest <= 1.0 + spread + 0.000001 and lowest < 1.0 - spread * 0.9 and highest > 1.0 + spread * 0.9, "at speed scale %.1f the factors fill 1 -/+ %.2f" % [scale, spread], "%.4f..%.4f" % [lowest, highest])
+	_check(is_equal_approx(Flight.speed_spread(1.3), 0.125) and is_equal_approx(Flight.speed_spread(0.8), 0.05) and is_equal_approx(Flight.speed_spread(2.0), 0.2), "the spread rises linearly from 0.05 at x1 to 0.20 at x1.6, clamped", "%.3f %.3f %.3f" % [Flight.speed_spread(1.3), Flight.speed_spread(0.8), Flight.speed_spread(2.0)])
+	var play := await _start_run(31)
+	var goose := play.spawn_bird("goose", 555)
+	var gosling := play.spawn_bird("gosling", 556, Vector2(480, 250), Flight.split_headings(2)[0])
+	_check(is_equal_approx(goose.speed_scale, play.wave.speed_scale * Flight.speed_factor(555, play.wave.speed_scale)) and is_equal_approx(gosling.speed_scale, play.wave.speed_scale * Flight.speed_factor(556, play.wave.speed_scale)), "Endless: a bird and a gosling fly at the wave's speed scale x their own factor", "%f, %f at x%.2f" % [goose.speed_scale, gosling.speed_scale, play.wave.speed_scale])
+	play = await _start_level("night_6")
+	var swift := play.spawn_bird("zigzag", 557)
+	_check(is_equal_approx(swift.speed_scale, play.wave.speed_scale * Flight.speed_factor(557, play.wave.speed_scale)) and swift.speed_scale != play.wave.speed_scale, "a level: a bird flies at the wave's speed scale x its own factor", "%f at x%.2f" % [swift.speed_scale, play.wave.speed_scale])
+	var from := _log.size()
+	for i in 200:
+		await process_frame
+		if play.flying_birds().size() > 1:
+			break
+	_check_logged(from, "^\\[Play\\] Spawned \\w+ #\\d+ \\(wave 1, seed -?\\d+, speed x\\d\\.\\d{3}\\) at t ", "a spawn logs the bird's own speed scale")
+	await _open_title()
 
 
 ## A launched bird (a splitter's gosling) starts exactly at its launch point; the two split
@@ -2368,20 +2590,29 @@ func _test_play_decoy_penalty() -> void:
 func _test_rival_rules() -> void:
 	var none := Rival.NOT_AIMING
 	var cases: Array[Array] = [
-		[Rival.steal_state(3.4, 3.5, 1.0, none, false, false, true), Rival.Steal.NONE, "nothing before linger_time"],
-		[Rival.steal_state(3.5, 3.5, 1.0, none, false, false, true), Rival.Steal.AIMING, "the cue starts at linger_time"],
-		[Rival.steal_state(9.0, 3.5, 1.0, none, false, false, true), Rival.Steal.AIMING, "a bird with no cue yet is aimed at first, never shot at once"],
-		[Rival.steal_state(4.49, 3.5, 1.0, 3.5, false, false, true), Rival.Steal.AIMING, "the cue runs aim_time"],
-		[Rival.steal_state(4.5, 3.5, 1.0, 3.5, false, false, true), Rival.Steal.FIRE, "he fires once the cue has run aim_time"],
-		[Rival.steal_state(5.0, 3.5, 1.0, 4.2, false, false, true), Rival.Steal.AIMING, "aim_time counts from the cue's start"],
-		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, true, false, true), Rival.Steal.NONE, "never the decoy"],
-		[Rival.steal_state(4.0, 3.5, 1.0, 3.5, false, true, true), Rival.Steal.NONE, "a fleeing bird drops the cue"],
-		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, false, false, false), Rival.Steal.NONE, "never with steals off"],
+		[Rival.steal_state(3.4, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.NONE, "nothing before linger_time"],
+		[Rival.steal_state(3.5, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.AIMING, "the cue starts at linger_time"],
+		[Rival.steal_state(9.0, 3.5, 1.0, none, false, 20.0, true), Rival.Steal.AIMING, "a bird with no cue yet is aimed at first, never shot at once"],
+		[Rival.steal_state(5.0, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.AIMING, "a bird with exactly aim_time left may be aimed at"],
+		[Rival.steal_state(5.01, 3.5, 1.0, none, false, 6.0, true), Rival.Steal.NONE, "a bird with less than aim_time left is never aimed at"],
+		[Rival.steal_state(4.49, 3.5, 1.0, 3.5, false, 6.0, true), Rival.Steal.AIMING, "the cue runs aim_time"],
+		[Rival.steal_state(4.5, 3.5, 1.0, 3.5, false, 6.0, true), Rival.Steal.FIRE, "he fires once the cue has run aim_time"],
+		[Rival.steal_state(6.02, 3.5, 1.0, 5.0, false, 6.0, true), Rival.Steal.FIRE, "a cue that runs out at the flee fires on the frame past it"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 4.2, false, 6.0, true), Rival.Steal.AIMING, "aim_time counts from the cue's start"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, true, 6.0, true), Rival.Steal.NONE, "never the decoy"],
+		[Rival.steal_state(3.9, 3.5, 1.0, 3.5, false, 4.0, true), Rival.Steal.AIMING, "a cue keeps running until its bird flees (the shells ran out)"],
+		[Rival.steal_state(4.0, 3.5, 1.0, 3.5, false, 4.0, true), Rival.Steal.NONE, "a bird fleeing before its cue has run drops the cue"],
+		[Rival.steal_state(5.0, 3.5, 1.0, 3.5, false, 6.0, false), Rival.Steal.NONE, "never with steals off"],
 	]
 	for case in cases:
 		_check(case[0] == case[1], "Rival.steal_state: " + str(case[2]), "got %s, expected %s" % [case[0], case[1]])
 	_check(not Rival.may_heckle("miss", 3.9, 0.0, 4.0) and Rival.may_heckle("miss", 4.0, 0.0, 4.0) and Rival.may_heckle("wave_end", 0.0, -INF, 4.0), "Rival.may_heckle: a miss or wave-end line waits for the cooldown (none before the first)", "")
 	_check(Rival.may_heckle(Rival.STEAL, 0.1, 0.0, 4.0), "Rival.may_heckle: a steal line skips the cooldown", "")
+	_check(Rival.may_aim(false, 0.0, -INF, 1.5) and not Rival.may_aim(true, 9.0, -INF, 1.5), "Rival.may_aim: a first cue may start, never a second while one runs", "")
+	_check(not Rival.may_aim(false, 11.49, 10.0, 1.5) and Rival.may_aim(false, 11.5, 10.0, 1.5), "Rival.may_aim: after a cue ends the next waits the gap", "")
+	_check(Rival.aim_target(PackedFloat64Array([3.6, 4.2, 3.9]), PackedInt32Array([1, 2, 3])) == 1, "Rival.aim_target: the bird that has flown longest", "")
+	_check(Rival.aim_target(PackedFloat64Array([4.0, 4.0, 3.0]), PackedInt32Array([7, 5, 2])) == 1, "Rival.aim_target: a tie goes to the lower bird number", "")
+	_check(Rival.aim_target(PackedFloat64Array(), PackedInt32Array()) == -1, "Rival.aim_target: none eligible", "")
 	var lines := Content.rival_lines().lines["miss"]
 	var first: Array[String] = []
 	var again: Array[String] = []
@@ -2414,7 +2645,7 @@ func _test_rival_cue_and_steal() -> void:
 	var reticle := bird.get_node("Reticle") as Sprite2D
 	_check(bird.is_cued() and bird.cue_age >= linger and bird.cue_age <= linger + FRAME + 0.001, "the cue starts when the goose reaches its linger_time", "cue_age %.3f, linger %.2f" % [bird.cue_age, linger])
 	_check(reticle.visible and play.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.is_rival_aiming()])
-	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, wave, time and tallies")
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; (no cue before|[\\d.]+ s since the last cue ended), aim gap 1\\.50 s\\) \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, the choice, the aim gap, wave, time and tallies")
 	var escaped := play.escaped
 	var cued_until := 0.0
 	for i in roundi(aim * 60.0) + 10:
@@ -2428,9 +2659,9 @@ func _test_rival_cue_and_steal() -> void:
 	_check(play.stolen == 1 and play.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.stolen, play.rival_score, escaped, play.escaped])
 	_check(play.scoring.multiplier == 3, "a steal leaves the player's combo alone", "x%d" % play.scoring.multiplier)
 	_check(_text(play, "Rival") == "Rival 100" and _text(play, "Escaped") == "Escaped %d/10" % play.escaped and not play.is_rival_aiming(), "the HUD shows the rival's score and the escape; he lowers his gun", "%s, %s" % [_text(play, "Rival"), _text(play, "Escaped")])
-	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\)$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
+	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\); he laughs in 0\\.30 s, no new cue for the 1\\.50 s aim gap$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
 	_check(Content.rival_lines().lines["steal"].has(play.heckle_shown()) and play.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.heckle_shown(), play.heckles])
-	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\)$", "the steal heckle is logged with its category and line")
+	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\), no blurt$", "the steal heckle is logged with its category and line")
 	var number := bird.number
 	for i in 120:
 		if not is_instance_valid(bird):
@@ -2449,7 +2680,7 @@ func _test_rival_kill_during_cue() -> void:
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	_check(not bird.is_flying() and not bird.stolen and play.scoring.score == 100 and play.scoring.kills == 1, "a kill during the cue scores as usual", "score %d, stolen %s" % [play.scoring.score, bird.stolen])
 	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.is_rival_aiming()])
-	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cancelled cue is logged with its cause")
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\); no new cue for the 1\\.50 s aim gap$" % bird.number, "the cancelled cue is logged with its cause and the aim gap")
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		await process_frame
 	_check(play.stolen == 0 and play.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.stolen)
@@ -4152,13 +4383,13 @@ func _test_audio_every_event_sound() -> void:
 		if not play.flying_birds().is_empty():
 			heard = _game.sfx_log.duplicate()
 			break
-	_check(heard == [&"wave_start"], "the wave's first spawn plays wave_start", str(heard))
+	_check(heard == [&"wave_start", &"call_quack"], "the wave's first spawn plays wave_start, then the goose's call as its art shows above the grass", str(heard))
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	var from := _log.size()
 	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
 	_check_logged(from, "^\\[Audio\\] SFX shot x[01]\\.\\d{3}$", "every sound is logged by the one entry point, with its varied pitch")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
-		["splitter", [&"shot", &"split_pop", &"combo_up"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
+		["splitter", [&"shot", &"split_pop", &"combo_up", &"call_gosling", &"call_gosling"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
 	var armored: Bird = null
 	for entry: Array in cases:
 		var bird := armored
@@ -4183,11 +4414,24 @@ func _test_audio_every_event_sound() -> void:
 	var cued := await _cued_bird(play, 48, "goose")
 	_check(cued.is_cued() and _game.sfx_log.count(&"rival_aim") >= 1, "the rival's aim cue plays rival_aim", str(_game.sfx_log))
 	_game.sfx_log.clear()
+	var steal_from := _log.size()
 	for i in 120:
 		if cued.stolen:
 			break
 		await process_frame
-	_check(cued.stolen and _game.sfx_log.count(&"rival_steal") >= 1 and &"heckle_steal" in _game.sfx_log, "the rival's steal plays rival_steal and his steal heckle", str(_game.sfx_log))
+	var line := play.heckle_shown()
+	# The stolen bird falls off the screen and frees itself while the laugh is awaited.
+	var was_stolen := cued.stolen
+	var waited := 0
+	while not &"rival_laugh" in _game.sfx_log and waited < 120:
+		await process_frame
+		waited += 1
+	_check(was_stolen and _game.sfx_log.count(&"rival_steal") == 1 and _game.sfx_log.count(&"rival_laugh") == 1 and _game.sfx_log.find(&"rival_steal") < _game.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.sfx_log))
+	_check(absi(waited - roundi(Play.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
+	_check(line != "" and not &"heckle_steal" in _game.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.sfx_log])
+	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
+	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
+	_check_logged(steal_from, "^\\[Play\\] Heckle \\(steal\\) #\\d+: \".+\" \\(.*\\), no blurt$", "the steal heckle is logged without a blurt")
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
 	_game.sfx_log.clear()
 	await _tap(pause_button)
@@ -4579,6 +4823,187 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 	await _game.transition_finished
 
 
+## Every bird type gives its call (spec.call_sound at spec.call_pitch) exactly once, the
+## first frame any of its drawn art shows above the grass line (Play.GRASS_Y). Today a
+## rising bird's climb tilt already lifts its art above the line on its spawn frame, so it
+## calls as it spawns, with shells and spawned into an empty pool (already fleeing) alike;
+## the art is checked with _drawn_art_top, a scan of every opaque pixel the bird's Sprite
+## draws (independent of Bird.art_top's hull). The call is the sound Play plays as it
+## handles Bird.appeared, logged as a [Play] line. Fleeing makes no sound (the last shell's
+## out-of-shells sweep, a second flee()), and the bird never calls again, flying on until
+## it escapes. The rule itself: a stand-in of each type placed lower (the same bird
+## STAND_IN_AGE seconds before its spawn point, its art wholly under the grass) emits
+## nothing until it rises, and emits appeared on the first frame its art shows above the
+## line. A splitter's goslings call on their launch frame. Steals are off, so every bird
+## flies off on its own.
+func _test_bird_calls_on_appearing() -> void:
+	var play := await _start_run(88)
+	var shot := (play.get_node("ShotInput") as ShotInput).shot
+	play.mode.rival_steals = false
+	var bird_seed := 300
+	for spec in Content.birds():
+		var call_id := StringName(spec.call_sound)
+		for empty_pool: bool in [false, true]:
+			var way := "spawned into an empty pool, fleeing" if empty_pool else "with shells"
+			bird_seed += 1
+			# Every case's birds escape: keep the run from ending on Endless's escape limit.
+			play.escaped = 0
+			play.set_shell_pool(0 if empty_pool else 5)
+			var from := _log.size()
+			var spawned: Array[Bird] = []
+			var heard := _sounds_of(func() -> void: spawned.append(play.spawn_bird(spec.id, bird_seed)))
+			var bird := spawned[0]
+			var pitches := _pitches_of(call_id)
+			var top := _drawn_art_top(play, bird)
+			_check(heard == [call_id] and pitches.size() == 1 and is_equal_approx(pitches[0], spec.call_pitch),
+				"%s calls %s x%.2f once as it spawns (%s)" % [spec.id, call_id, spec.call_pitch, way], "%s at %s" % [heard, pitches])
+			_check(top < Play.GRASS_Y, "%s's art shows above the grass line on its spawn frame (%s)" % [spec.id, way], "art top %.2f, grass line %.0f" % [top, Play.GRASS_Y])
+			_check_logged(from, "^\\[Play\\] Call of %s #%d as it appears above the grass: %s x%.2f \\(art top \\d+\\.\\d, age 0\\.00, wave \\d+ at t -?\\d+\\.\\d{2}\\)$" % [spec.id, bird.number, call_id, spec.call_pitch],
+				"%s's call is logged (%s)" % [spec.id, way])
+			var again: Array[int] = [0]
+			bird.appeared.connect(func(_caller: Bird) -> void: again[0] += 1)
+			if not empty_pool:
+				bird.age = IN_FIELD_AGE
+				await process_frame
+				play.set_shell_pool(1)
+				var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
+				_check(bird.is_fleeing() and &"out_of_shells" in last_shot and not last_shot.any(func(id: StringName) -> bool: return String(id).begins_with("call_")),
+					"%s: running out of shells makes it flee with no call" % spec.id, str(last_shot))
+			_check(_sounds_of(func() -> void: bird.flee()).is_empty(), "%s: being told to flee again makes no sound (%s)" % [spec.id, way], str(_game.sfx_log))
+			Engine.time_scale = FAST_TIME_SCALE
+			for i in 600:
+				if not is_instance_valid(bird):
+					break
+				await process_frame
+			Engine.time_scale = 1.0
+			# The frame after a time scale change still runs at the old scale.
+			await process_frame
+			_check(not is_instance_valid(bird) and again[0] == 0, "%s never calls again, fleeing and flying on until it escapes (%s)" % [spec.id, way], "%d more calls" % again[0])
+		# The rule on a stand-in placed lower: wholly under the grass, then rising out of it.
+		var stand_in := Play.BIRD_SCENE.instantiate() as Bird
+		stand_in.setup(spec, 900, bird_seed, 1.0, Play.FIELD, false)
+		stand_in.age = STAND_IN_AGE
+		# [times emitted, the drawn art top then]
+		var emitted: Array = [0, INF]
+		stand_in.appeared.connect(func(caller: Bird) -> void:
+			emitted[0] += 1
+			emitted[1] = _drawn_art_top(play, caller))
+		(play.get_node("World/Birds") as Node2D).add_child(stand_in)
+		var hidden := _drawn_art_top(play, stand_in)
+		_check(emitted[0] == 0 and hidden >= Play.GRASS_Y, "a %s stand-in wholly under the grass does not appear" % spec.id, "%d emitted, art top %.2f" % [emitted[0], hidden])
+		var before := hidden
+		var shown_early := -1
+		for i in 120:
+			await process_frame
+			if emitted[0] > 0:
+				break
+			before = _drawn_art_top(play, stand_in)
+			if before < Play.GRASS_Y and shown_early < 0:
+				shown_early = i
+		for i in 10:
+			await process_frame
+		_check(emitted[0] == 1 and shown_early < 0 and before >= Play.GRASS_Y and emitted[1] < Play.GRASS_Y,
+			"a %s stand-in appears once, on the first frame its art shows above the grass line" % spec.id,
+			"%d emitted, art top %.2f the frame before and %.2f then (grass line %.0f), shown without appearing at frame %d" % [emitted[0], before, emitted[1], Play.GRASS_Y, shown_early])
+		stand_in.queue_free()
+	# A splitter's goslings appear mid-air at the split: each calls on its launch frame.
+	play.escaped = 0
+	play.set_shell_pool(5)
+	var splitter := await _spawn_flying(play, 390, IN_FIELD_AGE, "splitter")
+	splitter.set_process(false)
+	var at := _global(play, splitter.transform * LOCAL_BODY)
+	var split_from := _log.size()
+	var split_heard := _sounds_of(func() -> void: shot.emit(at))
+	var goslings: Array[Bird] = []
+	goslings.assign(play.flying_birds().filter(func(bird: Bird) -> bool: return bird.spec.id == "gosling" and bird.number > splitter.number))
+	var gosling_spec := Content.bird("gosling")
+	_check(goslings.size() == 2 and split_heard.count(StringName(gosling_spec.call_sound)) == 2 and _pitches_of(StringName(gosling_spec.call_sound)).all(func(pitch: float) -> bool: return is_equal_approx(pitch, gosling_spec.call_pitch)),
+		"the split's two goslings each call %s x%.2f on their launch frame" % [gosling_spec.call_sound, gosling_spec.call_pitch], "%d goslings, %s" % [goslings.size(), split_heard])
+	for gosling in goslings:
+		_check(_drawn_art_top(play, gosling) < Play.GRASS_Y, "gosling #%d shows above the grass as it calls" % gosling.number, "art top %.2f" % _drawn_art_top(play, gosling))
+		_check_logged(split_from, "^\\[Play\\] Call of gosling #%d as it appears above the grass: " % gosling.number, "gosling #%d's call is logged" % gosling.number)
+	var later: Array[int] = [0]
+	for gosling in goslings:
+		gosling.appeared.connect(func(_caller: Bird) -> void: later[0] += 1)
+		gosling.flee()
+	Engine.time_scale = FAST_TIME_SCALE
+	for i in 600:
+		if _all_freed(goslings):
+			break
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	_check(later[0] == 0 and _all_freed(goslings), "the goslings never call again, fleeing until they escape", "%d more calls" % later[0])
+	play.mode.rival_steals = true
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+
+
+## True when every bird of `birds` has been freed (read by index: a freed bird cannot be
+## passed to a typed lambda).
+func _all_freed(birds: Array[Bird]) -> bool:
+	for i in birds.size():
+		if is_instance_valid(birds[i]):
+			return false
+	return true
+
+
+## The highest point (World y) of the opaque pixels (alpha >= Bird.OPAQUE_ALPHA) `bird`'s
+## Sprite draws now: every corner of every opaque pixel of its current texture through the
+## Sprite's global transform, brought into World (so a Birds offset or a scale would show).
+func _drawn_art_top(play: Play, bird: Bird) -> float:
+	var sprite := bird.get_node("Sprite") as Sprite2D
+	if not _opaque_corners.has(sprite.texture.resource_path):
+		var image := sprite.texture.get_image()
+		if image.is_compressed():
+			image.decompress()
+		var corners: Dictionary[Vector2i, bool] = {}
+		for y in image.get_height():
+			for x in image.get_width():
+				if image.get_pixel(x, y).a >= Bird.OPAQUE_ALPHA:
+					for corner: Vector2i in [Vector2i(x, y), Vector2i(x + 1, y), Vector2i(x, y + 1), Vector2i(x + 1, y + 1)]:
+						corners[corner] = true
+		var centred := PackedVector2Array()
+		for corner: Vector2i in corners:
+			centred.append(Vector2(corner) - Vector2(image.get_size()) / 2.0)
+		_opaque_corners[sprite.texture.resource_path] = centred
+	var to_world := (play.get_node("World") as Node2D).get_global_transform().affine_inverse() * sprite.get_global_transform()
+	var top := INF
+	for point in _opaque_corners[sprite.texture.resource_path]:
+		top = minf(top, (to_world * point).y)
+	return top
+
+
+## The title's geese (crossing birds) never call, not even crossing the whole band:
+## Bird.appeared never fires for a crossing bird and no call sound plays.
+func _test_title_geese_never_call() -> void:
+	await _open_title()
+	var title := current_scene as Title
+	var calls: Array[String] = []
+	var watched: Dictionary[Bird, bool] = {}
+	_game.sfx_log.clear()
+	Engine.time_scale = 4.0
+	for i in 450:
+		for goose in title.flying_geese():
+			if not watched.has(goose):
+				watched[goose] = true
+				goose.appeared.connect(func(bird: Bird) -> void: calls.append("goose #%d at age %.2f" % [bird.number, bird.age]))
+		await process_frame
+	Engine.time_scale = 1.0
+	await process_frame
+	var heard := _game.sfx_log.filter(func(id: StringName) -> bool: return String(id).begins_with("call_"))
+	_check(watched.size() >= 4 and calls.is_empty() and heard.is_empty(), "the title's geese never call (%d watched)" % watched.size(), "calls %s, sounds %s" % [calls, heard])
+	# A crossing goose watched from before it enters the tree, its band wholly above the grass.
+	var crossing := Play.BIRD_SCENE.instantiate() as Bird
+	crossing.setup_crossing(Content.bird("goose"), 99, 4242, Rect2(0, 120, 960, 200))
+	crossing.appeared.connect(func(bird: Bird) -> void: calls.append("crossing goose at age %.2f" % bird.age))
+	title.add_child(crossing)
+	for i in 30:
+		await process_frame
+	_check(calls.is_empty() and crossing.art_top() < Play.GRASS_Y, "a crossing goose shown above the grass from its first frame never emits appeared", str(calls))
+	crossing.queue_free()
+
+
 ## The pitches the sounds `id` in sfx_log played at, oldest first.
 func _pitches_of(id: StringName) -> Array[float]:
 	var pitches: Array[float] = []
@@ -4788,7 +5213,8 @@ func _test_settings_over_paused_run() -> void:
 
 ## The credits screen from the title's Credits button: who made it, the engine and its
 ## licence, both fonts with the OFL 1.1 and the copyright lines of their shipped OFL files,
-## that the art and audio are original and generated as code, nothing naming Nintendo or
+## that the art and audio are original and generated as code but for the rival's laugh,
+## credited to WeaponGuy under CC0, nothing naming Nintendo or
 ## Duck Hunt; it fits at every aspect, a notch and a short safe area; Back (focused) and
 ## Escape return to the title with Credits focused (plan AC 12).
 func _test_credits_screen() -> void:
@@ -4805,7 +5231,8 @@ func _test_credits_screen() -> void:
 	if credits == null:
 		return
 	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), _text_of(credits, "Lines")]
-	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code"]:
+	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code", "evil laugh", "WeaponGuy", "OpenGameArt", "CC0",
+		"Bird calls", "Bert76", "Oona Räisänen", "U.S. Fish and Wildlife Service", "public domain", "Wikimedia Commons"]:
 		_check(needed in text, "the credits say " + needed, text)
 	for font: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
 		var notice := FileAccess.get_file_as_string(font).get_slice("\n\n", 0).replace("\n", " ")
@@ -5583,3 +6010,270 @@ func _slider_points(slider: TouchSlider) -> Array[Vector2]:
 	for fraction: float in [0.25, 0.75]:
 		points.append(Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * fraction, rect.get_center().y))
 	return points
+
+
+## AC 10: the rival aims at one bird at a time. Two geese past their linger_time at once:
+## the cue goes to the one that has flown longest (the other is younger and has the lower
+## number, so the age decides), and until that one is stolen no frame ever has two cues and
+## the younger goose is never aimed at; after the steal the aim gap keeps it uncued too.
+func _test_rival_one_cue_at_a_time() -> void:
+	var play := await _start_run(71)
+	# No wave birds: only the two geese below fly.
+	play._next_spawn = play.wave.spawns.size()
+	var younger := play.spawn_bird("goose", 301)
+	var older := play.spawn_bird("goose", 302)
+	younger.age = 3.6
+	older.age = 3.7
+	var most_cues := 0
+	var younger_cued := false
+	for i in 200:
+		await process_frame
+		var cued := play.flying_birds().filter(func(bird: Bird) -> bool: return bird.is_cued()).size()
+		most_cues = maxi(most_cues, cued)
+		younger_cued = younger_cued or (is_instance_valid(younger) and younger.is_cued())
+		if older.stolen:
+			break
+	_check(older.stolen and most_cues == 1 and not younger_cued, "with two geese eligible the rival aims only at the one flown longest, and steals it", "stolen %s, at most %d cues at once, the younger cued %s" % [older.stolen, most_cues, younger_cued])
+	var steal_clock := play.run_clock
+	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < Play.RIVAL_AIM_GAP - 2.0 * FRAME:
+		younger_cued = younger_cued or younger.is_cued()
+		await process_frame
+	_check(not younger_cued, "after a steal no new cue starts during the aim gap", "the younger goose was cued %.2f s after the steal" % (play.run_clock - steal_clock))
+	await _open_title()
+
+
+## AC 11: after a cue cancelled by the player's shot, an eligible goose waits RIVAL_AIM_GAP
+## seconds of run time; a pause in between does not count (the frames paused add to the
+## wait, the run clock does not move); the cue then starts within a frame of the gap's end
+## and its log names the gap.
+func _test_rival_aim_gap() -> void:
+	var play := await _start_run(72)
+	play._next_spawn = play.wave.spawns.size()
+	play.set_shell_pool(10)
+	var first := await _cued_bird(play, 303, "goose")
+	var waiting := play.spawn_bird("goose", 304)
+	waiting.age = 3.0
+	_check(first.is_cued() and not waiting.is_cued(), "a first goose is cued", "cued %s" % first.is_cued())
+	first.set_process(false)
+	await _touch(_global(play, first.transform * LOCAL_BODY))
+	first.set_process(true)
+	_check(first.state != Bird.State.FLYING and not first.is_cued(), "the player's shot kills the cued goose and cancels the cue", "state %d" % first.state)
+	var cancel_clock := play.run_clock
+	var from := _log.size()
+	var paused_frames := 0
+	var frames := 0
+	var early := false
+	while not waiting.is_cued() and frames < 400:
+		if frames == 30:
+			play.open_pause("pause button")
+			var clock := play.run_clock
+			for i in 60:
+				await process_frame
+				paused_frames += 1
+			_check(play.run_clock == clock and not waiting.is_cued(), "the aim gap stands still while paused", "clock %.3f -> %.3f" % [clock, play.run_clock])
+			play.resume()
+		await process_frame
+		frames += 1
+		if waiting.is_cued() and play.run_clock - cancel_clock < Play.RIVAL_AIM_GAP:
+			early = true
+	var waited := play.run_clock - cancel_clock
+	_check(waiting.is_cued() and not early and waited < Play.RIVAL_AIM_GAP + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % Play.RIVAL_AIM_GAP, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
+	_check(frames + paused_frames > roundi(Play.RIVAL_AIM_GAP / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
+	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; 1\\.5\\d s since the last cue ended, aim gap 1\\.50 s\\) " % waiting.number, "the cue after the gap logs the time since the last cue and the gap")
+	await _open_title()
+
+
+## AC 13: the mouse pointer is the crosshair while the run is live (its texture at most
+## 64 px a side), the arrow on pause, back to the crosshair on resume, the arrow at the
+## run's end (the results) and on leaving Play; each change logged. The calls Play made to
+## Input.set_custom_mouse_cursor (Play.cursor_calls, recorded by its one seam) are read:
+## the crosshair with CURSOR_ARROW and its hotspot at the texture's centre, the reset with
+## a null texture.
+func _test_crosshair_cursor() -> void:
+	var size := Play.CROSSHAIR.get_size()
+	_check(size.x <= 64.0 and size.y <= 64.0 and size.x > 0.0, "the crosshair texture is at most 64 px a side", str(size))
+	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, size / 2.0]
+	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
+	var from := _log.size()
+	var play := await _start_run(73)
+	_check(play.crosshair_shown and play.cursor_log == ["crosshair"] and play.cursor_calls == [crosshair_call], "a live run sets the crosshair, its hotspot at its centre", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check_logged(from, "^\\[Play\\] Cursor: crosshair$", "the crosshair is logged")
+	play.open_pause("pause button")
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)" and play.cursor_calls.back() == arrow_call, "the pause menu resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	play.resume()
+	_check(play.crosshair_shown and play.cursor_log.back() == "crosshair" and play.cursor_calls.back() == crosshair_call, "resuming sets the crosshair again", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	await _key(KEY_ESCAPE)
+	_check(not play.crosshair_shown and play.cursor_calls.back() == arrow_call, "Escape's pause resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	await _key(KEY_ESCAPE)
+	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "Escape's resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	play._end_run()
+	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)" and play.cursor_calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.cursor_calls.size() == 6, "every change made exactly one Input call", str(play.cursor_calls))
+	await _game.transition_finished
+	_check(_game.state == GameState.Flow.RESULTS, "the run ended on the results", str(_game.state))
+	_check_logged(from, "^\\[Play\\] Cursor: arrow \\(the run is over\\)$", "the arrow is logged with its cause")
+	play = await _start_run(74)
+	_check(play.crosshair_shown, "a new run shows the crosshair", str(play.cursor_log))
+	var calls := play.cursor_calls
+	_game.goto(GameState.Flow.TITLE)
+	await _game.transition_finished
+	_check(calls.back() == arrow_call, "leaving Play resets the pointer to the arrow", str(calls))
+
+
+## Finding 3 of the PR 10 review: while the rotate overlay is up the pointer is the arrow,
+## in both orders. Overlay first (upright during the wipe into the run): the run starts
+## under it without ever setting the crosshair; rotating back opens the pause menu (still
+## the arrow) and Resume sets the crosshair. Mid-run: turning upright resets the pointer to
+## the arrow at once.
+func _test_crosshair_under_rotate_overlay() -> void:
+	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, Play.CROSSHAIR.get_size() / 2.0]
+	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
+	await _open_title()
+	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 77})
+	await process_frame
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	await _game.transition_finished
+	await process_frame
+	var play := current_scene as Play
+	_check(_game.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	_check(play.is_paused() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: rotating back opens the pause menu, still the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	play.resume()
+	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "overlay first: Resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	root.size = PORTRAIT_9_19_5
+	await process_frame
+	_check(_game.is_rotate_overlay_shown() and not play.crosshair_shown and play.cursor_log.back() == "arrow (rotate overlay)" and play.cursor_calls.back() == arrow_call, "mid-run: turning upright resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	root.size = BASE_WINDOW
+	await process_frame
+	await process_frame
+	_check(play.is_paused() and not play.crosshair_shown, "mid-run: rotating back leaves the arrow over the pause menu", str(play.cursor_log))
+	play.resume()
+	_check(play.crosshair_shown, "mid-run: Resume sets the crosshair", str(play.cursor_log))
+	await _open_title()
+
+
+## Finding 1 of the PR 10 review: the rival never starts a cue that cannot finish. A golden
+## goose past its linger_time with less than aim_time left before it flees is never cued:
+## it flies off and escapes, and no cue on it is logged.
+func _test_rival_never_cues_a_short_window() -> void:
+	var play := await _start_run(75)
+	play._next_spawn = play.wave.spawns.size()
+	var golden := Content.bird("golden")
+	var aim := Content.rival_lines().aim_time
+	var from := _log.size()
+	var late := play.spawn_bird("golden", 305)
+	late.age = golden.flee_time - aim + 0.1
+	var cued := false
+	for i in 300:
+		await process_frame
+		if not is_instance_valid(late) or not late.is_flying():
+			break
+		cued = cued or late.is_cued()
+	_check(not cued and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue on golden")), "a bird with less than aim_time left before it flees is never cued", "cued %s" % cued)
+	_check_logged(from, "^\\[Play\\] Escaped golden #\\d+ ", "the short-window golden goose escapes un-cued")
+	await _open_title()
+
+
+## Finding 1 of the PR 10 review: in the normal one-cue flow (nobody shoots, so no shells
+## run out) every cue the rival starts ends in a steal: over a whole Endless run and the
+## whole of night_6 (zigzag swifts, the boss flock), at time scale 8, he steals and no cue
+## is ever cancelled as "fled".
+func _test_rival_cues_always_finish() -> void:
+	for start: Callable in [func() -> Play: return await _start_run(76), func() -> Play: return await _start_level("night_6")]:
+		var from := _log.size()
+		var play: Play = await start.call()
+		var name := play.level.id if play.level != null else play.mode.id
+		Engine.time_scale = 8.0
+		for i in 3000:
+			if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+				break
+			await process_frame
+		Engine.time_scale = 1.0
+		var lines := Array(_log.since(from))
+		var cues := lines.filter(func(line: String) -> bool: return line.begins_with("[Play] Aim cue on ") and not line.contains(" cancelled ")).size()
+		var steals := lines.filter(func(line: String) -> bool: return line.begins_with("[Play] Stolen ")).size()
+		var fled := lines.filter(func(line: String) -> bool: return line.contains(" cancelled (fled)"))
+		_check(_game.state == GameState.Flow.RESULTS and steals >= 3 and cues == steals and fled.is_empty(), "%s: every cue started ends in a steal, none cancelled as fled" % name, "%d cues, %d steals, fled: %s" % [cues, steals, fled])
+	await _open_title()
+
+
+## Finding 5 of the PR 10 review: the laugh queued by a steal (Game.play_sfx_later) holds
+## through a pause: paused a few frames after the steal, it does not play while paused
+## (still waiting), and after Resume it plays once the rest of RIVAL_LAUGH_DELAY has run.
+func _test_rival_laugh_waits_out_a_pause() -> void:
+	var play := await _start_run(78)
+	play._next_spawn = play.wave.spawns.size()
+	var cued := await _cued_bird(play, 306, "goose")
+	for i in 120:
+		if cued.stolen:
+			break
+		await process_frame
+	_game.sfx_log.clear()
+	var before := 6
+	for i in before:
+		await process_frame
+	play.open_pause("pause button")
+	for i in 60:
+		await process_frame
+	_check(cued.stolen and not &"rival_laugh" in _game.sfx_log and _game.sfx_waiting() == 1, "a laugh queued before a pause waits through it", "stolen %s, %s, %d waiting" % [cued.stolen, _game.sfx_log, _game.sfx_waiting()])
+	play.resume()
+	var after := 0
+	while not &"rival_laugh" in _game.sfx_log and after < 120:
+		await process_frame
+		after += 1
+	var rest := roundi(Play.RIVAL_LAUGH_DELAY / FRAME) - before
+	_check(absi(after - rest) <= 2 and _game.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
+	await _open_title()
+
+
+## Findings 2 and 5 of the PR 10 review: a steal that ends the run still laughs, the laugh
+## outliving the change to the results screen (with reduce motion's short fade it plays
+## after the scene has changed), and the results' parting blurt starts only once the laugh
+## has finished: its first syllable is at least the laugh's length after the laugh, and its
+## [Audio] line says it waits for rival_laugh. The bubble line shows at once.
+func _test_rival_laugh_before_results_blurt() -> void:
+	var laugh_length := (load("res://audio/sfx/rival_laugh.wav") as AudioStream).get_length()
+	for reduce_motion: bool in [false, true]:
+		var label := "reduce motion" if reduce_motion else "the wipe"
+		_game.set_reduce_motion(reduce_motion)
+		_clear_tool_save()
+		var play := await _start_run(79)
+		play._next_spawn = play.wave.spawns.size()
+		var cued := await _cued_bird(play, 307, "goose")
+		play.escaped = play.mode.escape_limit - 1
+		_game.sfx_log.clear()
+		var from := _log.size()
+		var stolen := false
+		var laugh_clock := -1.0
+		var laugh_on_results := false
+		var blurt_clock := -1.0
+		var waiting := -1
+		for i in 240:
+			await process_frame
+			# The stolen goose frees itself once it has fallen off the screen.
+			stolen = stolen or (is_instance_valid(cued) and cued.stolen)
+			if laugh_clock < 0.0 and &"rival_laugh" in _game.sfx_log:
+				laugh_clock = _game._clock
+				laugh_on_results = current_scene is Results
+			if waiting < 0 and &"heckle_results" in _game.sfx_log:
+				waiting = _game.blurt_syllables_waiting()
+			elif waiting > 0 and blurt_clock < 0.0 and _game.blurt_syllables_waiting() < waiting:
+				blurt_clock = _game._clock
+			if laugh_clock >= 0.0 and blurt_clock >= 0.0:
+				break
+		var order := _game.sfx_log.slice(0, 4)
+		_check(stolen and laugh_clock >= 0.0 and order.find(&"rival_steal") < order.find(&"rival_laugh"), "%s: a run-ending steal laughs after its shot" % label, str(_game.sfx_log))
+		if reduce_motion:
+			_check(laugh_on_results, "%s: the laugh plays after the change to the results screen" % label, "scene %s" % current_scene)
+		_check(blurt_clock >= laugh_clock + laugh_length - FRAME, "%s: the results' blurt starts once the laugh has finished" % label, "laugh at %.3f (%.2f s long), first syllable at %.3f" % [laugh_clock, laugh_length, blurt_clock])
+		_check_logged(from, "^\\[Audio\\] SFX heckle_results: \\d+ syllables \\(.*\\) for \".+\", starting in [\\d.]+ s once rival_laugh has finished$", "%s: the results blurt logs its wait for the laugh" % label)
+		while _game.is_transitioning():
+			await process_frame
+		var results := current_scene as Results
+		_check(results != null and (results.get_node("Safe/RivalLine") as Label).visible, "%s: the parting line shows at once" % label, "scene %s" % current_scene)
+	_game.set_reduce_motion(false)
+	_clear_tool_save()
+	await _open_title()

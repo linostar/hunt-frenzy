@@ -5,7 +5,9 @@ extends Node2D
 ## once it has escaped (Flight.has_escaped) it emits `escaped` and frees itself. A hit
 ## that leaves it hit points (an armored bird's first) only switches it to its damaged
 ## flap frames; the killing hit stops it on its hit frame for HIT_HOLD seconds, then it
-## falls off the bottom of the screen, emits `gone` and frees itself. A bird launched
+## dives head-first off the bottom of the screen seen from behind (its dive frame: back to
+## the camera, wings folded, head down, drawn upright, so never turned or mirrored), emits
+## `gone` and frees itself. A bird launched
 ## from a point (a splitter's gosling) flies Flight's launched path from there. While the
 ## rival aims at it (set_cue, driven by Play from Rival.steal_state) it shows the Reticle
 ## over itself; steal() drops it like a kill (hit frame, then the fall), marked stolen.
@@ -20,10 +22,22 @@ extends Node2D
 ## it neither ages, moves, flaps nor falls until the time is over, and the frame that ends
 ## the hold runs only for what is left of that frame, so the bird loses exactly the hold's
 ## time, as Play's clocks do.
+## The first frame any of its art shows above the grass line (field's bottom, Play.GRASS_Y:
+## the grass is solid from there down) it emits `appeared` (Play plays its call): the
+## highest point of the flap frame it shows (art_top: the convex hull of the frame's opaque
+## pixels, alpha >= OPAQUE_ALPHA, through its transform) is above the line. A launched bird
+## (a gosling) appears as it enters the tree, mid-air. A bird rising from the grass appears
+## as its art first clears the line; today every one does so on its spawn frame (Flight
+## starts its untilted box just under the line, and its climb tilt lifts the art's top 0.2
+## to 11.6 units above it), so it calls as it spawns, fleeing or not; the hull keeps the
+## rule true if the start ever changes. It emits it at most once, whatever happens after (fleeing, escaping),
+## and never for a crossing bird (it has no field, so no grass line); fleeing itself makes no sound.
 ## Configure with setup() or setup_crossing() before adding it to the tree.
 
 signal escaped(bird: Bird)
 signal gone(bird: Bird)
+## Its art first showed above the grass line (emitted once at most; never by a crossing bird).
+signal appeared(bird: Bird)
 
 enum State { FLYING, HIT, FALLING }
 
@@ -37,6 +51,12 @@ const TRACK_AHEAD_STEPS := 20
 const TRACKED_NUMBER := 1
 ## The aim reticle's drawn size in base units.
 const RETICLE_SIZE := 56.0
+## A pixel at least this opaque is drawn art (as SCHEMA.md I5 and I21 count it).
+const OPAQUE_ALPHA := 0.5
+
+## The convex hull of each flap texture's opaque pixels in sprite-local base units (origin at
+## the centre, facing right), by texture path: computed once, shared by every bird.
+static var _art_hulls: Dictionary[String, PackedVector2Array] = {}
 
 var spec: BirdSpec
 ## The bird's number in its run (1 is the first bird spawned).
@@ -71,6 +91,8 @@ var _fall_speed := 0.0
 var _track_clock := 0.0
 ## Seconds of hold (hit stop) still to sit out.
 var _held_for := 0.0
+## True once appeared was emitted.
+var _appeared := false
 
 @onready var _sprite: Sprite2D = $Sprite
 @onready var _reticle: Sprite2D = $Reticle
@@ -120,6 +142,7 @@ func _ready() -> void:
 	_reticle.scale = Vector2.ONE * RETICLE_SIZE / _reticle.texture.get_size().x
 	transform = _flight_transform()
 	_track()
+	_signal_appeared()
 
 
 func _process(frame_delta: float) -> void:
@@ -141,6 +164,7 @@ func _process(frame_delta: float) -> void:
 				return
 			transform = _flight_transform()
 			_sprite.texture = _textures[_flap_frame()]
+			_signal_appeared()
 			_track_clock += delta
 			if _track_clock >= TRACK_INTERVAL:
 				_track_clock -= TRACK_INTERVAL
@@ -149,6 +173,9 @@ func _process(frame_delta: float) -> void:
 			_hold -= delta
 			if _hold <= 0.0:
 				state = State.FALLING
+				# The back view is drawn head-down and symmetric: no turn, no mirror.
+				_sprite.texture = _textures["dive"]
+				transform = Transform2D(0.0, position)
 		State.FALLING:
 			_fall_speed += GRAVITY * delta
 			position.y += _fall_speed * delta
@@ -196,7 +223,7 @@ func is_damaged() -> bool:
 
 ## Takes a hit. Short of spec.hp it keeps flying on its damaged flap frames and this
 ## returns false; the killing hit stops it on its hit frame, upright and facing the way it
-## flew (it then falls off the screen), and returns true.
+## flew (it then falls head-first off the screen), and returns true.
 func hit() -> bool:
 	hits_taken += 1
 	if hits_taken < spec.hp:
@@ -206,7 +233,7 @@ func hit() -> bool:
 	return true
 
 
-## Stops it on its hit frame for HIT_HOLD seconds, after which it falls.
+## Stops it on its hit frame for HIT_HOLD seconds, after which it falls head-first.
 func _drop() -> void:
 	state = State.HIT
 	_hold = HIT_HOLD
@@ -221,6 +248,54 @@ func _drop() -> void:
 func flee() -> void:
 	if state == State.FLYING and age < minf(spec.flee_time, flee_at):
 		flee_at = age
+
+
+## The highest point (smallest y, in the parent's coordinates) of the art it shows now: its
+## flap frame's opaque hull through its transform.
+func art_top() -> float:
+	var top := INF
+	for point in _art_hull(_sprite.texture, spec.size):
+		top = minf(top, (transform * point).y)
+	return top
+
+
+## Emits appeared the first time a flying bird shows art above its field's bottom, the grass
+## line. A crossing bird (the title's geese) is never given a field (setup_crossing), so its
+## line is y 0, above its band, and it never appears.
+func _signal_appeared() -> void:
+	if _appeared or state != State.FLYING or art_top() >= field.end.y:
+		return
+	_appeared = true
+	appeared.emit(self)
+
+
+## The convex hull of `texture`'s opaque pixels (alpha >= OPAQUE_ALPHA) in sprite-local base
+## units for a sprite drawn at `drawn_size` and centred (cached by texture path). Each row
+## adds the corners of its outermost opaque pixels, which hold every point of the hull.
+static func _art_hull(texture: Texture2D, drawn_size: Vector2) -> PackedVector2Array:
+	if _art_hulls.has(texture.resource_path):
+		return _art_hulls[texture.resource_path]
+	var image := texture.get_image()
+	if image.is_compressed():
+		image.decompress()
+	var pixels := Vector2(image.get_size())
+	var unit := drawn_size / pixels
+	var points := PackedVector2Array()
+	for y in image.get_height():
+		var left := -1
+		var right := -1
+		for x in image.get_width():
+			if image.get_pixel(x, y).a >= OPAQUE_ALPHA:
+				if left < 0:
+					left = x
+				right = x
+		if left >= 0:
+			for corner: Vector2 in [Vector2(left, y), Vector2(left, y + 1), Vector2(right + 1, y), Vector2(right + 1, y + 1)]:
+				points.append(corner * unit - drawn_size / 2.0)
+	var hull := Geometry2D.convex_hull(points)
+	_art_hulls[texture.resource_path] = hull
+	print("[Bird] Art hull of %s: %d points from %dx%d pixels" % [texture.resource_path, hull.size(), image.get_width(), image.get_height()])
+	return hull
 
 
 func _flight_transform() -> Transform2D:

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="96" viewBox="0 0 72 96">
+  <!-- Armored goose: slate back and wings, steel helmet on its head. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 48) is the bird's origin. -->
+  <path d="M29 21 C26 9.8 31 5 36 5 C41 5 46 9.8 43 21 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M30 53.8 L31.2 81 L40.8 81 L42 53.8 Z" fill="#3a4a6e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M32.4 87.8 L36 94 L39.6 87.8 Z" fill="#1f1a2e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="81" rx="8" ry="8.6" fill="#3a4a6e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="30.2" cy="82" rx="2.4" ry="3.6" fill="#b8c4d0"/>
+  <ellipse cx="41.8" cy="82" rx="2.4" ry="3.6" fill="#b8c4d0"/>
+  <ellipse cx="36" cy="40" rx="19" ry="23" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M25.5 54.3 C14.7 52.6 14.7 41.1 22.7 22.8 C27.4 15 30.5 23 34.5 19 C31 26.2 31.5 37.7 31.5 48 C29.5 52.3 29.5 55.3 25.5 54.3 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M24.2 44.6 C21.8 33.1 26.5 19 29.5 27 C29.4 23 26.5 33.1 24.2 44.6 Z" fill="#b8c4d0"/>
+  <path d="M46.5 54.3 C57.3 52.6 57.3 41.1 49.3 22.8 C44.5 15 41.5 23 37.5 19 C41 26.2 40.5 37.7 40.5 48 C42.5 52.3 42.5 55.3 46.5 54.3 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M47.8 44.6 C50.2 33.1 45.5 19 42.5 27 C42.6 23 45.5 33.1 47.8 44.6 Z" fill="#b8c4d0"/>
+  <path d="M27 80 C27 71 45 71 45 80 C41 78 31 78 27 80 Z" fill="#6f7f94" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M36 72 L36 78" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round"/>
+</svg>

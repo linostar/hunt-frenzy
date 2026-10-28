@@ -98,6 +98,8 @@ func _tests() -> Array[Callable]:
 		_test_i21_hitbox_covers_body,
 		_test_i22_birds_readable,
 		_test_i23_music_tracks_exist,
+		_test_i24_speed_spread_top_scale,
+		_test_i25_bird_calls,
 	]
 
 
@@ -116,11 +118,11 @@ func _run() -> void:
 		quit(1)
 
 
-## I1-I4, I13-I15 and I23 hold for the real data: the loader checks them, so clean real data
+## I1-I4, I13-I15, I23 and I25 hold for the real data: the loader checks them, so clean real data
 ## means no loader errors.
 func _test_real_data_loads_clean() -> void:
 	Content.reload()
-	_check(Content.errors().is_empty(), "I1-I4, I13-I15 and I23 the real data loads without errors", "\n".join(Content.errors()))
+	_check(Content.errors().is_empty(), "I1-I4, I13-I15, I23 and I25 the real data loads without errors", "\n".join(Content.errors()))
 
 
 ## The lookups return the typed data: the six types plus the gosling, in data order, and
@@ -135,8 +137,20 @@ func _test_lookup_api() -> void:
 	_check(splitter.splits_into == "gosling" and splitter.split_count == 2, "the splitter splits into 2 goslings", "%s x%d" % [splitter.splits_into, splitter.split_count])
 	var decoy := Content.bird("decoy")
 	_check(decoy.penalty == 200 and not decoy.escape_counts and decoy.points == 0, "the decoy has a penalty and its escape does not count", "%d %s" % [decoy.penalty, decoy.escape_counts])
-	_check(Content.bird("armored").hp == 2 and Content.bird("armored").frames().size() == 5, "the armored goose has hp 2 and damaged frames", str(Content.bird("armored").frames()))
+	_check(Content.bird("armored").hp == 2 and Content.bird("armored").frames().size() == 6, "the armored goose has hp 2 and damaged frames", str(Content.bird("armored").frames()))
 	_check(Content.bird("zigzag").pattern == "zigzag", "the zigzag flies the zigzag pattern", Content.bird("zigzag").pattern)
+	# Bird scales its sprite once, from fly_1: a frame imported at another size (its .import's
+	# svg/scale) would draw bigger or smaller than the bird. The dive frame (the back view,
+	# drawn upright on the side-view canvas turned on end) is fly_1's size turned on end.
+	var off_size: Array[String] = []
+	for spec in Content.birds():
+		var fly := (load(spec.texture_path("fly_1")) as Texture2D).get_size()
+		for frame in spec.frames():
+			var want := Vector2(fly.y, fly.x) if frame == "dive" else fly
+			var got := (load(spec.texture_path(frame)) as Texture2D).get_size()
+			if got != want:
+				off_size.append("%s %s: %s, expected %s" % [spec.id, frame, got, want])
+	_check(off_size.is_empty(), "every frame of a bird imports at its fly_1 size (the dive frame turned on end)", ", ".join(off_size))
 	var endless := Content.mode("endless")
 	var mix := endless.birds.map(func(e: ModeSpec.Entry) -> String: return "%s@%d" % [e.bird, e.from_wave])
 	_check(mix == ["goose@1", "armored@3", "splitter@5", "decoy@5", "zigzag@7"], "the Endless mix unlocks by wave", str(mix))
@@ -435,7 +449,8 @@ func _test_i3_references() -> void:
 	_expect_load_errors("I3 unknown sprite", _mutated("birds.json", func(data: Array) -> void: data[0]["sprite"] = "swan"),
 		["data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_1.svg)",
 		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_2.svg)",
-		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_hit.svg)"])
+		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_hit.svg)",
+		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_dive.svg)"])
 	_expect_load_errors("I3 hp 2 without damaged frames", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 2),
 		["data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_1.svg)",
 		"data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_2.svg)"])
@@ -592,12 +607,15 @@ func _test_i10_roster_and_chapters() -> void:
 		["no zigzag bird (pattern zigzag)", "chapter night introduces no bird", "zigzag never appears (not in a mix, not a golden bird, not a split child)"])
 
 
-## I11: every bird fits the field it flies in (Play.FIELD): narrower than it, and its
-## height plus twice its wobble lower than it.
+## I11: every bird fits the field it flies in (Play.FIELD): narrower and lower than it.
+## The wobble (title only) takes no part: a tall-wobbling bird that fits passes.
 func _test_i11_fits_field() -> void:
 	_check(_i11_problems().is_empty(), "I11 every bird fits the field", "\n".join(_i11_problems()))
-	_expect_problems("I11 a bird too tall with its wobble", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = [96, 360]), _i11_problems,
-		["goose: size (96.0, 360.0) with wobble 14.0 does not fit the field (960.0, 384.0)"])
+	_expect_problems("I11 a bird as tall as the field", _mutated("birds.json", func(data: Array) -> void: data[0]["size"] = [96, 384]), _i11_problems,
+		["goose: size (96.0, 384.0) does not fit the field (960.0, 384.0)"])
+	_expect_problems("I11 a bird that fits, with a wobble its height plus twice would not", _mutated("birds.json", func(data: Array) -> void:
+		data[0]["size"] = [96, 300]
+		data[0]["wobble"] = 50), _i11_problems, [])
 
 
 ## I12: every hitbox's bounding box is at least HITBOX_SIDE_MIN on each side, so a
@@ -1010,7 +1028,8 @@ func _perfect_player(mode: ModeSpec, plan: Wave.Plan) -> Dictionary:
 	for spawn in plan.spawns:
 		var spec := Content.bird(spawn.bird_id)
 		if spec.penalty == 0:
-			targets.append([spec, spawn.time, spawn.time + _field_entry_age(spec, spawn.bird_seed, plan.speed_scale), spec.hp])
+			var speed_scale := plan.speed_scale * Flight.speed_factor(spawn.bird_seed, plan.speed_scale)
+			targets.append([spec, spawn.time, spawn.time + _field_entry_age(spec, spawn.bird_seed, speed_scale), spec.hp])
 	var free := -INF
 	while not targets.is_empty():
 		var next := 0
@@ -1159,7 +1178,8 @@ func _i5_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
 		for frame in spec.frames():
-			if frame == "hit":
+			# A shot bird (its hit and dive frames) is never hit-tested again.
+			if frame in ["hit", "dive"]:
 				continue
 			var art := _raster(spec.texture_path(frame))
 			var scale := Vector2(art.get_size()) / spec.size
@@ -1187,7 +1207,8 @@ func _i21_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
 		for frame in spec.frames():
-			if frame == "hit":
+			# A shot bird (its hit and dive frames) is never hit-tested again.
+			if frame in ["hit", "dive"]:
 				continue
 			var texture := load(spec.texture_path(frame)) as Texture2D
 			var image := texture.get_image() if texture != null else null
@@ -1360,8 +1381,8 @@ func _i10_problems() -> Array[String]:
 func _i11_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
-		if spec.size.x >= Play.FIELD.size.x or spec.size.y + 2.0 * spec.wobble >= Play.FIELD.size.y:
-			problems.append("%s: size %s with wobble %s does not fit the field %s" % [spec.id, spec.size, spec.wobble, Play.FIELD.size])
+		if spec.size.x >= Play.FIELD.size.x or spec.size.y >= Play.FIELD.size.y:
+			problems.append("%s: size %s does not fit the field %s" % [spec.id, spec.size, Play.FIELD.size])
 	return problems
 
 
@@ -1486,3 +1507,55 @@ func _check(condition: bool, test_name: String, detail: String) -> void:
 		print("test_content: pass " + test_name)
 	else:
 		_failures.append("%s: %s" % [test_name, detail])
+
+
+## I24: Flight.SPEED_SPREAD_TOP_SCALE is the highest speed scale in the content (every
+## level's and boss flock's speed_scale, every mode's speed_cap); a mutated night boss at
+## x1.8 makes it wrong.
+func _test_i24_speed_spread_top_scale() -> void:
+	_check(_i24_problems().is_empty(), "I24 the speed spread tops out at the content's highest speed scale", str(_i24_problems()))
+	var night_6 := Content.level("night_6")
+	var was := night_6.boss.speed_scale
+	night_6.boss.speed_scale = 1.8
+	_check(_i24_problems() == ["Flight.SPEED_SPREAD_TOP_SCALE 1.60 is not the highest speed scale in the content, 1.80"], "I24 a faster boss flock fails", str(_i24_problems()))
+	night_6.boss.speed_scale = was
+
+
+func _i24_problems() -> Array[String]:
+	var top := 0.0
+	for level in Content.levels():
+		top = maxf(top, level.speed_scale)
+		if level.is_boss():
+			top = maxf(top, level.boss.speed_scale)
+	for mode in Content.modes():
+		top = maxf(top, mode.speed_cap)
+	if is_equal_approx(top, Flight.SPEED_SPREAD_TOP_SCALE):
+		return []
+	return ["Flight.SPEED_SPREAD_TOP_SCALE %.2f is not the highest speed scale in the content, %.2f" % [Flight.SPEED_SPREAD_TOP_SCALE, top]]
+
+
+## I25: every bird's call is one of the game's sound effects (GameState.SFX_IDS) with its
+## file, played at a call_pitch in 0.5..2; the real data gives each type its own call and
+## pitch. An unknown, mistyped or missing call and an out-of-range, mistyped or missing
+## call_pitch are each reported alone.
+func _test_i25_bird_calls() -> void:
+	var expected := {"goose": ["call_quack", 1.0], "armored": ["call_quack", 0.85], "splitter": ["call_quack", 0.93], "gosling": ["call_gosling", 1.0],
+		"zigzag": ["call_swift", 1.0], "golden": ["call_quack", 1.15], "decoy": ["call_pigeon", 1.0]}
+	for spec in Content.birds():
+		var want: Array = expected[spec.id]
+		_check(spec.call_sound == want[0] and is_equal_approx(spec.call_pitch, want[1]), "I25 %s calls %s at x%s" % [spec.id, want[0], want[1]], "%s x%s" % [spec.call_sound, spec.call_pitch])
+		_check(StringName(spec.call_sound) in GameState.SFX_IDS and ResourceLoader.exists(GameState.SFX_PATH % spec.call_sound), "I25 %s's call is a sound effect with its file" % spec.id, GameState.SFX_PATH % spec.call_sound)
+	_expect_load_errors("I25 an unknown call", _mutated("birds.json", func(data: Array) -> void: data[4]["call"] = "call_duck"),
+		["data/birds.json [zigzag] call: unknown sound effect 'call_duck' (I25: a call must be one of GameState.SFX_IDS)"])
+	_expect_load_errors("I25 a call that is not a string", _mutated("birds.json", func(data: Array) -> void: data[0]["call"] = 3),
+		["data/birds.json [goose] call: expected String, got float"])
+	_expect_load_errors("I25 a bird without a call", _mutated("birds.json", func(data: Array) -> void: (data[6] as Dictionary).erase("call")),
+		["data/birds.json [decoy] call: missing key"])
+	_expect_load_errors("I25 a call pitch under 0.5", _mutated("birds.json", func(data: Array) -> void: data[1]["call_pitch"] = 0.4),
+		["data/birds.json [armored] call_pitch: 0.4 is outside 0.5..2.0"])
+	_expect_load_errors("I25 a call pitch over 2", _mutated("birds.json", func(data: Array) -> void: data[5]["call_pitch"] = 2.5),
+		["data/birds.json [golden] call_pitch: 2.5 is outside 0.5..2.0"])
+	_expect_load_errors("I25 a call pitch that is not a number", _mutated("birds.json", func(data: Array) -> void: data[3]["call_pitch"] = "high"),
+		["data/birds.json [gosling] call_pitch: expected float, got String"])
+	_expect_load_errors("I25 a bird without a call pitch", _mutated("birds.json", func(data: Array) -> void: (data[2] as Dictionary).erase("call_pitch")),
+		["data/birds.json [splitter] call_pitch: missing key"])

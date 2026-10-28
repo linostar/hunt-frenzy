@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="72" viewBox="0 0 72 72">
+  <!-- Decoy: the rival's pet pigeon, lavender with a teal neck, its hat lost. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 36) is the bird's origin. -->
+  <path d="M29 14 C26 4.6 31 1 36 1 C41 1 46 4.6 43 14 Z" fill="#c9b6e4" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M29 38.8 L30.4 59 L41.6 59 L43 38.8 Z" fill="#3fa7a0" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M32.9 65 L36 71 L39.1 65 Z" fill="#f08a24" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="59" rx="7" ry="7.6" fill="#3fa7a0" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="28" rx="18" ry="18" fill="#c9b6e4" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M26.1 39.2 C15.8 37.9 15.8 28.9 23.4 14.5 C27.9 8 30.5 16 34.5 12 C31 17.2 31.5 26.2 31.5 34.3 C29.5 37.2 30.1 40.2 26.1 39.2 Z" fill="#c9b6e4" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M24.8 31.6 C22.5 22.6 27 12 29.5 20 C29.7 16 27 22.6 24.8 31.6 Z" fill="#ffffff"/>
+  <path d="M45.9 39.2 C56.2 37.9 56.2 28.9 48.6 14.5 C44.1 8 41.5 16 37.5 12 C41 17.2 40.5 26.2 40.5 34.3 C42.5 37.2 41.9 40.2 45.9 39.2 Z" fill="#c9b6e4" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M47.2 31.6 C49.5 22.6 45 12 42.5 20 C42.3 16 45 22.6 47.2 31.6 Z" fill="#ffffff"/>
+  <ellipse cx="36" cy="59" rx="7" ry="7.5" fill="#c9b6e4" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M38.5 66 L36 70 L33.5 66 Z" fill="#f08a24" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

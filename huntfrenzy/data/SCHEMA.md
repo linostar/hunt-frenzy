@@ -27,11 +27,15 @@ them so they match. Do not leave the code working around the difference.
 ## Game rules the data relies on
 - **Flight** (`scripts/logic/flight.gd`): a bird rises from fully below the grass line at a seeded x and heading (30-60
   degrees above the horizontal) into the field (`Play.FIELD`, x 0-960, y 56-440: below the HUD bar, above the grass),
-  then bounces inside it with a seeded-phase vertical wobble. At `flee_time` (or at once when the wave's shells run out)
-  it climbs straight up, and it has escaped once fully above the screen top. A `zigzag` bird also reverses its
-  horizontal heading at seeded intervals (`Flight.ZIGZAG_INTERVAL_MIN`..`MAX`, 0.35-0.8 s). A split child is launched
-  from the hit point (kept inside the field) on a heading from `Flight.split_headings` (fanned 100 degrees around
-  straight up).
+  then flies straight segments inside it at constant velocity, without wobble: it bounces off the field's edges
+  (reflecting the matching velocity component) and turns to a new seeded heading (30-60 degrees from the
+  horizontal, up or down, left or right) at seeded intervals: a `rise` bird every `Flight.TURN_INTERVAL_MIN`..`MAX`
+  (1.0-2.5 s), a `zigzag` bird every `Flight.ZIGZAG_INTERVAL_MIN`..`MAX` (0.35-0.8 s), always reversing its
+  horizontal heading. At `flee_time` (or at once when the wave's shells run out) it climbs straight up, and it has
+  escaped once fully above the screen top. A split child is launched from the hit point (kept inside the field) on a
+  heading from `Flight.split_headings` (fanned 100 degrees around straight up). Each bird flies at its `speed` x the
+  wave's speed scale x its own seeded factor within 1 -/+ s (`Flight.speed_factor`), s rising linearly from 0.05 at
+  speed scale 1 to 0.20 at `Flight.SPEED_SPREAD_TOP_SCALE` (1.6, I24), clamped.
 - **Hits** (`Play`): a shot hits the frontmost flying bird whose hitbox polygon holds the point (above the grass line).
   A hit short of the bird's `hp` damages it (no points, the combo multiplier unchanged; it flies on with its damaged
   frames); the killing hit scores `points` x the multiplier and raises it (up to the mode's `combo_cap`). Killing a
@@ -45,7 +49,11 @@ them so they match. Do not leave the code working around the difference.
   cue's start, then shoots it and never misses: it falls as stolen, its `points` (no combo multiplier) go to the
   rival's tally, and it counts as an escape (toward `escape_limit`); a stolen splitter launches no children, and the
   player's combo is untouched. Killing it during the cue saves it (a damaging hit does not); a bird that starts fleeing
-  drops its cue. With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
+  drops its cue. He aims at one bird at a time: while a cue runs no other starts, and after a cue ends (a steal or a
+  cancel) the next waits `Play.RIVAL_AIM_GAP` (1.5 s of run time; a pause does not count). He only starts a cue on a
+  bird with at least `aim_time` left before it flees (`min(flee_time, the age its shells ran out)` minus its age), so
+  a cue he starts always finishes unless the wave's shells run out. Among the birds he may aim at, the cue goes to the
+  one that has flown longest (the lower bird number on a tie). With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
   and the run's heckle count, on a miss, a combo rising to x3 or more and a wave's end (each at most once per
   `cooldown` after the last heckle) and on every steal (no cooldown); the results screen shows a `results` line.
 - **Campaign** (`scripts/logic/campaign.gd`, `Wave.campaign`): a level plays all its `waves` (no escape limit, no
@@ -66,7 +74,7 @@ them so they match. Do not leave the code working around the difference.
 - **Shells**: a wave's pool is `(sum over its birds of Wave.hits_needed) x shells_per_hit`, where
   `hits_needed = hp + split_count` (each split child takes one hit, I7) and 0 for a decoy (never to be shot).
 - **Art**: a bird's sprite is `res://art/<sprite>_fly_1.svg` and `_fly_2.svg` (flap frames), `_hit.svg` (the killed
-  frame), plus `_damaged_fly_1.svg` and `_damaged_fly_2.svg` when `hp > 1`. Each is drawn facing right, its centre the
+  frame), `_dive.svg` (the head-first fall seen from behind: back to the camera, wings folded, head down, drawn upright on the canvas turned on end), plus `_damaged_fly_1.svg` and `_damaged_fly_2.svg` when `hp > 1`. Each other frame is drawn facing right, its centre the
   bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
   `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds). Every colour in
   the art comes from `art/palette.hex` (`tools/check_palette.gd`).
@@ -92,10 +100,12 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `chapter` | string | chapter id (chapters.json) | The campaign chapter that introduces the type (I19). |
 | `pattern` | string | `"rise" \| "zigzag"` | Flight pattern (above). |
 | `speed` | float | 1..1000 | Base units per second, before the wave's speed scale. |
-| `wobble` | float | 0..100 | Vertical wobble amplitude in base units. |
-| `wobble_hz` | float | 0..5 | Wobble frequency. |
+| `wobble` | float | 0..100 | Vertical wobble amplitude in base units, on the title's crossing path only (a run's flight has none). |
+| `wobble_hz` | float | 0..5 | Wobble frequency (title crossing only). |
 | `flee_time` | float | 0.1..60 | Seconds of flight before it climbs off the top. |
 | `linger_time` | float | 0.1..60 | Seconds of flight after which the rival starts aiming at it (modes with `rival_steals`). Required for every bird, the decoy too (never used for it); `linger_time + aim_time < flee_time` (I13). |
+| `call` | string | sound effect id (`GameState.SFX_IDS`) | The call it gives the first frame any of its opaque art shows above the grass line (`Bird.appeared`), once per bird; fleeing makes no sound. Today every rising bird meets this on its spawn frame (its climb tilt lifts the art above the line), a split child at its launch (I25). |
+| `call_pitch` | float | 0.5..2 | The pitch its call plays at (1 is the recording's own; `Game.play_sfx`). |
 | `points` | int | 0..100000 | Points of a kill, before the multiplier. 0 only for a decoy (I6). |
 | `hp` | int | 1..5 | Hits to kill. `hp > 1` needs the damaged frames (I3). |
 | `sprite` | string | 1..26 chars | Art name (above); every frame must exist (I3). |
@@ -192,7 +202,7 @@ A single object (not an array):
 ---
 
 ## Invariants (`tools/test_content.gd` must check all of these)
-I1-I4, I13-I15 and I23 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
+I1-I4, I13-I15, I23 and I25 are the loader's own checks (`Content.errors()`); `test_content.gd` proves each against the real data
 (no errors) and each one firing on a malformed copy with the exact error lines. I5-I12 and I16-I22 are checked only by
 `test_content.gd`, against the real data and on a malformed copy each (with the loader quiet, so the invariant's own
 check is what catches it; I17 and I20's growth and shell parts on a stand-in schedule, since the formulas and
@@ -235,13 +245,18 @@ against a fallback value.
 - **I10** The roster has every kind of bird, each able to appear: a plain bird (not golden), an armored one
   (`hp >= 2`), a splitter, a `zigzag` flier, a golden bird and a decoy. Each chapter introduces at least one bird
   that can appear, and every bird can appear (in a mode's or level's mix, as a `golden_bird` or as a split child).
-- **I11** Every bird fits the field (`Play.FIELD`, 960x384): `size.x < 960` and `size.y + 2 x wobble < 384`.
+- **I11** Every bird fits the field (`Play.FIELD`, 960x384): `size.x < 960` and `size.y < 384`. A run's flight has
+  no wobble, so its cruise band needs only the bird's size. `wobble` takes no part: the title's crossing (the only path
+  that wobbles) cuts the wobble to the room its band leaves above and below the sprite (`Flight._crossing`) and keeps
+  a band too short for the sprite centred, so no wobble can carry a goose out of the title's band.
 - **I12** Every hitbox's bounding box is at least 44 base units on each side (the game's smallest touch target), so a
   fingertip can hit every bird, the splitter's goslings included.
 - **I13** For every bird but the decoy (never stolen), every linger the rival uses plus `aim_time` is under
   `flee_time`: `linger_time x 1` in each mode with `rival_steals`, and `linger_time x rival_linger_scale` in each chapter
-  (the campaign always steals); so every aim cue (at least 0.5 s: `aim_time`'s range) can finish before the bird flees
-  on its own. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
+  (the campaign always steals); so a bird the rival is free to aim at once it lingers can be cued and stolen before it
+  flees on its own. A cue he starts always finishes (he never starts one with less than `aim_time` left), but with one
+  cue at a time and `Play.RIVAL_AIM_GAP` after each, a bird waiting behind another cue or the gap may run out of time
+  and escape un-cued. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
   `data/birds.json [<id>] linger_time: <linger> x <scale> (<modes and chapters>) + aim_time <aim> is not under flee_time
   <flee> (I13: ...)`.
 - **I14** `chapters.json` holds exactly 4 chapters; each `rival_linger_scale` is in (0, 1] and at most the previous
@@ -259,7 +274,7 @@ against a fallback value.
   one); every bird a chapter introduces spawns in at least one of its levels' fixed-seed waves (a split child counts
   when its parent spawns); a golden bird spawns in every chapter.
 - **I20** Endless and Time Attack are fair, by a simulation of the real data that uses `Wave.for_mode`, `Ammo` and
-  `Flight` as play does, over 60 run seeds and the waves a run can reach: Endless's waves 1-10, and every wave of a
+  `Flight` as play does (each bird at its own `Flight.speed_factor`), over 60 run seeds and the waves a run can reach: Endless's waves 1-10, and every wave of a
   timed mode that starts before its `time_limit` even if each wave ended the moment its last bird spawned (each
   wave's lead-in counted: 11 waves for Time Attack). In each: (a) a wave never has fewer birds or a lower speed scale
   than the one before; (b) its shells cover every hit its birds need (an `Ammo` of the wave's shells never refuses
@@ -279,10 +294,16 @@ against a fallback value.
   the other backdrops (real art: sunset's violet 4.00:1 is the day's weakest, the night's sky 4.06:1). The main fills'
   contrasts are printed for the record (a sky-coloured bird such as the golden goose on the sunset sky relies on its
   outline).
+- **I24** `Flight.SPEED_SPREAD_TOP_SCALE` (where the per-bird speed spread reaches its 0.20 top) is the highest speed
+  scale in the content: the largest of every level's `speed_scale`, every boss flock's `speed_scale` and every
+  mode's `speed_cap` (1.6: the night boss and Endless).
 - **I23** Every music track the data names (a chapter's `music`, a mode's `music`) is a snake_case id whose loop exists
   as `res://audio/music/<id>.mp3` (made by `tools/music.py`): `unknown music track '<id>' (no
   res://audio/music/<id>.mp3)`, a non-snake_case id `'<id>' is not a snake_case music track id`. The title and results
   loops are the game's own (`GameState.TITLE_TRACK`, `RESULTS_TRACK`), checked when the game starts.
+- **I25** Every bird's `call` is one of the game's sound effects, `GameState.SFX_IDS` (each made by `tools/sfx.py`
+  as `res://audio/sfx/<id>.wav`; the game checks every file exists when it starts): `unknown sound effect '<id>' (I25: a
+  call must be one of GameState.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`Content.CALL_PITCH_MIN`..`MAX`, I2).
 
 ## Current content
 | bird | chapter | pattern | speed | flee | linger | points | hp | special | Endless |
@@ -294,6 +315,9 @@ against a fallback value.
 | zigzag | night | zigzag | 175 | 6.0 | 3.5 | 200 | 1 | | wave 7+, weight 3 |
 | golden | dawn | rise | 240 | 4.0 | 2.5 | 500 | 1 | | 8% of slots from wave 2 |
 | decoy | sunset | rise | 120 | 7.0 | 4.0 | 0 | 1 | penalty 200, escape not counted, never stolen (the rival's pigeon in a top hat) | wave 5+, weight 2 |
+
+Calls (a recording each, credited in the game; `tools/sfx.py` RECORDINGS): goose, armored, golden and splitter
+`call_quack` at x1.0, x0.85, x1.15 and x0.93; gosling `call_gosling`; zigzag `call_swift`; decoy `call_pigeon` (each x1.0).
 
 Chapters: dawn (backdrop dawn, mist, music campaign_dawn, rival linger x1.0), noon (noon, wind, campaign_noon, x0.9),
 sunset (sunset, rain, campaign_sunset, x0.8), night (night, snow, campaign_night, x0.7); dawn introduces
