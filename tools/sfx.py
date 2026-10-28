@@ -494,16 +494,17 @@ def biquad(samples, b, a):
     return out
 
 
-def k_weighted(samples):
-    """BS.1770's K-weighting: a high shelf (+4 dB above ~1.7 kHz) and a high-pass (~38 Hz)."""
-    k = math.tan(math.pi * 1681.974450955533 / RATE)
+def k_weighted(samples, rate=RATE):
+    """BS.1770's K-weighting at `rate` Hz: a high shelf (+4 dB above ~1.7 kHz) and a
+    high-pass (~38 Hz). tools/music.py uses it too."""
+    k = math.tan(math.pi * 1681.974450955533 / rate)
     q = 0.7071752369554196
     vh = 10 ** (3.999843853973347 / 20)
     vb = vh ** 0.4996667741545416
     a0 = 1 + k / q + k * k
     shelf = biquad(samples, ((vh + vb * k / q + k * k) / a0, 2 * (k * k - vh) / a0, (vh - vb * k / q + k * k) / a0),
                    (2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0))
-    k = math.tan(math.pi * 38.13547087602444 / RATE)
+    k = math.tan(math.pi * 38.13547087602444 / rate)
     q = 0.5003270373238773
     a0 = 1 + k / q + k * k
     return biquad(shelf, (1.0, -2.0, 1.0), (2 * (k * k - 1) / a0, (1 - k / q + k * k) / a0))

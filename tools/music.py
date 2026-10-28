@@ -47,13 +47,23 @@ import tempfile
 import wave
 from pathlib import Path
 
+from sfx import k_weighted
+
 ROOT = Path(__file__).resolve().parent.parent
 PROJECT = ROOT / "huntfrenzy"
 OUT_DIR = PROJECT / "audio" / "music"
 LOCK = ROOT / "tools" / "music.lock.json"
 RATE = 44100
-# Music sits under the sound effects (tools/sfx.py PEAK 0.9).
+# Music sits under the sound effects: every loop is set to the same integrated loudness,
+# LOUDNESS LUFS (BS.1770 gated, loudness()), about 6 dB under the effects' loudest moments
+# (tools/sfx.py LOUDNESS_BANDS, roughly -22..-17), so no loop is louder than another and none
+# masks the shots. No sample may pass PEAK.
+LOUDNESS = -25.0
 PEAK = 0.6
+# BS.1770's gating: LOUDNESS_BLOCK-second blocks every LOUDNESS_HOP seconds, an absolute gate
+# at -70 LUFS and a relative gate 10 LU under the absolutely gated mean.
+LOUDNESS_BLOCK = 0.4
+LOUDNESS_HOP = 0.1
 NOTE_NAMES = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 # The eight MP3s together must stay under this (all the audio stays under 8 MB: plan AC 15).
 MAX_TOTAL_BYTES = 6 * 1024 * 1024
@@ -399,16 +409,38 @@ def render(spec):
     return buf
 
 
-def to_pcm(samples):
-    top = max(abs(s) for s in samples) or 1.0
-    return b"".join(struct.pack("<h", int(s / top * PEAK * 32767)) for s in samples)
+def loudness(samples):
+    """The integrated loudness of `samples` (full scale 1.0) in LUFS: BS.1770 K-weighting,
+    then the gated mean square of LOUDNESS_BLOCK blocks."""
+    squares = [y * y for y in k_weighted(samples, RATE)]
+    block, hop = int(LOUDNESS_BLOCK * RATE), int(LOUDNESS_HOP * RATE)
+    sums = [0.0]
+    for v in squares:
+        sums.append(sums[-1] + v)
+    means = [(sums[i + block] - sums[i]) / block for i in range(0, len(squares) - block + 1, hop)]
+    gated = [m for m in means if -0.691 + 10 * math.log10(max(m, 1e-12)) > -70.0]
+    if not gated:
+        return -70.0
+    relative = -0.691 + 10 * math.log10(sum(gated) / len(gated)) - 10.0
+    gated = [m for m in gated if -0.691 + 10 * math.log10(max(m, 1e-12)) > relative]
+    return -0.691 + 10 * math.log10(sum(gated) / len(gated))
+
+
+def to_pcm(samples, name):
+    """16-bit PCM of `samples` scaled to LOUDNESS LUFS; a loop that would pass PEAK there is
+    an error (lower its voices instead)."""
+    gain = 10 ** ((LOUDNESS - loudness(samples)) / 20)
+    top = max(abs(s) for s in samples) * gain
+    if top > PEAK:
+        raise MusicError(f"{name}: at {LOUDNESS} LUFS it peaks at {top:.3f}, above PEAK {PEAK}")
+    return b"".join(struct.pack("<h", int(s * gain * 32767)) for s in samples)
 
 
 def render_all():
     """{track name: (16-bit mono PCM bytes, sample count)} for every track."""
     rendered = {}
     for spec in TRACKS:
-        pcm = to_pcm(render(spec))
+        pcm = to_pcm(render(spec), spec["name"])
         rendered[spec["name"]] = (pcm, len(pcm) // 2)
     return rendered
 
