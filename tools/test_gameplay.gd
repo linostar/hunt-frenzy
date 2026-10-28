@@ -4395,11 +4395,13 @@ func _test_audio_every_event_sound() -> void:
 			break
 		await process_frame
 	var line := play.heckle_shown()
+	# The stolen bird falls off the screen and frees itself while the laugh is awaited.
+	var was_stolen := cued.stolen
 	var waited := 0
 	while not &"rival_laugh" in _game.sfx_log and waited < 120:
 		await process_frame
 		waited += 1
-	_check(cued.stolen and _game.sfx_log.count(&"rival_steal") == 1 and _game.sfx_log.count(&"rival_laugh") == 1 and _game.sfx_log.find(&"rival_steal") < _game.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.sfx_log))
+	_check(was_stolen and _game.sfx_log.count(&"rival_steal") == 1 and _game.sfx_log.count(&"rival_laugh") == 1 and _game.sfx_log.find(&"rival_steal") < _game.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.sfx_log))
 	_check(absi(waited - roundi(Play.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
 	_check(line != "" and not &"heckle_steal" in _game.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.sfx_log])
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
