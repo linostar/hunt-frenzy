@@ -3,7 +3,8 @@ extends Control
 ## The credits screen (the title's Credits button): who made the game, the engine and its
 ## licence, the two fonts with their licence and the copyright lines of their OFL files
 ## (ui/fonts/*-OFL.txt, which ship beside them), and that every piece of art and audio is
-## original, generated as code for this game. It fits the safe area at every supported
+## original, generated as code for this game, but for the rival's laugh, a CC0 recording
+## credited to its author (tools/sfx.py LAUGH_SOURCE). It fits the safe area at every supported
 ## aspect down to a safe height of 470 (no scrolling). Back (focused on arrival) or Escape
 ## returns to the title with its Credits button focused.
 
@@ -15,7 +16,8 @@ const LINES: Array[String] = [
 	"Fonts: Lilita One and Nunito, under the SIL Open Font License 1.1",
 	"Lilita One: Copyright (c) 2011 Juan Montoreano (juan@remolacha.biz), with Reserved Font Name Lilita",
 	"Nunito: Copyright 2014 The Nunito Project Authors (https://github.com/googlefonts/nunito)",
-	"All art, music and sound effects are original, generated as code for this game.",
+	"All art, music and sound effects are original, generated as code for this game,",
+	"except the rival's laugh: \"evil laugh\" by WeaponGuy (OpenGameArt), CC0 public domain.",
 ]
 ## Game.flow_args "focus" the title reads to focus its Credits button again.
 const TITLE_FOCUS := "credits"

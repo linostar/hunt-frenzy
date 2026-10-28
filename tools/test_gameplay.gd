@@ -5016,7 +5016,8 @@ func _test_settings_over_paused_run() -> void:
 
 ## The credits screen from the title's Credits button: who made it, the engine and its
 ## licence, both fonts with the OFL 1.1 and the copyright lines of their shipped OFL files,
-## that the art and audio are original and generated as code, nothing naming Nintendo or
+## that the art and audio are original and generated as code but for the rival's laugh,
+## credited to WeaponGuy under CC0, nothing naming Nintendo or
 ## Duck Hunt; it fits at every aspect, a notch and a short safe area; Back (focused) and
 ## Escape return to the title with Credits focused (plan AC 12).
 func _test_credits_screen() -> void:
@@ -5033,7 +5034,7 @@ func _test_credits_screen() -> void:
 	if credits == null:
 		return
 	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), _text_of(credits, "Lines")]
-	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code"]:
+	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code", "WeaponGuy", "CC0"]:
 		_check(needed in text, "the credits say " + needed, text)
 	for font: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
 		var notice := FileAccess.get_file_as_string(font).get_slice("\n\n", 0).replace("\n", " ")
