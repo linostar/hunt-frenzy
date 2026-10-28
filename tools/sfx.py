@@ -17,9 +17,9 @@ Sounds:
                             TIMBRES and vowel of VOWELS (a voiced source through two vowel
                             formants); Game.play_heckle strings them into a seeded blurt,
                             its pitch and timbre set by the heckle's category.
-    rival_laugh.wav         (one of EFFECTS) the rival's mocking laugh after a steal, "HA!
-                            ha-ha-ha-haa" (laugh_syllable()), LAUGH_SECONDS long; --check
-                            holds it there.
+    rival_laugh.wav         (one of EFFECTS) the rival's villain laugh after a steal,
+                            "MWA-ha-ha-ha-HAAA", spoken by a small formant voice (speak()),
+                            LAUGH_SECONDS long; --check holds it there.
 
 Every file is peak-normalised to its own level, never above PEAK, so nothing clips; the
 levels set the mix, and --check holds each file's loudness as heard (loudness_of: BS.1770
@@ -314,50 +314,150 @@ def fx_rival_steal(rng):
     return place(buf, lowpass(shot, [900.0] * len(shot)), 0.16, 0.35)
 
 
-# The rival's laugh after a steal, a mocking taunt in a man's chest voice: a loud "HA!" at
-# LAUGH_HA_HZ falling by LAUGH_HA_GLIDE, then "ha-ha-ha" stepping down (LAUGH_STEP_HZ,
-# LAUGH_STEP_GAP apart, from LAUGH_STEPS_AT) and a gravelly "haa" at LAUGH_TAIL_HZ:
-# 0.27 + 3 x 0.14 + 0.025 + 0.2 = 0.915 s in all (0.6..1.0 s: the plan's AC 8).
-LAUGH_HA_HZ = 185.0
-LAUGH_HA_GLIDE = 0.8
-LAUGH_HA_SECONDS = 0.22
-LAUGH_STEPS_AT = 0.27
-LAUGH_STEP_HZ = (160.0, 148.0, 136.0)
-LAUGH_STEP_GAP = 0.14
-LAUGH_STEP_SECONDS = 0.1
-LAUGH_TAIL_HZ = 128.0
-LAUGH_TAIL_SECONDS = 0.2
-# A man's "ah" (formant Hz, Q, gain), with a strong third formant and a 3 kHz band that keep
-# it clear rather than muddy.
-LAUGH_AH = ((720.0, 5.0, 1.0), (1150.0, 6.0, 0.8), (2500.0, 8.0, 0.45), (3100.0, 10.0, 0.3))
+# The rival's laugh after a steal, a villain's "MWA-ha-ha-ha-HAAA". It is spoken by a small
+# formant voice rather than built from blurt syllables: Rosenberg glottal pulses (with
+# per-period jitter and shimmer) and breath noise feed four parallel resonators whose centres
+# follow the phonemes, so the "m" really opens into "a" and each "h" breathes into its vowel.
+# An octave-down double and a slightly sharp twin thicken it, tanh adds a growl, and a short
+# Schroeder room gives it an echo. LAUGH_SYLLABLES: (onset, vowel, start s, length s, pitch
+# from, pitch to, loudness); the voice runs LAUGH_VOICE_SECONDS, then LAUGH_ECHO_SECONDS of
+# echo: 1.5 s in all.
+LAUGH_SYLLABLES = (
+    ("m", "a", 0.00, 0.24, 120.0, 135.0, 1.0),
+    ("h", "a", 0.27, 0.11, 125.0, 112.0, 0.8),
+    ("h", "a", 0.41, 0.11, 120.0, 108.0, 0.8),
+    ("h", "a", 0.55, 0.11, 118.0, 105.0, 0.85),
+    ("h", "ah", 0.70, 0.45, 150.0, 100.0, 1.0),
+)
+LAUGH_VOICE_SECONDS = 1.2
+LAUGH_ECHO_SECONDS = 0.3
+# Phoneme -> its first four formants in Hz (a man's voice; "m" a nasal murmur), and the
+# formants' bandwidths and gains.
+LAUGH_PHONEMES = {"a": (700.0, 1100.0, 2450.0, 3300.0), "ah": (650.0, 1000.0, 2400.0, 3250.0), "m": (280.0, 1000.0, 2300.0, 3300.0)}
+LAUGH_BANDWIDTHS = (80.0, 100.0, 140.0, 220.0)
+LAUGH_FORMANT_GAINS = (1.0, 0.7, 0.35, 0.2)
+# The octave-down double's and the twin's share, the twin's detune, the growl's drive and
+# the echo's share.
+LAUGH_SUB = 0.5
+LAUGH_TWIN = 0.35
+LAUGH_TWIN_DETUNE = 1.012
+LAUGH_DRIVE = 1.8
+LAUGH_ECHO = 0.3
 # --check holds the laugh's length to this range (seconds).
-LAUGH_SECONDS = (0.6, 1.0)
+LAUGH_SECONDS = (0.6, 1.6)
 
 
-def laugh_syllable(rng, hz, glide, seconds, breath, fry=0.0, attack=0.006):
-    """One "ha" of the laugh: a breathy h (`breath` gain), then a chest voice (a saw and a
-    pulse) gliding from `hz` to `hz` x `glide` through LAUGH_AH. `fry` adds gravel: the
-    voice dips at half its pitch by up to that share."""
-    n = int(seconds * RATE)
-    freqs = [hz * (1 + (glide - 1) * (i / n) ** 1.5) for i in range(n)]
-    source = [0.6 * a + 0.4 * b for a, b in zip(oscillate(freqs, saw), oscillate(freqs, pulse(0.25)))]
-    if fry:
-        sub = oscillate([f / 2 for f in freqs], square)
-        source = [s * (1 - fry * (0.5 + 0.5 * u)) for s, u in zip(source, sub)]
-    voiced = [0.0] * n
-    for centre, q, gain in LAUGH_AH:
-        voiced = [v + gain * b for v, b in zip(voiced, bandpass(source, centre, q))]
-    buf = place([], highpassed(noise(0.04, rng, [(0, 3500), (1, 2000)], attack=0.003, release=0.025)), 0.0, breath)
-    return place(buf, [v * e for v, e in zip(voiced, envelope(n, attack, 0.05))], 0.025)
+def track(points, n):
+    """`n` samples of the piecewise-linear curve through (seconds, value) points."""
+    points = sorted(points, key=lambda p: p[0])
+    out, j = [], 0
+    for i in range(n):
+        t = i / RATE
+        while j < len(points) - 2 and t > points[j + 1][0]:
+            j += 1
+        (t0, v0), (t1, v1) = points[j], points[j + 1]
+        out.append(v0 if t <= t0 else v1 if t >= t1 or t1 == t0 else v0 + (v1 - v0) * (t - t0) / (t1 - t0))
+    return out
+
+
+def glottal(f0, voice, rng, jitter=0.015, shimmer=0.08):
+    """Rosenberg glottal pulses at the per-sample pitch `f0`, scaled by `voice`, each period's
+    pitch and level nudged by up to `jitter` and `shimmer`; differenced for lip radiation."""
+    out, phase, period_f, period_a, prev = [], 1.0, 1.0, 1.0, 0.0
+    for f, v in zip(f0, voice):
+        phase += f * period_f / RATE
+        if phase >= 1.0:
+            phase -= 1.0
+            period_f = 1 + rng.uniform(-jitter, jitter)
+            period_a = 1 + rng.uniform(-shimmer, shimmer)
+        if phase < 0.45:
+            g = 0.5 * (1 - math.cos(math.pi * phase / 0.45))
+        elif phase < 0.62:
+            g = math.cos(math.pi * (phase - 0.45) / 0.34)
+        else:
+            g = 0.0
+        g *= v * period_a
+        out.append(g - prev)
+        prev = g
+    return out
+
+
+def resonate(samples, centres, bandwidth):
+    """Klatt two-pole resonator following the per-sample centre frequencies `centres`."""
+    out, y1, y2 = [], 0.0, 0.0
+    c = -math.exp(-2 * math.pi * bandwidth / RATE)
+    r = math.exp(-math.pi * bandwidth / RATE)
+    for x, f in zip(samples, centres):
+        b = 2 * r * math.cos(2 * math.pi * f / RATE)
+        y = (1 - b - c) * x + b * y1 + c * y2
+        out.append(y)
+        y2, y1 = y1, y
+    return out
+
+
+def laugh_score(syllables):
+    """The voice's curves for `syllables` (see LAUGH_SYLLABLES): pitch, voicing, breath and
+    phoneme points. An "h" onset is a breath burst before the voice comes in; any other onset
+    is voiced and its formants glide into the vowel."""
+    pitch, voice, breath, phonemes = [], [(0.0, 0.0)], [(0.0, 0.0)], []
+    for onset, vowel, at, length, pitch_from, pitch_to, loud in syllables:
+        if onset == "h":
+            breath += [(at, 0.0), (at + 0.012, 0.9 * loud), (at + 0.05, 0.25 * loud)]
+            voice += [(at, 0.0), (at + 0.04, 0.0), (at + 0.07, loud)]
+            phonemes += [(at, vowel), (at + length, vowel)]
+        else:
+            breath += [(at, 0.0), (at + 0.05, 0.2 * loud)]
+            voice += [(at, 0.0), (at + 0.015, 0.55 * loud), (at + 0.07, 0.6 * loud), (at + 0.1, loud)]
+            phonemes += [(at, onset), (at + 0.07, onset), (at + 0.12, vowel), (at + length, vowel)]
+        pitch += [(at, pitch_from), (at + length, pitch_to)]
+        voice += [(at + length - 0.04, loud), (at + length, 0.0)]
+        breath += [(at + length - 0.03, 0.2 * loud), (at + length, 0.0)]
+    return pitch, voice, breath, phonemes
+
+
+def speak(score, rng, n, pitch_scale=1.0):
+    """`n` samples of the formant voice saying `score` (laugh_score), its pitch x `pitch_scale`."""
+    pitch, voice, breath, phonemes = score
+    source = glottal([f * pitch_scale for f in track(pitch, n)], track(voice, n), rng)
+    excitation = [s * 6.0 + rng.uniform(-1, 1) * b * 0.5 for s, b in zip(source, track(breath, n))]
+    out = [0.0] * n
+    for k, gain in enumerate(LAUGH_FORMANT_GAINS):
+        centres = track([(at, LAUGH_PHONEMES[p][k]) for at, p in phonemes], n)
+        out = [o + gain * r for o, r in zip(out, resonate(excitation, centres, LAUGH_BANDWIDTHS[k]))]
+    return out
+
+
+def room(samples, wet, tail):
+    """A Schroeder room (four combs, two all-passes) mixed in at `wet`, `tail` seconds added."""
+    n = len(samples) + int(tail * RATE)
+    dry = samples + [0.0] * (n - len(samples))
+    combs = []
+    for delay_ms, feedback in ((29.7, 0.78), (37.1, 0.77), (41.1, 0.76), (43.7, 0.75)):
+        d = int(delay_ms / 1000 * RATE)
+        comb = [0.0] * n
+        for i in range(n):
+            comb[i] = dry[i] + (feedback * comb[i - d] if i >= d else 0.0)
+        combs.append(comb)
+    wet_part = [sum(comb[i] for comb in combs) / len(combs) for i in range(n)]
+    for delay_ms, g in ((5.0, 0.7), (1.7, 0.7)):
+        d = int(delay_ms / 1000 * RATE)
+        out = [0.0] * n
+        for i in range(n):
+            out[i] = -g * wet_part[i] + (wet_part[i - d] if i >= d else 0.0) + (g * out[i - d] if i >= d else 0.0)
+        wet_part = out
+    return [a + wet * b for a, b in zip(dry, wet_part)]
 
 
 def fx_rival_laugh(rng):
-    """The rival taunting at his steal: "HA! ha-ha-ha-haa"."""
-    buf = place([], laugh_syllable(rng, LAUGH_HA_HZ, LAUGH_HA_GLIDE, LAUGH_HA_SECONDS, 0.22, attack=0.004), 0.0)
-    for i, hz in enumerate(LAUGH_STEP_HZ):
-        place(buf, laugh_syllable(rng, hz, 0.9, LAUGH_STEP_SECONDS, 0.15), LAUGH_STEPS_AT + i * LAUGH_STEP_GAP)
-    tail = laugh_syllable(rng, LAUGH_TAIL_HZ, 0.85, LAUGH_TAIL_SECONDS, 0.1, fry=0.35)
-    return place(buf, tail, LAUGH_STEPS_AT + len(LAUGH_STEP_HZ) * LAUGH_STEP_GAP)
+    """The rival's villain laugh at his steal: "MWA-ha-ha-ha-HAAA"."""
+    n = int(LAUGH_VOICE_SECONDS * RATE)
+    score = laugh_score(LAUGH_SYLLABLES)
+    main = speak(score, rng, n)
+    low = speak(score, rng, n, 0.5)
+    twin = speak(score, rng, n, LAUGH_TWIN_DETUNE)
+    peak = max(abs(v) for v in main) or 1.0
+    mix = [math.tanh(LAUGH_DRIVE * (m + LAUGH_SUB * l + LAUGH_TWIN * t) / peak) for m, l, t in zip(main, low, twin)]
+    return room(mix, LAUGH_ECHO, LAUGH_ECHO_SECONDS)
 
 
 def fx_countdown_tick(rng):
@@ -434,7 +534,7 @@ EFFECTS = {
     "combo_up": (fx_combo_up, 0.3, "event"),
     "rival_aim": (fx_rival_aim, 0.5, "event"),
     "rival_steal": (fx_rival_steal, 0.7, "event"),
-    "rival_laugh": (fx_rival_laugh, 0.38, "voice"),
+    "rival_laugh": (fx_rival_laugh, 0.39, "voice"),
     "countdown_tick": (fx_countdown_tick, 0.45, "event"),
     "time_up": (fx_time_up, 0.5, "stinger"),
     "star": (fx_star, 0.55, "stinger"),
