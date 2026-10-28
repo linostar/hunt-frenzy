@@ -136,7 +136,7 @@ func _test_lookup_api() -> void:
 	_check(splitter.splits_into == "gosling" and splitter.split_count == 2, "the splitter splits into 2 goslings", "%s x%d" % [splitter.splits_into, splitter.split_count])
 	var decoy := Content.bird("decoy")
 	_check(decoy.penalty == 200 and not decoy.escape_counts and decoy.points == 0, "the decoy has a penalty and its escape does not count", "%d %s" % [decoy.penalty, decoy.escape_counts])
-	_check(Content.bird("armored").hp == 2 and Content.bird("armored").frames().size() == 5, "the armored goose has hp 2 and damaged frames", str(Content.bird("armored").frames()))
+	_check(Content.bird("armored").hp == 2 and Content.bird("armored").frames().size() == 6, "the armored goose has hp 2 and damaged frames", str(Content.bird("armored").frames()))
 	_check(Content.bird("zigzag").pattern == "zigzag", "the zigzag flies the zigzag pattern", Content.bird("zigzag").pattern)
 	var endless := Content.mode("endless")
 	var mix := endless.birds.map(func(e: ModeSpec.Entry) -> String: return "%s@%d" % [e.bird, e.from_wave])
@@ -436,7 +436,8 @@ func _test_i3_references() -> void:
 	_expect_load_errors("I3 unknown sprite", _mutated("birds.json", func(data: Array) -> void: data[0]["sprite"] = "swan"),
 		["data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_1.svg)",
 		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_fly_2.svg)",
-		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_hit.svg)"])
+		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_hit.svg)",
+		"data/birds.json [goose] sprite: unknown sprite 'swan' (no res://art/swan_dive.svg)"])
 	_expect_load_errors("I3 hp 2 without damaged frames", _mutated("birds.json", func(data: Array) -> void: data[0]["hp"] = 2),
 		["data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_1.svg)",
 		"data/birds.json [goose] sprite: unknown sprite 'goose' (no res://art/goose_damaged_fly_2.svg)"])
@@ -1164,7 +1165,8 @@ func _i5_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
 		for frame in spec.frames():
-			if frame == "hit":
+			# A shot bird (its hit and dive frames) is never hit-tested again.
+			if frame in ["hit", "dive"]:
 				continue
 			var art := _raster(spec.texture_path(frame))
 			var scale := Vector2(art.get_size()) / spec.size
@@ -1192,7 +1194,8 @@ func _i21_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
 		for frame in spec.frames():
-			if frame == "hit":
+			# A shot bird (its hit and dive frames) is never hit-tested again.
+			if frame in ["hit", "dive"]:
 				continue
 			var texture := load(spec.texture_path(frame)) as Texture2D
 			var image := texture.get_image() if texture != null else null

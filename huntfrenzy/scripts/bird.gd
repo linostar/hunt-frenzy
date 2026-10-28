@@ -5,8 +5,8 @@ extends Node2D
 ## once it has escaped (Flight.has_escaped) it emits `escaped` and frees itself. A hit
 ## that leaves it hit points (an armored bird's first) only switches it to its damaged
 ## flap frames; the killing hit stops it on its hit frame for HIT_HOLD seconds, then it
-## falls head-first (pitching nose-down over FALL_TURN_TIME) off the bottom of the screen,
-## emits `gone` and frees itself. A bird launched
+## dives head-first (its dive frame: wings folded, pitching nose-down over FALL_TURN_TIME)
+## off the bottom of the screen, emits `gone` and frees itself. A bird launched
 ## from a point (a splitter's gosling) flies Flight's launched path from there. While the
 ## rival aims at it (set_cue, driven by Play from Rival.steal_state) it shows the Reticle
 ## over itself; steal() drops it like a kill (hit frame, then the fall), marked stolen.
@@ -155,6 +155,7 @@ func _process(frame_delta: float) -> void:
 			_hold -= delta
 			if _hold <= 0.0:
 				state = State.FALLING
+				_sprite.texture = _textures["dive"]
 		State.FALLING:
 			_fall_speed += GRAVITY * delta
 			_fall_time += delta

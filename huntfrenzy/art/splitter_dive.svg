@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="104" height="80" viewBox="0 0 104 80">
+  <!-- Splitter: a plump two-tone goose stitched down the middle, dive: head stretched straight ahead, wings folded along the back, eyes crossed out; faces right, centre (52, 40) is the bird's origin. -->
+  <path d="M12 38 C20 30 32 26 46 26 C60 26 72 30 80 36 C84 34 90 34 94 37 C97 39 98 41 98 43 L103 46 L97 49 C95 53 90 55 84 54 C82 60 76 65 68 68 C60 70 52 71 44 70 C28 70 16 62 12 52 C8 51 5 48 3 45 C6 43 7 41 5 37 C8 37 10 37 12 38 Z" fill="#f07a5a" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M12 38 C20 30 32 26 46 26 L48 26 C46 34 50 44 46 52 C50 60 46 66 47 70 L44 70 C28 70 16 62 12 52 C8 51 5 48 3 45 C6 43 7 41 5 37 C8 37 10 37 12 38 Z" fill="#3fa7a0"/>
+  <path d="M14 52 C22 62 34 68 46 68 C46 66 47 65 47 63 C34 63 22 60 14 52 Z" fill="#2f7fa8"/>
+  <path d="M47 63 C58 63 68 60 76 55 C74 61 70 65 62 68 C56 69 51 70 47 70 Z" fill="#c8323a"/>
+  <path d="M52 29 C62 29 70 32 76 36 C68 34 60 32 52 32 Z" fill="#ffd2a8"/>
+  <ellipse cx="88" cy="47" rx="3.5" ry="2.5" fill="#ffd2a8"/>
+  <path d="M98 43 L103 46 L97 49 Z" fill="#f08a24"/>
+  <path d="M48 26 C46 34 50 44 46 52 C50 60 46 66 47 70" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M45 50 L50 50 M44 57 L50 58 M44 64 L50 64" fill="none" stroke="#1f1a2e" stroke-width="1.6" stroke-linecap="round"/>
+  <path d="M12 38 C20 30 32 26 46 26 C60 26 72 30 80 36 C84 34 90 34 94 37 C97 39 98 41 98 43 L103 46 L97 49 C95 53 90 55 84 54 C82 60 76 65 68 68 C60 70 52 71 44 70 C28 70 16 62 12 52 C8 51 5 48 3 45 C6 43 7 41 5 37 C8 37 10 37 12 38 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M89 38.5 L93 42.5 M93 38.5 L89 42.5" fill="none" stroke="#1f1a2e" stroke-width="1.4" stroke-linecap="round"/>
+  <path d="M62 40 C52 34 34 34 20 38 C14 40 10 42 6 45 C18 45 32 49 44 50 C54 50 62 46 62 40 Z" fill="#3fa7a0" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M58 41.5 C46 39 32 39.5 12 44 C30 44.5 44 46 58 41.5 Z" fill="#8fd8c8"/>
+</svg>

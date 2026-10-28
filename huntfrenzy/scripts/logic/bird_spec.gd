@@ -27,7 +27,8 @@ var points := 0
 ## Hits it takes to kill; every hit before the last shows the damaged frames.
 var hp := 0
 ## Art name: res://art/<sprite>_fly_1.svg, <sprite>_fly_2.svg (flap frames), <sprite>_hit.svg,
-## and <sprite>_damaged_fly_1.svg / _damaged_fly_2.svg when hp > 1.
+## <sprite>_dive.svg (wings folded, head ahead: the head-first fall), and
+## <sprite>_damaged_fly_1.svg / _damaged_fly_2.svg when hp > 1.
 var sprite := ""
 ## Drawn size in base units; the sprite's centre is the bird's origin.
 var size := Vector2.ZERO
@@ -42,15 +43,15 @@ var penalty := 0
 var escape_counts := true
 
 
-## The texture path of `frame` ("fly_1", "fly_2", "hit", or a DAMAGED_FRAMES name).
+## The texture path of `frame` ("fly_1", "fly_2", "hit", "dive", or a DAMAGED_FRAMES name).
 func texture_path(frame: String) -> String:
 	return "res://art/%s_%s.svg" % [sprite, frame]
 
 
-## Every frame the bird's art must have: the flap and hit frames, plus the damaged flap
-## frames when it takes more than one hit.
+## Every frame the bird's art must have: the flap, hit and dive frames, plus the damaged
+## flap frames when it takes more than one hit.
 func frames() -> Array[String]:
-	var result: Array[String] = ["fly_1", "fly_2", "hit"]
+	var result: Array[String] = ["fly_1", "fly_2", "hit", "dive"]
 	if hp > 1:
 		result.append_array(DAMAGED_FRAMES)
 	return result
