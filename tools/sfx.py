@@ -17,8 +17,8 @@ Sounds:
                             TIMBRES and vowel of VOWELS (a voiced source through two vowel
                             formants); Game.play_heckle strings them into a seeded blurt,
                             its pitch and timbre set by the heckle's category.
-    rival_laugh.wav         (one of EFFECTS) the rival's snicker after a steal, "heh-heh-
-                            heh-heh-HA!" (laugh_syllable()), LAUGH_SECONDS long; --check
+    rival_laugh.wav         (one of EFFECTS) the rival's mocking laugh after a steal, "HA!
+                            ha-ha-ha-haa" (laugh_syllable()), LAUGH_SECONDS long; --check
                             holds it there.
 
 Every file is peak-normalised to its own level, never above PEAK, so nothing clips; the
@@ -314,41 +314,50 @@ def fx_rival_steal(rng):
     return place(buf, lowpass(shot, [900.0] * len(shot)), 0.16, 0.35)
 
 
-# The rival's laugh after a steal, a naughty snicker: LAUGH_HEHS nasal "heh"s at
-# LAUGH_HEH_HZ, LAUGH_HEH_GAP seconds apart, then a bright mocking "HA" at LAUGH_HA_HZ that
-# lifts and wavers: 0.02 + 4 x 0.105 + 0.04 + 0.34 = 0.8 s in all (0.6..1.0 s: the plan's AC 8).
-LAUGH_HEH_HZ = (360.0, 400.0, 370.0, 410.0)
-LAUGH_HEH_GAP = 0.105
-LAUGH_HEH_SECONDS = 0.08
-LAUGH_HA_HZ = 440.0
-LAUGH_HA_SECONDS = 0.32
-# A bright "a" and a nasal "e" (formant Hz, Q, gain): higher than VOWELS, a small sharp voice.
-LAUGH_A = ((1000.0, 4.0, 1.0), (1600.0, 6.0, 0.7), (3000.0, 9.0, 0.25))
-LAUGH_E = ((500.0, 4.0, 1.0), (2300.0, 7.0, 0.8), (3200.0, 9.0, 0.3), (2700.0, 9.0, 0.4))
+# The rival's laugh after a steal, a mocking taunt in a man's chest voice: a loud "HA!" at
+# LAUGH_HA_HZ falling by LAUGH_HA_GLIDE, then "ha-ha-ha" stepping down (LAUGH_STEP_HZ,
+# LAUGH_STEP_GAP apart, from LAUGH_STEPS_AT) and a gravelly "haa" at LAUGH_TAIL_HZ:
+# 0.27 + 3 x 0.14 + 0.025 + 0.2 = 0.915 s in all (0.6..1.0 s: the plan's AC 8).
+LAUGH_HA_HZ = 185.0
+LAUGH_HA_GLIDE = 0.8
+LAUGH_HA_SECONDS = 0.22
+LAUGH_STEPS_AT = 0.27
+LAUGH_STEP_HZ = (160.0, 148.0, 136.0)
+LAUGH_STEP_GAP = 0.14
+LAUGH_STEP_SECONDS = 0.1
+LAUGH_TAIL_HZ = 128.0
+LAUGH_TAIL_SECONDS = 0.2
+# A man's "ah" (formant Hz, Q, gain), with a strong third formant and a 3 kHz band that keep
+# it clear rather than muddy.
+LAUGH_AH = ((720.0, 5.0, 1.0), (1150.0, 6.0, 0.8), (2500.0, 8.0, 0.45), (3100.0, 10.0, 0.3))
 # --check holds the laugh's length to this range (seconds).
 LAUGH_SECONDS = (0.6, 1.0)
 
 
-def laugh_syllable(rng, hz, glide, seconds, formants, width, vibrato, breath):
-    """One laugh syllable: a breathy h, then a pulse of `width` gliding from `hz` to
-    `hz` x `glide` (with a 7 Hz `vibrato` depth) through `formants`."""
+def laugh_syllable(rng, hz, glide, seconds, breath, fry=0.0, attack=0.006):
+    """One "ha" of the laugh: a breathy h (`breath` gain), then a chest voice (a saw and a
+    pulse) gliding from `hz` to `hz` x `glide` through LAUGH_AH. `fry` adds gravel: the
+    voice dips at half its pitch by up to that share."""
     n = int(seconds * RATE)
-    freqs = [hz * (1 + (glide - 1) * i / n) * (1 + vibrato * math.sin(2 * math.pi * 7.0 * i / RATE)) for i in range(n)]
-    source = oscillate(freqs, pulse(width))
+    freqs = [hz * (1 + (glide - 1) * (i / n) ** 1.5) for i in range(n)]
+    source = [0.6 * a + 0.4 * b for a, b in zip(oscillate(freqs, saw), oscillate(freqs, pulse(0.25)))]
+    if fry:
+        sub = oscillate([f / 2 for f in freqs], square)
+        source = [s * (1 - fry * (0.5 + 0.5 * u)) for s, u in zip(source, sub)]
     voiced = [0.0] * n
-    for centre, q, gain in formants:
+    for centre, q, gain in LAUGH_AH:
         voiced = [v + gain * b for v, b in zip(voiced, bandpass(source, centre, q))]
-    buf = place([], highpassed(noise(0.035, rng, [(0, 5000), (1, 3500)], attack=0.003, release=0.02)), 0.0, breath)
-    return place(buf, [v * e for v, e in zip(voiced, envelope(n, 0.008, 0.04))], 0.02)
+    buf = place([], highpassed(noise(0.04, rng, [(0, 3500), (1, 2000)], attack=0.003, release=0.025)), 0.0, breath)
+    return place(buf, [v * e for v, e in zip(voiced, envelope(n, attack, 0.05))], 0.025)
 
 
 def fx_rival_laugh(rng):
-    """The rival snickering at his steal: "heh-heh-heh-heh-HA!"."""
-    buf = []
-    for i, hz in enumerate(LAUGH_HEH_HZ):
-        place(buf, laugh_syllable(rng, hz, 0.9, LAUGH_HEH_SECONDS, LAUGH_E, 0.18, 0.0, 0.2), i * LAUGH_HEH_GAP)
-    ha = laugh_syllable(rng, LAUGH_HA_HZ, 1.15, LAUGH_HA_SECONDS, LAUGH_A, 0.3, 0.05, 0.12)
-    return place(buf, ha, len(LAUGH_HEH_HZ) * LAUGH_HEH_GAP + 0.04)
+    """The rival taunting at his steal: "HA! ha-ha-ha-haa"."""
+    buf = place([], laugh_syllable(rng, LAUGH_HA_HZ, LAUGH_HA_GLIDE, LAUGH_HA_SECONDS, 0.22, attack=0.004), 0.0)
+    for i, hz in enumerate(LAUGH_STEP_HZ):
+        place(buf, laugh_syllable(rng, hz, 0.9, LAUGH_STEP_SECONDS, 0.15), LAUGH_STEPS_AT + i * LAUGH_STEP_GAP)
+    tail = laugh_syllable(rng, LAUGH_TAIL_HZ, 0.85, LAUGH_TAIL_SECONDS, 0.1, fry=0.35)
+    return place(buf, tail, LAUGH_STEPS_AT + len(LAUGH_STEP_HZ) * LAUGH_STEP_GAP)
 
 
 def fx_countdown_tick(rng):
@@ -425,7 +434,7 @@ EFFECTS = {
     "combo_up": (fx_combo_up, 0.3, "event"),
     "rival_aim": (fx_rival_aim, 0.5, "event"),
     "rival_steal": (fx_rival_steal, 0.7, "event"),
-    "rival_laugh": (fx_rival_laugh, 0.3, "voice"),
+    "rival_laugh": (fx_rival_laugh, 0.38, "voice"),
     "countdown_tick": (fx_countdown_tick, 0.45, "event"),
     "time_up": (fx_time_up, 0.5, "stinger"),
     "star": (fx_star, 0.55, "stinger"),
