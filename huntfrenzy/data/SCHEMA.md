@@ -74,7 +74,7 @@ them so they match. Do not leave the code working around the difference.
 - **Shells**: a wave's pool is `(sum over its birds of Wave.hits_needed) x shells_per_hit`, where
   `hits_needed = hp + split_count` (each split child takes one hit, I7) and 0 for a decoy (never to be shot).
 - **Art**: a bird's sprite is `res://art/<sprite>_fly_1.svg` and `_fly_2.svg` (flap frames), `_hit.svg` (the killed
-  frame), `_dive.svg` (the head-first fall: wings folded, head ahead), plus `_damaged_fly_1.svg` and `_damaged_fly_2.svg` when `hp > 1`. Each is drawn facing right, its centre the
+  frame), `_dive.svg` (the head-first fall seen from behind: back to the camera, wings folded, head down, drawn upright on the canvas turned on end), plus `_damaged_fly_1.svg` and `_damaged_fly_2.svg` when `hp > 1`. Each other frame is drawn facing right, its centre the
   bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
   `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds). Every colour in
   the art comes from `art/palette.hex` (`tools/check_palette.gd`).

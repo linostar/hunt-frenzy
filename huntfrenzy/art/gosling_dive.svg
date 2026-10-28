@@ -1,14 +1,15 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="80" height="60" viewBox="0 0 80 60">
-  <!-- Gosling: the splitter's round yellow chick, dive (the head-first fall): wings folded along the back, eyes crossed out; faces right, centre (40, 30) is the bird's origin. -->
-  <path d="M14 30 C16 22 24 18 32 18 C38 18 42 20 46 22 C46 10 52 4 59 4 C67 4 72 10 72 17 L78 20 L72 23 C71 29 65 32 59 33 C59 45 51 54 38 54 C26 54 16 47 14 39 C10 38 7 36 5 33 C8 32 10 31 14 30 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M17 42 C24 50 34 53 42 52 C52 51 57 45 58 38 C56 46 48 50 40 50 C30 50 22 47 17 42 Z" fill="#f2b632"/>
-  <path d="M52 9 C55 6 60 6 63 8 C59 8 56 9 54 12 Z" fill="#ffffff"/>
-  <path d="M22 24 C26 21 32 20 36 21 C31 22 27 24 24 27 Z" fill="#ffffff"/>
-  <path d="M56 4 C57 1 60 0 61 2 C60 3 59 4 58 5 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M72 17 L78 20 L72 23 Z" fill="#f08a24"/>
-  <ellipse cx="64" cy="22" rx="3" ry="2" fill="#ffd2a8"/>
-  <path d="M14 30 C16 22 24 18 32 18 C38 18 42 20 46 22 C46 10 52 4 59 4 C67 4 72 10 72 17 L78 20 L72 23 C71 29 65 32 59 33 C59 45 51 54 38 54 C26 54 16 47 14 39 C10 38 7 36 5 33 C8 32 10 31 14 30 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M61 12 L65 16 M65 12 L61 16" fill="none" stroke="#1f1a2e" stroke-width="1.4" stroke-linecap="round"/>
-  <path d="M48 33 C40 28 28 28 19 32 C14 34 11 36 8 39 C18 39 28 42 36 42 C43 42 48 38 48 33 Z" fill="#f2b632" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M44 34 C37 32 27 32.5 14 37 C27 37.5 37 38.5 44 34 Z" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="60" height="80" viewBox="0 0 60 80">
+  <!-- Gosling: the splitter's round yellow chick. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (30, 40) is the bird's origin. -->
+  <path d="M23 20 C20 11.8 25 9 30 9 C35 9 40 11.8 37 20 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M24 46.4 L25.2 63 L34.8 63 L36 46.4 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M25.9 70.7 L30 77 L34 70.7 Z" fill="#f08a24" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="30" cy="63" rx="9" ry="9.7" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="23.5" cy="64" rx="2.7" ry="4" fill="#ffd2a8"/>
+  <ellipse cx="36.5" cy="64" rx="2.7" ry="4" fill="#ffd2a8"/>
+  <path d="M27 55 L30 48 L33 55 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="30" cy="35" rx="17" ry="19" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M20.6 46.8 C11 45.5 11 36 18.1 20.8 C22.4 14 24.5 22 28.5 18 C25 23.6 25.5 33.1 25.5 41.6 C23.5 44.8 24.6 47.8 20.6 46.8 Z" fill="#f2b632" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M19.5 38.8 C17.2 29.3 21.5 18 23.5 26 C24.1 22 21.5 29.3 19.5 38.8 Z" fill="#ffffff"/>
+  <path d="M39.4 46.8 C49 45.5 49 36 41.9 20.8 C37.6 14 35.5 22 31.5 18 C35 23.6 34.5 33.1 34.5 41.6 C36.5 44.8 35.4 47.8 39.4 46.8 Z" fill="#f2b632" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M40.5 38.8 C42.8 29.3 38.5 18 36.5 26 C36 22 38.5 29.3 40.5 38.8 Z" fill="#ffffff"/>
 </svg>

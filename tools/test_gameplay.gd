@@ -1395,9 +1395,8 @@ func _test_save_web_persist_reporting() -> void:
 
 ## A hit goose stops on its hit frame upright and facing the way it flew (the whole basis,
 ## not only the rotation: a left-facing transform is rotation + PI with scale (1, -1), so
-## zeroing the rotation alone turns it upside down), then falls head-first: its head
-## (the sprite's +x) pitches straight down within FALL_TURN_TIME, still mirrored as it flew,
-## on its dive frame (wings folded).
+## zeroing the rotation alone turns it upside down), then dives head-first seen from behind:
+## its dive frame (drawn upright, head down, back to the camera), neither turned nor mirrored.
 func _test_play_hit_frame_keeps_facing() -> void:
 	var play := await _start_run(26)
 	var goose := Content.bird("goose")
@@ -1424,15 +1423,10 @@ func _test_play_hit_frame_keeps_facing() -> void:
 			waited += 1
 		for i in 2:
 			await process_frame
-		var turning := is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.transform.x.y > 0.0 and bird.transform.x.y < 0.99
-		_check(turning, label + ": early in the fall it is pitching nose-down, not yet vertical", "x %s" % bird.transform.x if is_instance_valid(bird) else "gone")
-		for i in roundi(Bird.FALL_TURN_TIME * 60.0) + 2:
-			await process_frame
-		var head_down := is_instance_valid(bird) and bird.transform.x.normalized().is_equal_approx(Vector2.DOWN)
-		var mirrored := is_instance_valid(bird) and signf(bird.transform.determinant()) == facing
-		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and head_down and mirrored, label + ": it falls head-first (head straight down), still mirrored as it flew", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
+		var plain := is_instance_valid(bird) and bird.transform.x.is_equal_approx(Vector2.RIGHT) and bird.transform.y.is_equal_approx(Vector2.DOWN)
+		_check(is_instance_valid(bird) and bird.state == Bird.State.FALLING and bird.position.y > hit_y and plain, label + ": it falls on its upright back view, neither turned nor mirrored", "x %s, y %s" % [bird.transform.x, bird.transform.y] if is_instance_valid(bird) else "gone")
 		var shown := (bird.get_node("Sprite") as Sprite2D).texture.resource_path if is_instance_valid(bird) else "gone"
-		_check(shown == goose.texture_path("dive"), label + ": it shows its dive frame (wings folded) as it falls", shown)
+		_check(shown == goose.texture_path("dive"), label + ": it shows its dive frame (its back, wings folded, head down) as it falls", shown)
 
 
 ## The grass hides what is behind it: a shot on the grass (at or below the grass line the

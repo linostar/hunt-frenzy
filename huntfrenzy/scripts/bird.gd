@@ -5,8 +5,9 @@ extends Node2D
 ## once it has escaped (Flight.has_escaped) it emits `escaped` and frees itself. A hit
 ## that leaves it hit points (an armored bird's first) only switches it to its damaged
 ## flap frames; the killing hit stops it on its hit frame for HIT_HOLD seconds, then it
-## dives head-first (its dive frame: wings folded, pitching nose-down over FALL_TURN_TIME)
-## off the bottom of the screen, emits `gone` and frees itself. A bird launched
+## dives head-first off the bottom of the screen seen from behind (its dive frame: back to
+## the camera, wings folded, head down, drawn upright, so never turned or mirrored), emits
+## `gone` and frees itself. A bird launched
 ## from a point (a splitter's gosling) flies Flight's launched path from there. While the
 ## rival aims at it (set_cue, driven by Play from Rival.steal_state) it shows the Reticle
 ## over itself; steal() drops it like a kill (hit frame, then the fall), marked stolen.
@@ -32,8 +33,6 @@ const FLAP_TIME := 0.15
 const HIT_HOLD := 0.25
 ## Fall acceleration after a hit, base units per second squared.
 const GRAVITY := 1400.0
-## Seconds a falling bird takes to pitch from upright to head straight down.
-const FALL_TURN_TIME := 0.12
 const TRACK_INTERVAL := 0.25
 const TRACK_AHEAD_STEP := 0.1
 const TRACK_AHEAD_STEPS := 20
@@ -71,9 +70,6 @@ var crossing := Rect2()
 var _textures: Dictionary[String, Texture2D] = {}
 var _hold := 0.0
 var _fall_speed := 0.0
-var _fall_time := 0.0
-## 1 when it was facing right as it was hit, -1 facing left.
-var _facing := 1.0
 var _track_clock := 0.0
 ## Seconds of hold (hit stop) still to sit out.
 var _held_for := 0.0
@@ -155,14 +151,12 @@ func _process(frame_delta: float) -> void:
 			_hold -= delta
 			if _hold <= 0.0:
 				state = State.FALLING
+				# The back view is drawn head-down and symmetric: no turn, no mirror.
 				_sprite.texture = _textures["dive"]
+				transform = Transform2D(0.0, position)
 		State.FALLING:
 			_fall_speed += GRAVITY * delta
-			_fall_time += delta
-			# The sprite faces +x (mirrored when facing left), so turning by facing x PI/2
-			# points its head straight down either way.
-			var pitch := _facing * PI / 2.0 * minf(_fall_time / FALL_TURN_TIME, 1.0)
-			transform = Transform2D(pitch, Vector2(_facing, 1.0), 0.0, position + Vector2(0.0, _fall_speed * delta))
+			position.y += _fall_speed * delta
 			if global_position.y - spec.size.y > get_viewport_rect().end.y:
 				set_process(false)
 				gone.emit(self)
@@ -222,11 +216,10 @@ func _drop() -> void:
 	state = State.HIT
 	_hold = HIT_HOLD
 	_sprite.texture = _textures["hit"]
-	_facing = signf(transform.determinant())
 	# Upright, keeping the facing. Flying left, the transform has a negative determinant
 	# (Node2D stores it as rotation + PI with scale (1, -1)), so `rotation = 0` alone would
 	# turn a left-facing goose upside down and facing right.
-	transform = Transform2D(Vector2(_facing, 0.0), Vector2(0.0, 1.0), position)
+	transform = Transform2D(Vector2(signf(transform.determinant()), 0.0), Vector2(0.0, 1.0), position)
 
 
 ## Makes a flying bird flee now (the wave's shells ran out).

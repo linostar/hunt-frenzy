@@ -1,12 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="104" height="72" viewBox="0 0 104 72">
-  <!-- Zigzag swift: a crested teal-blue swift with a lightning stripe and a forked tail, dive (the head-first fall): wings folded along the back, eyes crossed out; faces right, centre (52, 36) is the bird's origin. -->
-  <path d="M22 36 C28 24 42 16 58 15 C68 14 76 12 84 11 L80 17 C88 19 94 25 96 31 L102 34 L95 37 C92 47 80 57 62 59 C46 61 32 56 24 48 L8 57 L15 42 L6 25 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M26 47 C36 55 48 58 62 57 C76 55 88 47 93 39 C90 49 80 57 62 59 C46 61 32 56 26 47 Z" fill="#3a4a6e"/>
-  <path d="M34 26 C44 19 54 17 66 17 C56 20 46 23 38 29 Z" fill="#6ec3f0"/>
-  <path d="M28 42 L46 34 L45 39 L62 33 L61 38 L80 33 L64 43 L65 39 L47 46 L48 41 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M96 31 L102 34 L95 37 Z" fill="#f2b632"/>
-  <path d="M22 36 C28 24 42 16 58 15 C68 14 76 12 84 11 L80 17 C88 19 94 25 96 31 L102 34 L95 37 C92 47 80 57 62 59 C46 61 32 56 24 48 L8 57 L15 42 L6 25 Z" fill="none" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M84 24 L88 28 M88 24 L84 28" fill="none" stroke="#1f1a2e" stroke-width="1.4" stroke-linecap="round"/>
-  <path d="M76 24 C62 18 42 18 26 22 C16 25 9 28 2 32 C16 32 32 33 48 32 C62 31 72 29 76 24 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M72 25 C58 22 40 22 12 30 C30 29 54 28.5 72 25 Z" fill="#6ec3f0"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="72" height="104" viewBox="0 0 72 104">
+  <!-- Zigzag swift: teal-blue, a lightning stripe down its back, a forked tail. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 52) is the bird's origin. -->
+  <path d="M31 26 L25 6 L36 16.4 L47 6 L41 26 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M30 63.6 L31.2 87 L40.8 87 L42 63.6 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M32.4 93.8 L36 100 L39.6 93.8 Z" fill="#f2b632" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="87" rx="8" ry="8.6" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M33 80 L36 73 L39 80 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="48" rx="16" ry="26" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M27.2 64.1 C15.2 62.3 15.2 49.3 24.8 28.5 C28.8 20 30.5 28 34.5 24 C31 32.4 31.5 45.4 31.5 57.1 C29.5 62.1 31.2 65.1 27.2 64.1 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M26.1 53.2 C24 40.2 28 24 29.5 32 C30.4 28 28 40.2 26.1 53.2 Z" fill="#6ec3f0"/>
+  <path d="M44.8 64.1 C56.8 62.3 56.8 49.3 47.2 28.5 C43.2 20 41.5 28 37.5 24 C41 32.4 40.5 45.4 40.5 57.1 C42.5 62.1 40.8 65.1 44.8 64.1 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M45.9 53.2 C48 40.2 44 24 42.5 32 C41.6 28 44 40.2 45.9 53.2 Z" fill="#6ec3f0"/>
+  <path d="M34 27 L40 42 L36 43 L39 69 L32 51 L36 49 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>
