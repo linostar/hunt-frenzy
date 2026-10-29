@@ -41,8 +41,8 @@ extends Node
 ## moment from now (the rival's laugh after his shot), on the same clock as the blurts; a
 ## blurt asked for while such a sound is queued or playing waits until it has finished (the
 ## rival never talks over his own laugh, the results' parting line included). The music is one loop per
-## screen (track_for: the title's for the title, the selects, the settings and the
-## credits, the chapter's or the mode's in a run, the results' on results) on the Music
+## screen (track_for: the title's for the title, the selects, the settings, the
+## credits and the top scores, the chapter's or the mode's in a run, the results' on results) on the Music
 ## bus: goto() asks for it as the
 ## transition starts, a screen with the same loop leaves it playing, another crossfades in
 ## over CROSSFADE_TIME, and every change is logged ("[Audio] Music <track>"). The saved
@@ -74,7 +74,7 @@ signal audio_settings_changed
 ## Emitted when the reduce motion setting changes (the settings screen follows it).
 signal reduce_motion_changed(on: bool)
 
-enum Flow { TITLE, PLAY, RESULTS, CHAPTER_SELECT, LEVEL_SELECT, SETTINGS, CREDITS }
+enum Flow { TITLE, PLAY, RESULTS, CHAPTER_SELECT, LEVEL_SELECT, SETTINGS, CREDITS, TOP_SCORES }
 
 ## Absolute path of this autoload, for nodes inside the tree.
 const AUTOLOAD_PATH := ^"/root/Game"
@@ -86,6 +86,7 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.LEVEL_SELECT: "res://scenes/level_select.tscn",
 	Flow.SETTINGS: "res://scenes/settings.tscn",
 	Flow.CREDITS: "res://scenes/credits.tscn",
+	Flow.TOP_SCORES: "res://scenes/top_scores.tscn",
 }
 ## The Endless and Time Attack modes' ids in data/modes.json.
 const ENDLESS_MODE := "endless"
@@ -1479,7 +1480,7 @@ func sync_audio_pause() -> void:
 
 
 ## The loop of flow state `to` entered with `args`: the title's for the title, the
-## selects, the settings and the credits, the chapter's (a campaign level) or the mode's in a run, the results'; "" for a
+## selects, the settings, the credits and the top scores, the chapter's (a campaign level) or the mode's in a run, the results'; "" for a
 ## run that cannot start (an unknown level or mode: the music stays as it is).
 static func track_for(to: Flow, args: Dictionary) -> String:
 	match to:
