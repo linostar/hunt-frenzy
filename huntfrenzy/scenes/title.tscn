@@ -122,21 +122,6 @@ text = "Hunt Frenzy"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Tagline" type="Label" parent="Safe"]
-layout_mode = 1
-anchors_preset = -1
-anchor_top = 0.38
-anchor_right = 1.0
-anchor_bottom = 0.46
-grow_horizontal = 2
-theme_override_colors/font_color = Color(0.984, 0.929, 0.804, 1)
-theme_override_colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
-theme_override_constants/outline_size = 8
-theme_override_font_sizes/font_size = 28
-text = "Geese over the marsh. One shot each."
-horizontal_alignment = 1
-vertical_alignment = 1
-
 [node name="CampaignButton" type="Button" parent="Safe"]
 layout_mode = 1
 anchors_preset = -1

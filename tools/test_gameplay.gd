@@ -3199,7 +3199,7 @@ func _test_ui_theme_and_fonts() -> void:
 	await _open_title()
 	var campaign := current_scene.get_node("Safe/CampaignButton") as Button
 	var heading := current_scene.get_node("Safe/GameName") as Label
-	_check(campaign.get_theme_font(&"font") == display and heading.get_theme_font(&"font") == display and (current_scene.get_node("Safe/Tagline") as Label).get_theme_font(&"font") == body, "the title uses the theme's fonts", "%s" % campaign.get_theme_font(&"font"))
+	_check(campaign.get_theme_font(&"font") == display and heading.get_theme_font(&"font") == display, "the title's buttons and name use the theme's display font", "%s" % campaign.get_theme_font(&"font"))
 	var broken := "user://broken_theme.tres"
 	var file := FileAccess.open(broken, FileAccess.WRITE)
 	file.store_string('[gd_resource type="Theme" load_steps=2 format=3]\n\n[ext_resource type="FontFile" path="res://ui/fonts/Missing.ttf" id="1_font"]\n\n[resource]\ndefault_font = ExtResource("1_font")\n')
