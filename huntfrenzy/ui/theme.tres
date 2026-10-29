@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=17 format=3]
+[gd_resource type="Theme" load_steps=21 format=3]
 
 [ext_resource type="FontFile" path="res://ui/fonts/LilitaOne-Regular.ttf" id="1_display"]
 [ext_resource type="FontFile" path="res://ui/fonts/Nunito-wght.ttf" id="2_body"]
@@ -152,6 +152,48 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_stat"]
+content_margin_left = 14.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 12.0
+bg_color = Color(0.227, 0.29, 0.431, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 6
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 14
+corner_radius_top_right = 14
+corner_radius_bottom_right = 14
+corner_radius_bottom_left = 14
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_badge"]
+content_margin_left = 10.0
+content_margin_top = 1.0
+content_margin_right = 10.0
+content_margin_bottom = 3.0
+bg_color = Color(0.949, 0.714, 0.196, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 4
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
+[sub_resource type="FontVariation" id="FontVariation_level_name"]
+base_font = ExtResource("1_display")
+spacing_top = -5
+spacing_bottom = -5
+
+[sub_resource type="FontVariation" id="FontVariation_outcome"]
+base_font = ExtResource("1_display")
+spacing_top = -9
+spacing_bottom = -9
+
 [resource]
 default_font = SubResource("FontVariation_body")
 default_font_size = 20
@@ -180,4 +222,36 @@ HeadingLabel/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
 HeadingLabel/constants/outline_size = 8
 HeadingLabel/fonts/font = ExtResource("1_display")
 Label/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+NewBestBadge/base_type = &"Label"
+NewBestBadge/colors/font_color = Color(0.122, 0.102, 0.18, 1)
+NewBestBadge/font_sizes/font_size = 18
+NewBestBadge/fonts/font = ExtResource("1_display")
+NewBestBadge/styles/normal = SubResource("StyleBoxFlat_badge")
 Panel/styles/panel = SubResource("StyleBoxFlat_panel")
+ResultsLevelName/base_type = &"Label"
+ResultsLevelName/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+ResultsLevelName/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
+ResultsLevelName/constants/outline_size = 8
+ResultsLevelName/font_sizes/font_size = 30
+ResultsLevelName/fonts/font = SubResource("FontVariation_level_name")
+ResultsOutcome/base_type = &"Label"
+ResultsOutcome/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+ResultsOutcome/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
+ResultsOutcome/constants/outline_size = 8
+ResultsOutcome/font_sizes/font_size = 52
+ResultsOutcome/fonts/font = SubResource("FontVariation_outcome")
+StatCaption/base_type = &"Label"
+StatCaption/colors/font_color = Color(0.816, 0.765, 0.902, 1)
+StatCaption/font_sizes/font_size = 16
+StatCaption/fonts/font = ExtResource("1_display")
+StatNote/base_type = &"Label"
+StatNote/colors/font_color = Color(0.816, 0.765, 0.902, 1)
+StatNote/font_sizes/font_size = 16
+StatPanel/base_type = &"PanelContainer"
+StatPanel/styles/panel = SubResource("StyleBoxFlat_stat")
+StatValue/base_type = &"Label"
+StatValue/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+StatValue/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
+StatValue/constants/outline_size = 6
+StatValue/font_sizes/font_size = 38
+StatValue/fonts/font = ExtResource("1_display")

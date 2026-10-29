@@ -1,6 +1,8 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/results.gd" id="1_results"]
+[ext_resource type="Texture2D" path="res://art/star_empty.svg" id="2_empty"]
+[ext_resource type="Texture2D" path="res://art/star_full.svg" id="3_full"]
 
 [node name="Results" type="Control"]
 layout_mode = 3
@@ -33,102 +35,318 @@ layout_mode = 1
 theme_type_variation = &"HeadingLabel"
 anchors_preset = -1
 anchor_right = 1.0
-offset_top = 4.0
-offset_bottom = 54.0
+offset_top = 36.0
+offset_bottom = 86.0
 grow_horizontal = 2
 theme_override_font_sizes/font_size = 36
-text = "Run over"
+text = "RUN OVER"
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="Stats" type="VBoxContainer" parent="Safe"]
+[node name="Outcome" type="Label" parent="Safe"]
+visible = false
+layout_mode = 1
+theme_type_variation = &"ResultsOutcome"
+anchors_preset = -1
+anchor_right = 1.0
+offset_top = 61.0
+offset_bottom = 103.0
+grow_horizontal = 2
+theme_override_colors/font_color = Color(0.651, 0.788, 0.431, 1)
+text = "PASS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Body" type="VBoxContainer" parent="Safe"]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = 58.0
+offset_bottom = -138.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="Stars" type="Control" parent="Safe/Body"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(360, 120)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="Star1" type="Control" parent="Safe/Body/Stars"]
 layout_mode = 1
 anchors_preset = -1
 anchor_left = 0.5
 anchor_right = 0.5
+offset_left = -176.0
+offset_top = 18.0
+offset_right = -76.0
+offset_bottom = 118.0
+pivot_offset = Vector2(50.0, 50.0)
+mouse_filter = 2
+
+[node name="Empty" type="TextureRect" parent="Safe/Body/Stars/Star1"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -200.0
-offset_top = 54.0
-offset_right = 200.0
-offset_bottom = -178.0
 grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_empty")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Full" type="TextureRect" parent="Safe/Body/Stars/Star1"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_full")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Star2" type="Control" parent="Safe/Body/Stars"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -60.0
+offset_top = 0.0
+offset_right = 60.0
+offset_bottom = 120.0
+pivot_offset = Vector2(60.0, 60.0)
+mouse_filter = 2
+
+[node name="Empty" type="TextureRect" parent="Safe/Body/Stars/Star2"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_empty")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Full" type="TextureRect" parent="Safe/Body/Stars/Star2"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_full")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Star3" type="Control" parent="Safe/Body/Stars"]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = 76.0
+offset_top = 18.0
+offset_right = 176.0
+offset_bottom = 118.0
+pivot_offset = Vector2(50.0, 50.0)
+mouse_filter = 2
+
+[node name="Empty" type="TextureRect" parent="Safe/Body/Stars/Star3"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_empty")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Full" type="TextureRect" parent="Safe/Body/Stars/Star3"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_full")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Panels" type="HBoxContainer" parent="Safe/Body"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="ScorePanel" type="PanelContainer" parent="Safe/Body/Panels"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"StatPanel"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Body/Panels/ScorePanel"]
+layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 0
 alignment = 1
 
-[node name="Score" type="Label" parent="Safe/Stats"]
+[node name="Caption" type="Label" parent="Safe/Body/Panels/ScorePanel/Box"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
-text = "Score"
+theme_type_variation = &"StatCaption"
+text = "SCORE"
 horizontal_alignment = 1
 
-[node name="Stars" type="Label" parent="Safe/Stats"]
-visible = false
+[node name="Score" type="Label" parent="Safe/Body/Panels/ScorePanel/Box"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
-theme_override_font_sizes/font_size = 20
-text = "Stars"
+theme_type_variation = &"StatValue"
+text = "0"
 horizontal_alignment = 1
 
-[node name="Accuracy" type="Label" parent="Safe/Stats"]
+[node name="Best" type="Label" parent="Safe/Body/Panels/ScorePanel/Box"]
+unique_name_in_owner = true
 layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 20
-text = "Accuracy"
+theme_type_variation = &"StatNote"
+text = "Best 0"
 horizontal_alignment = 1
 
-[node name="Hits" type="Label" parent="Safe/Stats"]
+[node name="Corner" type="Control" parent="Safe/Body/Panels/ScorePanel"]
 layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 20
-text = "Birds hit"
-horizontal_alignment = 1
+mouse_filter = 2
 
-[node name="Escaped" type="Label" parent="Safe/Stats"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 20
-text = "Birds escaped"
-horizontal_alignment = 1
-
-[node name="Verdict" type="Label" parent="Safe/Stats"]
-visible = false
-layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
-theme_override_font_sizes/font_size = 20
-text = "You vs rival"
-horizontal_alignment = 1
-
-[node name="Pigeons" type="Label" parent="Safe/Stats"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 20
-text = "Pigeons hit"
-horizontal_alignment = 1
-
-[node name="Best" type="Label" parent="Safe/Stats"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.816, 0.765, 0.902, 1)
-theme_override_font_sizes/font_size = 20
-text = "Endless best"
-horizontal_alignment = 1
-
-[node name="NewBest" type="Label" parent="Safe"]
+[node name="NewBest" type="Label" parent="Safe/Body/Panels/ScorePanel/Corner"]
+unique_name_in_owner = true
 visible = false
 layout_mode = 1
-theme_type_variation = &"HeadingLabel"
 anchors_preset = -1
-anchor_top = 1.0
+anchor_left = 1.0
 anchor_right = 1.0
-anchor_bottom = 1.0
-offset_top = -178.0
-offset_bottom = -136.0
-grow_horizontal = 2
-theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
-theme_override_font_sizes/font_size = 30
+offset_left = -100.0
+offset_top = -30.0
+offset_right = 4.0
+offset_bottom = -2.0
+rotation = 0.1
+pivot_offset = Vector2(52, 14)
+theme_type_variation = &"NewBestBadge"
 text = "New best!"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="AccuracyPanel" type="PanelContainer" parent="Safe/Body/Panels"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"StatPanel"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Body/Panels/AccuracyPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Caption" type="Label" parent="Safe/Body/Panels/AccuracyPanel/Box"]
+layout_mode = 2
+theme_type_variation = &"StatCaption"
+text = "ACCURACY"
+horizontal_alignment = 1
+
+[node name="Accuracy" type="Label" parent="Safe/Body/Panels/AccuracyPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"StatValue"
+text = "—"
+horizontal_alignment = 1
+
+[node name="Shots" type="Label" parent="Safe/Body/Panels/AccuracyPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"StatNote"
+text = "0 of 0 shots"
+horizontal_alignment = 1
+
+[node name="BirdsPanel" type="PanelContainer" parent="Safe/Body/Panels"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"StatPanel"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Body/Panels/BirdsPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Caption" type="Label" parent="Safe/Body/Panels/BirdsPanel/Box"]
+layout_mode = 2
+theme_type_variation = &"StatCaption"
+text = "BIRDS HIT"
+horizontal_alignment = 1
+
+[node name="Hits" type="Label" parent="Safe/Body/Panels/BirdsPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"StatValue"
+text = "0"
+horizontal_alignment = 1
+
+[node name="Escaped" type="Label" parent="Safe/Body/Panels/BirdsPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"StatNote"
+text = "0 escaped"
+horizontal_alignment = 1
+
+[node name="RivalPanel" type="PanelContainer" parent="Safe/Body/Panels"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(200, 0)
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"StatPanel"
+
+[node name="Box" type="VBoxContainer" parent="Safe/Body/Panels/RivalPanel"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 0
+alignment = 1
+
+[node name="Caption" type="Label" parent="Safe/Body/Panels/RivalPanel/Box"]
+layout_mode = 2
+theme_type_variation = &"StatCaption"
+text = "RIVAL"
+horizontal_alignment = 1
+
+[node name="RivalScore" type="Label" parent="Safe/Body/Panels/RivalPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"StatValue"
+text = "0"
+horizontal_alignment = 1
+
+[node name="Steals" type="Label" parent="Safe/Body/Panels/RivalPanel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"StatNote"
+text = "from 0 steals"
+horizontal_alignment = 1
 
 [node name="SaveError" type="Label" parent="Safe"]
 visible = false
@@ -240,19 +458,3 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 30
 text = "Levels"
-
-[node name="RivalLine" type="Label" parent="Safe"]
-visible = false
-layout_mode = 1
-anchors_preset = -1
-anchor_left = 0.05
-anchor_top = 1.0
-anchor_right = 0.95
-anchor_bottom = 1.0
-offset_top = -32.0
-offset_bottom = -6.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 18
-text = "Rival line"
-horizontal_alignment = 1
-vertical_alignment = 1

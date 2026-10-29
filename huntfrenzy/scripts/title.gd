@@ -1,6 +1,6 @@
 class_name Title
 extends Control
-## Title screen: the game's name, a tagline, the Campaign, Endless and Time Attack buttons
+## Title screen: the game's name, the Campaign, Endless and Time Attack buttons
 ## side by side (the two modes' buttons show that mode's best score from the save) and
 ## below them Settings and Credits, laid out in the safe area (Game ScreenFit) and refitted
 ## whenever it changes. Campaign is focused on arrival (without drawing the focus ring
