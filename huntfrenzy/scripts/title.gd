@@ -53,7 +53,7 @@ const DRIFT_PERIOD := 24.0
 ## The rival's lines for a goose shot on the title (a grumble at the player's luck).
 const HECKLE_CATEGORY := "combo"
 ## The rival stands this far in from the safe area's left and above its bottom.
-const RIVAL_INSET := Vector2(16, 92)
+const RIVAL_INSET := Vector2(16, 124)
 
 ## Times Campaign, Endless and Time Attack have been pressed on this screen (tests and the
 ## smoke test read the log).
@@ -143,6 +143,7 @@ func _set_scenery() -> void:
 				weather = chapter.weather
 	if _backdrop.show_backdrop(TITLE_BACKDROP) and weather != "":
 		_weather.set_weather(weather)
+	_rival.modulate = Backdrop.rival_tint(TITLE_BACKDROP)
 	if _goose_spec == null:
 		print("[Title] Scenery: backdrop %s, no geese and no weather (%d content problem(s))" % [TITLE_BACKDROP, problems])
 		return

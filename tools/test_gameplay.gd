@@ -201,6 +201,8 @@ func _tests() -> Array[Callable]:
 		_test_rival_steals_off,
 		_test_rival_heckle_cooldown,
 		_test_rival_layout_and_pass_through,
+		_test_rival_footprint_and_poses,
+		_test_rival_lit_per_backdrop,
 		_test_rival_poses,
 		_test_rival_one_cue_at_a_time,
 		_test_rival_aim_gap,
@@ -2880,7 +2882,7 @@ func _test_rival_heckle_cooldown() -> void:
 	play.mode.rival_steals = true
 
 
-## The rival and his bubble sit in the grass band (at or below GRASS_Y) inside the visible
+## The rival (at or below the fringe's top) and his bubble (at or below GRASS_Y) sit in the grass band inside the visible
 ## area at 16:9, 19.5:9 and 4:3, ignore touches, and every rival line fits the bubble's two
 ## lines; a shot on the rival or on the shown bubble is a shot like any other (AC 11).
 func _test_rival_layout_and_pass_through() -> void:
@@ -2907,7 +2909,9 @@ func _test_rival_layout_and_pass_through() -> void:
 		var stray: Array[String] = []
 		for part: Control in [rival, bubble]:
 			var rect := part.get_global_rect()
-			if world.to_local(rect.position).y < Play.GRASS_Y or not shown.encloses(rect):
+			# The rival's hat may reach the fringe's top; the bubble stays below the grass line.
+			var top := Play.GRASS_Y - Play.GRASS_TIP if part == rival else Play.GRASS_Y
+			if world.to_local(rect.position).y < top - 0.01 or not shown.encloses(rect):
 				stray.append("%s %s" % [part.name, rect])
 		_check(stray.is_empty(), "%dx%d: the rival and his bubble sit in the grass band, on screen" % [window.x, window.y], str(stray))
 	root.size = BASE_WINDOW
@@ -2920,6 +2924,67 @@ func _test_rival_layout_and_pass_through() -> void:
 		_check(play.scoring.shots() == shots + 1 and play.scoring.misses == shots + 1 and play.ammo.shells == shells - 1, "a shot on the %s is a shot like any other (a miss on the grass)" % part.name, "%d shots, %d shells" % [play.scoring.shots(), play.ammo.shells])
 	_check_logged(from, "^\\[Play\\] Miss at ", "the shots on the rival and his bubble are logged as misses")
 
+
+
+## The rival's footprint (art polish): his rect is Play.RIVAL_RECT (80x120 at the
+## bottom-left of the bank), its top at or below the fringe's top (GRASS_Y - GRASS_TIP:
+## no art over the field) and inside the visible area; each pose's art has the rect's
+## aspect (it fills it, nothing letterboxed off its feet), stands on its bottom edge and
+## keeps inside it. The aim pose's highest art is the gun's muzzle in the right third, so
+## the aim cue visibly comes from his gun; every other pose's highest art is his hat,
+## left of it.
+func _test_rival_footprint_and_poses() -> void:
+	var play := await _start_run(78)
+	var rival := play.get_node("World/Rival") as TextureRect
+	var world := play.get_node("World") as Node2D
+	var rect := Rect2(world.to_local(rival.get_global_rect().position), rival.size)
+	_check(rect.is_equal_approx(Play.RIVAL_RECT) and Play.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
+	_check(rect.position.y >= Play.GRASS_Y - Play.GRASS_TIP and rect.position.x >= 0.0 and rect.end.y <= 540.0, "none of the rival's rect is above the fringe's top (y 416) or off the screen", str(rect))
+	var tops: Dictionary[String, Vector2i] = {}
+	for pose: Texture2D in [Play.RIVAL_IDLE, Play.RIVAL_AIM, Play.RIVAL_SULK, Play.RIVAL_BRAG]:
+		var image := pose.get_image()
+		var size := image.get_size()
+		var file := pose.resource_path.get_file()
+		_check(is_equal_approx(float(size.x) / size.y, rect.size.x / rect.size.y), "%s has the rival rect's aspect" % file, str(size))
+		var used := image.get_used_rect()
+		_check(used.end.y >= size.y - 2 and used.position.y >= 0 and used.position.x >= 0 and used.end.x <= size.x, "%s stands on the rect's bottom edge, inside it" % file, str(used))
+		var top := Vector2i(-1, -1)
+		for y in size.y:
+			for x in size.x:
+				if image.get_pixel(x, y).a > 0.5:
+					top = Vector2i(x, y)
+					break
+			if top.x >= 0:
+				break
+		tops[file] = top
+	var aim := tops["rival_aim.svg"]
+	var width := Play.RIVAL_AIM.get_width()
+	_check(aim.x * 3 >= width * 2, "the aim pose's highest art is the gun's muzzle, in the right third", "%s of %d" % [aim, width])
+	for file: String in ["rival_idle.svg", "rival_sulk.svg", "rival_brag.svg"]:
+		_check(tops[file].x * 3 < width * 2, "%s's highest art is his hat, not a raised gun" % file, str(tops[file]))
+
+
+## Each backdrop lights the rival (art polish): a level of every chapter starts with his
+## modulate at its backdrop's tint (logged), Endless on dawn's, and the title on the
+## sunset's; noon is neutral, dawn and sunset warm, night cool.
+func _test_rival_lit_per_backdrop() -> void:
+	for chapter in Content.chapters():
+		var from := _log.size()
+		var play := await _start_level(Campaign.chapter_levels(chapter.id)[0].id)
+		var tint := (play.get_node("World/Rival") as CanvasItem).modulate
+		_check(Backdrop.RIVAL_TINTS.has(chapter.backdrop) and tint.is_equal_approx(Backdrop.rival_tint(chapter.backdrop)), "%s: the rival is lit with the %s backdrop's tint" % [chapter.id, chapter.backdrop], str(tint))
+		_check_logged(from, "^\\[Play\\] Rival lit for backdrop %s: tint #%s$" % [chapter.backdrop, tint.to_html(false)], "%s: the rival's light is logged" % chapter.id)
+	var noon := Backdrop.rival_tint("noon")
+	var dawn := Backdrop.rival_tint("dawn")
+	var sunset := Backdrop.rival_tint("sunset")
+	var night := Backdrop.rival_tint("night")
+	_check(noon.is_equal_approx(Color(1, 1, 1)) and dawn.r > dawn.b and sunset.r > sunset.b and sunset.b < dawn.b and night.b > night.r and night.v < 0.9,
+		"noon is neutral, dawn and sunset warm (sunset warmer), night cool and dim", "%s %s %s %s" % [noon, dawn, sunset, night])
+	var endless := await _start_run(79)
+	_check((endless.get_node("World/Rival") as CanvasItem).modulate.is_equal_approx(Backdrop.rival_tint(endless.backdrop_id())), "Endless lights the rival for its first backdrop", endless.backdrop_id())
+	await _open_title()
+	var title := current_scene as Title
+	_check((title.get_node("Scenery/Rival") as CanvasItem).modulate.is_equal_approx(Backdrop.rival_tint(Title.TITLE_BACKDROP)), "the title lights the rival for its sunset backdrop", str((title.get_node("Scenery/Rival") as CanvasItem).modulate))
 
 ## The rival's poses (step 7): idle at the start; a scored kill makes him sulk for
 ## RIVAL_REACTION_TIME of game time (logged), then idle again; a miss whose heckle shows
@@ -3026,6 +3091,7 @@ func _test_backdrop_cycle_and_fade() -> void:
 	Engine.time_scale = 1.0
 	_check(play.wave.index == 4 and play.is_backdrop_fading() and play.backdrop_id() == "noon" and play.weather().id == "wind", "wave 4 cross-fades the noon backdrop in, with wind", "wave %d, fading %s, %s, %s" % [play.wave.index, play.is_backdrop_fading(), play.backdrop_id(), play.weather().id])
 	_check_logged(from, "^\\[Play\\] Backdrop dawn -> noon, weather wind, cross-fading over 0\\.80 s from wave 4$", "the cross-fade is logged")
+	var rival := play.get_node("World/Rival") as CanvasItem
 	# The loop stops on the frame wave 4 started in (_start_wave runs at the end of _process):
 	# its clock starts at -WAVE_LEAD and its first bird is due WAVE_LEAD of run time later.
 	var started_at := play.run_clock
@@ -3033,8 +3099,11 @@ func _test_backdrop_cycle_and_fade() -> void:
 	var faded_at := INF
 	var first_spawn := INF
 	var spawned := play.flying_birds().size()
+	var mid := Color(0, 0, 0, 0)
 	for i in 120:
 		await process_frame
+		if i == 0:
+			mid = rival.modulate
 		if faded_at == INF and not play.is_backdrop_fading():
 			faded_at = play.run_clock - started_at
 		if play.flying_birds().size() > spawned:
@@ -3042,6 +3111,10 @@ func _test_backdrop_cycle_and_fade() -> void:
 			break
 	var backdrops := play.get_node("World").get_children().filter(func(node: Node) -> bool: return node is Backdrop)
 	_check(faded_at <= Play.WAVE_LEAD and backdrops.size() == 1 and (backdrops[0] as Backdrop).id == "noon" and is_equal_approx((backdrops[0] as CanvasItem).modulate.a, 1.0), "the cross-fade ends within the lead-in, leaving only the noon backdrop", "faded %.3f s into the wave, %d backdrops" % [faded_at, backdrops.size()])
+	_check(mid != Backdrop.rival_tint("dawn") and mid != Backdrop.rival_tint("noon") and mid.r >= Backdrop.rival_tint("dawn").r - 0.001 and mid.b >= Backdrop.rival_tint("dawn").b - 0.001,
+		"the rival's light moves from dawn's toward noon's with the cross-fade", "%s" % mid)
+	_check(rival.modulate.is_equal_approx(Backdrop.rival_tint("noon")), "once the fade ends the rival is lit for noon", "%s" % rival.modulate)
+	_check_logged(from, "^\\[Play\\] Rival lit for backdrop noon: tint #ffffff$", "the rival's new light is logged")
 	_check(is_equal_approx(lead_clock, -Play.WAVE_LEAD) and first_spawn >= Play.WAVE_LEAD - 0.001 and first_spawn <= Play.WAVE_LEAD + FRAME + 0.001, "the wave's first bird spawns on time (the fade delays nothing)", "wave clock %.3f at its start, first spawn %.3f s of run time after it" % [lead_clock, first_spawn])
 	play.mode.rival_steals = true
 	var timed := await _start_run(75, GameState.TIME_ATTACK_MODE)

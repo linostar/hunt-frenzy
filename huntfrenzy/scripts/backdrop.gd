@@ -10,6 +10,17 @@ extends Node2D
 ## is reported (Game.report_error: the log and the error label, with the file named) and
 ## nothing is shown for it. Two backdrops cross-fade by tweening the newer one's alpha.
 
+## The light each backdrop throws on the rival hunter, set as his modulate wherever he is
+## drawn over it (play and the title): neutral at noon, warm at dawn and sunset, cool and
+## moonlit at night. Palette colours only (art/palette.hex). Every backdrop the data shows
+## has one (SCHEMA.md I26).
+const RIVAL_TINTS: Dictionary[String, Color] = {
+	"dawn": Color(0.984, 0.929, 0.804),
+	"noon": Color(1, 1, 1),
+	"sunset": Color(1, 0.824, 0.659),
+	"night": Color(0.553, 0.592, 0.839),
+}
+
 ## Where the far and near layers start (World y, base units).
 const FAR_TOP := 250.0
 const NEAR_TOP := 330.0
@@ -18,6 +29,12 @@ const NEAR_TOP := 330.0
 var id := ""
 
 @onready var _layers: Dictionary[String, TextureRect] = {"sky": $Sky, "far": $Far, "near": $Near, "grass": $Grass}
+
+
+## The rival's tint over backdrop `backdrop_id`; white (none) for a backdrop without one,
+## which I26 rules out for every backdrop in the data.
+static func rival_tint(backdrop_id: String) -> Color:
+	return RIVAL_TINTS.get(backdrop_id, Color(1, 1, 1))
 
 
 ## Shows backdrop `backdrop_id`'s layers. Returns false (each missing layer reported, the
