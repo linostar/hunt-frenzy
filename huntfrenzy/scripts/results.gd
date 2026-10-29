@@ -4,7 +4,8 @@ extends Control
 ## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, rival_steals,
 ## best, new_best, save_error; a mode's run adds mode, a campaign level adds level, stars,
 ## best_stars and next_level).
-## Under the heading (a level's "<Chapter> i: passed|not passed", "Run over", "Time up"),
+## Under the heading, always upper case (a level's name, "<CHAPTER> i", over its outcome,
+## PASS in green or FAIL in red, on a second line; a mode's "RUN OVER" or "TIME UP"),
 ## a campaign level shows three big stars (the earned ones filled, the rest empty
 ## outlines), and every run shows a row of small matching panels (the theme's StatPanel):
 ## Score (the best beneath it: the level's or the mode's, and a "New best!" badge when
@@ -18,7 +19,7 @@ extends Control
 ## run's save_error, or a later Game.save_failed: a web save that browser storage did not
 ## keep). Opened without run stats, the panels show dashes.
 ## Endless: Play again (focused on arrival, ring hidden until keyboard navigation) starts
-## a new Endless run; Title goes to the title. Time Attack ("Time up", no Rival panel and
+## a new Endless run; Title goes to the title. Time Attack ("TIME UP", no Rival panel and
 ## no stolen count: its rival never steals): Retry (focused, in Play again's place) starts a
 ## new Time Attack run; Title goes to the title. A campaign level: Next (only when the next
 ## level exists and is unlocked; focused when shown) starts it, Retry plays the level
@@ -40,8 +41,30 @@ const LEVEL_KEYS: Array[String] = ["level", "stars", "best_stars", "next_level"]
 const MODE_KEYS: Array[String] = ["mode"]
 const SAVE_ERROR_TEXT := "Your best could not be saved: %s. See the log for details."
 const PROGRESS_SAVE_ERROR_TEXT := "Your progress could not be saved: %s. See the log for details."
-const ENDLESS_HEADING := "Run over"
-const TIMED_HEADING := "Time up"
+const ENDLESS_HEADING := "RUN OVER"
+const TIMED_HEADING := "TIME UP"
+## A level's outcome line under its name, and its colours (palette green and red, both
+## clear on the dark background behind their ink outline).
+const PASS_TEXT := "PASS"
+const FAIL_TEXT := "FAIL"
+const PASS_COLOR := Color(0.651, 0.788, 0.431)
+const FAIL_COLOR := Color(1, 0.451, 0.4)
+## The headings' top margin in the safe area, the padding between a level's two heading
+## lines and the gap kept between the heading and the stars. A level's two-line heading
+## uses the theme's ResultsLevelName (30 px) and ResultsOutcome (52 px) styles: Lilita One
+## with the empty space above the capitals and below the baseline trimmed. The stars and
+## panels sit where the body centres them (between BODY_TOP and the save error's slot),
+## moved down when the heading needs the room, as far as the save error's slot allows;
+## only then does the heading give up some of its top margin (down to HEADING_TOP_MIN).
+## The buttons never move.
+const HEADING_TOP := 36.0
+const HEADING_TOP_MIN := 4.0
+const HEADING_LINE_GAP := 12.0
+const HEADING_GAP := 4.0
+## The body's top in the scene (the stars and panels are centred below it), and a mode's
+## one-line heading's height.
+const BODY_TOP := 58.0
+const MODE_HEADING_HEIGHT := 50.0
 ## Seconds between the star sounds (and before the new best's).
 const STAR_SOUND_GAP := 0.35
 ## A star's pop: from STAR_POP_FROM up past full size to STAR_POP_SCALE and back to 1
@@ -64,6 +87,8 @@ var _mode: ModeSpec
 
 @onready var _safe: Control = $Safe
 @onready var _heading: Label = $Safe/Heading
+@onready var _outcome: Label = $Safe/Outcome
+@onready var _body: Control = $Safe/Body
 @onready var _stars: Control = %Stars
 @onready var _score: Label = %Score
 @onready var _best: Label = %Best
@@ -177,7 +202,13 @@ func _show_stats(stats: Dictionary) -> void:
 	_new_best.visible = stats["new_best"]
 	if _level != null:
 		var chapter_spec := Content.chapter(_level.chapter)
-		_heading.text = "%s %d: %s" % [chapter_spec.name, _level.index, "passed" if Campaign.is_passed(stats["stars"]) else "not passed"]
+		var passed := Campaign.is_passed(stats["stars"])
+		_heading.text = ("%s %d" % [chapter_spec.name, _level.index]).to_upper()
+		_heading.theme_type_variation = &"ResultsLevelName"
+		_heading.remove_theme_font_size_override(&"font_size")
+		_outcome.text = PASS_TEXT if passed else FAIL_TEXT
+		_outcome.add_theme_color_override(&"font_color", PASS_COLOR if passed else FAIL_COLOR)
+		_outcome.show()
 		_stars.show()
 		var buttons: Array[Button] = [_retry_button, _levels_button]
 		if stats["next_level"] != "":
@@ -203,7 +234,8 @@ func _show_stats(stats: Dictionary) -> void:
 	if _mode != null:
 		print("[Results] Mode %s: best %d%s" % [_mode.id, stats["best"], ", new best" if stats["new_best"] else ""])
 	if _level != null:
-		print("[Results] Level %s: %d stars, best %d (%d stars), next %s" % [_level.id, stats["stars"], stats["best"], stats["best_stars"], stats["next_level"] if stats["next_level"] != "" else "none open"])
+		print("[Results] Level %s: %s, %d stars, best %d (%d stars), next %s" % [_level.id, _outcome.text, stats["stars"], stats["best"], stats["best_stars"], stats["next_level"] if stats["next_level"] != "" else "none open"])
+	_place_heading()
 	_play_sounds(stats["rival_line"], stats["stars"] if _level != null else 0, stats["new_best"])
 
 
@@ -277,6 +309,34 @@ func _fit() -> void:
 	var safe := _game.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
+	_place_heading()
+
+
+## Places the heading (a level's two lines, HEADING_LINE_GAP apart) at HEADING_TOP and
+## the stars and panels below it (see HEADING_TOP).
+func _place_heading() -> void:
+	var lines: Array[Label] = [_heading]
+	if _outcome.visible:
+		lines.append(_outcome)
+	var heights: Array[float] = []
+	var total := 0.0
+	for line in lines:
+		var height := line.get_theme_font(&"font").get_height(line.get_theme_font_size(&"font_size")) if _outcome.visible else MODE_HEADING_HEIGHT
+		heights.append(height)
+		total += height
+	total += HEADING_LINE_GAP * (lines.size() - 1)
+	var content := _body.get_combined_minimum_size().y
+	var region_bottom := _safe.size.y + _body.offset_bottom
+	var natural := BODY_TOP + (region_bottom - BODY_TOP - content) / 2.0
+	var lowest := maxf(region_bottom - content, natural)
+	var content_top := minf(maxf(natural, HEADING_TOP + total + HEADING_GAP), lowest)
+	# Centred: the region's top moves twice as far as the content.
+	_body.offset_top = BODY_TOP + 2.0 * (content_top - natural)
+	var top := maxf(minf(HEADING_TOP, content_top - HEADING_GAP - total), HEADING_TOP_MIN)
+	for i in lines.size():
+		lines[i].offset_top = top
+		lines[i].offset_bottom = top + heights[i]
+		top += heights[i] + HEADING_LINE_GAP
 
 
 func _on_play_again_pressed() -> void:
