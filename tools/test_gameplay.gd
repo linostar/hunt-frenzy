@@ -254,6 +254,7 @@ func _tests() -> Array[Callable]:
 		_test_campaign_unknown_level,
 		_test_campaign_rival_linger_scale,
 		_test_results_verdict,
+		_test_results_stars_and_panels,
 		_test_chapter_select,
 		_test_level_select,
 		_test_save_dropped_backup_failure,
@@ -1273,15 +1274,13 @@ func _test_run_ends_on_results() -> void:
 		taken += points
 	_check(stolen > 0 and stolen == steals.size() and rival_score == taken and Content.rival_lines().lines["results"].has(stats.get("rival_line")), "the results get the birds stolen, the rival's score (the points of every logged steal) and a results line", "%s; logged steals %s" % [stats, steals])
 	_check_logged(from, "^\\[Play\\] Run end: mode endless, seed 41, wave \\d+, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, 10 escaped \\(%d stolen\\), rival score %d, best 100 \\(new best\\)$" % [stolen, rival_score], "the run end is logged with the run's stats, the birds stolen and the rival's score")
-	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Verdict", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped 10 (%d stolen)" % stolen, Results.verdict_text(100, rival_score), "Pigeons hit 0", "Endless best 100"], "the results show score, accuracy, hits, escapes with the birds stolen, the verdict with the rival's score, pigeons hit and best", str(shown))
-	_check((results.get_node("Safe/Stats/Verdict") as Label).visible and not (results.get_node("Safe/Stats/Stars") as Label).visible and (results.get_node("Safe/Heading") as Label).text == Results.ENDLESS_HEADING, "Endless results show the verdict, no stars", "verdict or stars")
-	var last_stat := (results.get_node("Safe/Stats/Best") as Control).get_global_rect()
-	_check(last_stat.end.y <= (results.get_node("Safe/NewBest") as Control).get_global_rect().position.y + 0.5, "the stats (now eight lines) fit above New best!", str(last_stat))
-	var rival_line := results.get_node("Safe/RivalLine") as Label
-	var line_rect := rival_line.get_global_rect()
-	_check(rival_line.visible and rival_line.text == Results.RIVAL_LINE_TEXT % stats.get("rival_line") and _game.safe_rect().encloses(line_rect) and line_rect.position.y >= (results.get_node("Safe/PlayAgainButton") as Control).get_global_rect().end.y and rival_line.get_line_count() == 1, "the results show the rival's line on one line below the buttons, inside the safe area", "%s '%s'" % [line_rect, rival_line.text])
-	_check((results.get_node("Safe/NewBest") as Label).visible and not (results.get_node("Safe/SaveError") as Label).visible, "the results say New best! (and no save problem)", "hidden")
+	var shown := _results_texts(results, ["Score", "Best", "Accuracy", "Shots", "Hits", "Escaped", "RivalScore", "Steals"])
+	_check(shown == ["100", "Best 100", "100%", "1 of 1 shots", "1", "10 escaped (%d stolen)" % stolen, str(rival_score), Results.steals_text(stolen)], "the panels show the score and best, the accuracy and shots, the birds hit and escaped with the stolen ones, the rival's score and steals", str(shown))
+	_check((results.get_node("%RivalPanel") as Control).visible and not (results.get_node("%Stars") as Control).visible and (results.get_node("Safe/Heading") as Label).text == Results.ENDLESS_HEADING, "Endless results show the Rival panel, no stars", "rival panel or stars")
+	_check_results_hide_dropped_lines(results, str(stats.get("rival_line")))
+	_check_logged(from, "^\\[Results\\] Score 100, accuracy 100%% \\(1 of 1 shots\\), 1 birds hit, 10 escaped, %d stolen, rival score %d, 0 pigeons hit, best 100, new best; rival: \"%s\"$" % [stolen, rival_score, stats.get("rival_line")], "the results log keeps the pigeons hit and the rival's line")
+	_check_logged(from, "^\\[Results\\] Verdict: %s$" % Results.verdict_text(100, rival_score), "the results log keeps the verdict")
+	_check((results.get_node("%NewBest") as Label).visible and not (results.get_node("Safe/SaveError") as Label).visible, "the results show the New best! badge (and no save problem)", "hidden")
 	await _check_results_fit(results)
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
@@ -1301,26 +1300,31 @@ func _test_run_ends_on_results() -> void:
 	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
 	_game.goto(GameState.Flow.RESULTS, {"mode": "endless", "score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 100, "new_best": false, "save_error": ""})
 	await _game.transition_finished
-	_check(not (current_scene.get_node("Safe/NewBest") as Label).visible and (current_scene.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy " + Results.NO_VALUE, "a run below the best shows no New best!, and a dash for no shots", "shown")
+	_check(not (current_scene.get_node("%NewBest") as Label).visible and _results_texts(current_scene as Results, ["Accuracy", "Shots"]) == [Results.NO_VALUE, "no shots"], "a run below the best shows no New best!, and a dash for no shots", str(_results_texts(current_scene as Results, ["Accuracy", "Shots"])))
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.TITLE, "Title goes to the title", str(_game.state))
 	_clear_tool_save()
 
 
-## With every element shown (New best!, a two-line SaveError, the rival line), the results
-## screen fits the safe area at 16:9, 4:3, under a notch with the iOS home-indicator inset
-## (RESULTS_INSET_SAFE_RECT) and at RESULTS_MIN_SAFE_HEIGHT: each element inside it, its
-## text inside its rect, no two overlapping, the buttons >= 44x44.
+## With every element shown (the stars on a level, the panels, the New best! badge, a
+## two-line SaveError), the results screen fits the safe area at 16:9, 4:3, under a notch
+## with the iOS home-indicator inset (RESULTS_INSET_SAFE_RECT) and at
+## RESULTS_MIN_SAFE_HEIGHT: each element inside it, its text inside its rect (a panel's
+## texts inside the panel), no two overlapping (but the badge on the Score panel's
+## corner), the buttons >= 44x44.
 func _check_results_fit(results: Results) -> void:
 	var save_error := results.get_node("Safe/SaveError") as Label
 	save_error.text = Results.SAVE_ERROR_TEXT % "the file could not be written because the disk is full, so the new best will be lost when the game is closed"
 	save_error.show()
-	var names: Array[String] = ["Heading", "Stats/Score", "Stats/Accuracy", "Stats/Hits", "Stats/Escaped", "Stats/Pigeons", "Stats/Best", "NewBest", "SaveError", "RivalLine"]
-	# The verdict and the stars show only in some runs (a run with steals, a level); the
-	# buttons are the variant's.
-	for optional: String in ["Stats/Verdict", "Stats/Stars", "NextButton", "RetryButton", "LevelsButton", "PlayAgainButton", "TitleButton"]:
-		if (results.get_node("Safe/" + optional) as Control).visible:
+	var new_best := results.get_node("%NewBest") as Label
+	var had_new_best := new_best.visible
+	new_best.show()
+	var names: Array[String] = ["Heading", "Body/Panels/ScorePanel", "Body/Panels/AccuracyPanel", "Body/Panels/BirdsPanel", "Body/Panels/ScorePanel/Corner/NewBest", "SaveError"]
+	# The Rival panel and the stars show only in some runs (a run with steals, a level);
+	# the buttons are the variant's.
+	for optional: String in ["Body/Panels/RivalPanel", "Body/Stars/Star1", "Body/Stars/Star2", "Body/Stars/Star3", "NextButton", "RetryButton", "LevelsButton", "PlayAgainButton", "TitleButton"]:
+		if (results.get_node("Safe/" + optional) as Control).is_visible_in_tree():
 			names.append(optional)
 	var cases: Array[String] = ["16:9", "4:3", "19.5:9 notched, home indicator", "16:9, safe height %d" % RESULTS_MIN_SAFE_HEIGHT]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
@@ -1337,7 +1341,7 @@ func _check_results_fit(results: Results) -> void:
 			var item := results.get_node("Safe/" + n) as Control
 			var rect := item.get_global_rect()
 			rects.append(rect)
-			if not item.visible or not safe.grow(0.5).encloses(rect):
+			if not item.is_visible_in_tree() or not safe.grow(0.5).encloses(rect):
 				problems.append("%s %s not shown inside the safe area" % [n, rect])
 			if item is Label:
 				var label := item as Label
@@ -1347,10 +1351,18 @@ func _check_results_fit(results: Results) -> void:
 					problems.append("%s text %.1f high in %s" % [n, text_height, rect])
 				if label == save_error and lines != 2:
 					problems.append("SaveError shows %d lines, not its two" % lines)
-			elif rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET:
+			elif item is Button and (rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET):
 				problems.append("%s %s under 44x44" % [n, rect])
+			elif item is PanelContainer:
+				# A panel grows to fit its texts; each text must still be inside it.
+				for text: Label in item.find_children("*", "Label", true, false):
+					if text != new_best and not rect.grow(0.5).encloses(text.get_global_rect()):
+						problems.append("%s text '%s' %s outside the panel" % [n, text.text, text.get_global_rect()])
 		for a in names.size():
 			for b in range(a + 1, names.size()):
+				# The New best! badge sits on the Score panel's corner by design.
+				if names[a] == "Body/Panels/ScorePanel" and names[b].ends_with("NewBest"):
+					continue
 				if rects[a].intersection(rects[b]).get_area() > 0.25:
 					problems.append("%s %s overlaps %s %s" % [names[a], rects[a], names[b], rects[b]])
 		_check(problems.is_empty(), "%s: the results screen (every element shown) fits the safe area %s without overlap" % [cases[i], safe], "; ".join(problems))
@@ -1358,6 +1370,7 @@ func _check_results_fit(results: Results) -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	save_error.hide()
+	new_best.visible = had_new_best
 
 
 ## Web save reporting. Headless has no IndexedDB, so the page's answers are fed in:
@@ -1536,10 +1549,10 @@ func _test_run_end_save_failure() -> void:
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(UNWRITABLE_SAVE_PATH in reported, "the save failure is reported with the save path", reported)
 	var notice := results.get_node("Safe/SaveError") as Label
-	_check((results.get_node("Safe/NewBest") as Label).visible and notice.is_visible_in_tree() and notice.text == Results.SAVE_ERROR_TEXT % reason, "the results say New best! and that it could not be saved, with the reason", "%s '%s'" % [notice.visible, notice.text])
+	_check((results.get_node("%NewBest") as Label).visible and notice.is_visible_in_tree() and notice.text == Results.SAVE_ERROR_TEXT % reason, "the results say New best! and that it could not be saved, with the reason", "%s '%s'" % [notice.visible, notice.text])
 	var below := (results.get_node("Safe/PlayAgainButton") as Control).get_global_rect()
-	var above := (results.get_node("Safe/NewBest") as Control).get_global_rect()
-	_check(notice.get_global_rect().end.y <= below.position.y + 0.5 and notice.get_global_rect().position.y >= above.end.y - 0.5 and notice.get_visible_line_count() == notice.get_line_count(), "the notice fits between New best! and Play again, every line shown", "%s, %d of %d lines" % [notice.get_global_rect(), notice.get_visible_line_count(), notice.get_line_count()])
+	var above := (results.get_node("Safe/Body/Panels") as Control).get_global_rect()
+	_check(notice.get_global_rect().end.y <= below.position.y + 0.5 and notice.get_global_rect().position.y >= above.end.y - 0.5 and notice.get_visible_line_count() == notice.get_line_count(), "the notice fits between the panels and Play again, every line shown", "%s, %d of %d lines" % [notice.get_global_rect(), notice.get_visible_line_count(), notice.get_line_count()])
 	_check_logged(from, "^\\[Play\\] Run end: .* best 100 \\(new best, not saved: cannot open the save file", "the run end log says the new best was not saved")
 	_check(_log.since(from).find("[Game] Saved to %s" % UNWRITABLE_SAVE_PATH) == -1 and not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to")), "nothing logs the failed save as saved", "a Saved line")
 	_game.load_game()
@@ -1928,9 +1941,10 @@ func _test_time_attack_results() -> void:
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
 	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 56, wave \\d+, time used 60\\.00 of 60\\.00 s, score 100, 1 shots \\(1 hits, 0 misses, 0 pigeons hit\\), 1 birds killed, 0 refused, %d escaped \\(0 stolen\\), rival score 0, best 100 \\(new best\\)$" % stats.get("escaped", -1), "the run end is logged with the waves, the time used and the score")
 	_check_logged(from, "^\\[Results\\] Mode time_attack: best 100, new best$", "the results log the mode and its best")
-	var shown := ["Score", "Accuracy", "Hits", "Escaped", "Pigeons", "Best"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-	_check(shown == ["Score 100", "Accuracy 100%", "Birds hit 1", "Birds escaped %d" % stats.get("escaped", -1), "Pigeons hit 0", "Time Attack best 100"], "the results show score, accuracy, birds hit, birds escaped (no stolen count), pigeons and the Time Attack best", str(shown))
-	_check((results.get_node("Safe/Heading") as Label).text == Results.TIMED_HEADING and not (results.get_node("Safe/Stats/Verdict") as Control).visible and not (results.get_node("Safe/Stats/Stars") as Control).visible and (results.get_node("Safe/NewBest") as Control).visible, "Time up, New best!, no verdict, no stars", "heading or verdict")
+	var shown := _results_texts(results, ["Score", "Best", "Accuracy", "Shots", "Hits", "Escaped"])
+	_check(shown == ["100", "Best 100", "100%", "1 of 1 shots", "1", "%d escaped" % stats.get("escaped", -1)], "the panels show the score and the Time Attack best, the accuracy, birds hit and escaped (no stolen count)", str(shown))
+	_check((results.get_node("Safe/Heading") as Label).text == Results.TIMED_HEADING and not (results.get_node("%RivalPanel") as Control).visible and not (results.get_node("%Stars") as Control).visible and (results.get_node("%NewBest") as Control).visible, "Time up, New best!, no Rival panel, no stars", "heading, rival panel or stars")
+	_check_results_hide_dropped_lines(results, str(stats.get("rival_line")))
 	var retry := results.get_node("Safe/RetryButton") as Button
 	var title_button := results.get_node("Safe/TitleButton") as Button
 	_check(retry.visible and retry.has_focus() and title_button.visible and not (results.get_node("Safe/PlayAgainButton") as Control).visible and not (results.get_node("Safe/NextButton") as Control).visible and not (results.get_node("Safe/LevelsButton") as Control).visible, "Time Attack results offer Retry (focused) and Title", str(root.gui_get_focus_owner()))
@@ -2000,7 +2014,7 @@ func _test_time_attack_save_failure() -> void:
 	_check(results != null and _game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file") and _game.save_error == reason and failed == [reason], "an unsaved Time Attack best sets save_error and emits save_failed", "%s / %s" % [_game.flow_args, failed])
 	if results != null:
 		var notice := results.get_node("Safe/SaveError") as Label
-		_check((results.get_node("Safe/NewBest") as Label).visible and notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the Time Attack results say New best! and that it could not be saved", notice.text)
+		_check((results.get_node("%NewBest") as Label).visible and notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the Time Attack results say New best! and that it could not be saved", notice.text)
 	_game.load_game()
 	_check(_game.best(GameState.TIME_ATTACK_MODE) == 0, "the unsaved Time Attack best is not in the save", str(_game.bests))
 	_game.save_error = ""
@@ -2461,8 +2475,8 @@ func _test_play_armored_takes_two_hits() -> void:
 	var results := current_scene as Results
 	_check(results != null and _game.flow_args.get("kills") == 3 and _game.flow_args.get("hits") == 4 and _game.flow_args.get("shots") == 4, "the run passes 3 birds killed of 4 hits to the results", str(_game.flow_args))
 	if results != null:
-		var shown := ["Hits", "Accuracy"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-		_check(shown == ["Birds hit 3", "Accuracy 100%"], "the results count the armored goose once in Birds hit, and both its hits in the accuracy", str(shown))
+		var shown := _results_texts(results, ["Hits", "Accuracy", "Shots"])
+		_check(shown == ["3", "100%", "4 of 4 shots"], "the results count the armored goose once in Birds hit, and both its hits in the accuracy", str(shown))
 	_check_logged(from, "^\\[Play\\] Run end: .* 4 shots \\(4 hits, 0 misses, 0 pigeons hit\\), 3 birds killed, ", "the run end logs the birds killed")
 	_check_logged(from, "^\\[Results\\] Score 750, accuracy 100% \\(4 of 4 shots\\), 3 birds hit, ", "the results log the birds hit (killed)")
 	_clear_tool_save()
@@ -2578,8 +2592,8 @@ func _test_play_decoy_penalty() -> void:
 	var results := current_scene as Results
 	_check(results != null and _game.flow_args.get("pigeons") == 2, "the run passes the pigeons hit to the results", str(_game.flow_args))
 	if results != null:
-		_check((results.get_node("Safe/Stats/Pigeons") as Label).text == "Pigeons hit 2", "the results show Pigeons hit 2", (results.get_node("Safe/Stats/Pigeons") as Label).text)
-		_check((results.get_node("Safe/Stats/Accuracy") as Label).text == "Accuracy 50%", "pigeon hits are shots but not hits (2 of 4)", (results.get_node("Safe/Stats/Accuracy") as Label).text)
+		_check_logged(from, "^\\[Results\\] Score \\d+, accuracy 50% \\(2 of 4 shots\\), .*, 2 pigeons hit, ", "the results log the pigeons hit (no longer on screen)")
+		_check(_results_texts(results, ["Accuracy", "Shots"]) == ["50%", "2 of 4 shots"], "pigeon hits are shots but not hits (2 of 4)", str(_results_texts(results, ["Accuracy", "Shots"])))
 	_check_logged(from, "^\\[Play\\] Run end: .* \\(2 hits, 0 misses, 2 pigeons hit\\)", "the run end logs the pigeons hit")
 	_clear_tool_save()
 
@@ -2730,8 +2744,9 @@ func _test_rival_steal_ends_run() -> void:
 	_check_logged(from, "^\\[Play\\] Run end: .*, 10 escaped \\(1 stolen\\), rival score 120, best ", "the run end logs the birds stolen and the rival's score")
 	_check_logged(from, "^\\[Play\\] Heckle \\(results\\) #\\d+: \".+\" ", "the results line is logged")
 	if results != null:
-		var shown := ["Escaped", "Verdict"].map(func(n: String) -> String: return (results.get_node("Safe/Stats/" + n) as Label).text)
-		_check(shown == ["Birds escaped 10 (1 stolen)", "You 0 vs rival 120: the rival wins"], "the results show the birds stolen and the rival's score in the verdict", str(shown))
+		var shown := _results_texts(results, ["Escaped", "RivalScore", "Steals"])
+		_check(shown == ["10 escaped (1 stolen)", "120", "from 1 steal"], "the results show the birds stolen and the rival's score", str(shown))
+		_check_logged(from, "^\\[Results\\] Verdict: You 0 vs rival 120: the rival wins$", "the results log the verdict")
 		_check_logged(from, "^\\[Results\\] Score 0, .*, 10 escaped, 1 stolen, rival score 120, 0 pigeons hit, best 0; rival: \".+\"$", "the results log the birds stolen, the rival's score and line")
 	_clear_tool_save()
 
@@ -3699,10 +3714,12 @@ func _test_campaign_level_plays_all_waves() -> void:
 	_check(_game.progress.has("dawn_2") and not Campaign.is_unlocked(Content.level("dawn_3"), _game.progress), "0 stars unlocks nothing", "")
 	if results == null:
 		return
-	var shown := ["Heading", "Stats/Stars", "Stats/Verdict", "Stats/Best"].map(func(n: String) -> String: return (results.get_node("Safe/" + n) as Label).text)
-	_check(shown == ["Dawn 2: not passed", "0 stars: not passed", Results.verdict_text(0, stats["rival_score"]), "Level best 0 (0 of 3 stars)"], "the results show the level, its stars, the verdict and the level best", str(shown))
+	var shown := _results_texts(results, ["Heading", "Score", "Best"])
+	_check(shown == ["Dawn 2: not passed", "0", "Best 0"] and (results.get_node("%Stars") as Control).visible and results.stars_shown() == 0 and (results.get_node("%RivalPanel") as Control).visible, "the results show the level, three empty stars, the score with the level best and the rival", str(shown))
+	_check_logged(from, "^\\[Results\\] Level dawn_2: 0 stars, best 0 \\(0 stars\\), next none open$", "the results log the level's stars")
+	_check_logged(from, "^\\[Results\\] Verdict: %s$" % Results.verdict_text(0, stats["rival_score"]), "the results log the verdict")
 	var buttons := ["NextButton", "RetryButton", "LevelsButton", "PlayAgainButton", "TitleButton"].map(func(n: String) -> bool: return (results.get_node("Safe/" + n) as Control).visible)
-	_check(buttons == [false, true, true, false, false] and (results.get_node("Safe/RetryButton") as Control).has_focus() and not (results.get_node("Safe/NewBest") as Control).visible, "without an open next level: Retry (focused) and Levels, no New best!", str(buttons))
+	_check(buttons == [false, true, true, false, false] and (results.get_node("Safe/RetryButton") as Control).has_focus() and not (results.get_node("%NewBest") as Control).visible, "without an open next level: Retry (focused) and Levels, no New best!", str(buttons))
 	if not (results.get_node("Safe/RetryButton") as Control).has_focus():
 		# Enter would press something else, which may start nothing to wait for.
 		_clear_tool_save()
@@ -3734,12 +3751,16 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	_check(results != null and stats.get("stars") == 2 and stats.get("best") == 1500 and stats.get("best_stars") == 2 and stats.get("new_best") == true and stats.get("next_level") == "dawn_2" and stats.get("save_error") == "", "a level passed with 2 stars opens dawn_2", str(stats))
 	if results == null:
 		return
-	var shown := ["Heading", "Stats/Stars", "Stats/Verdict", "Stats/Best"].map(func(n: String) -> String: return (results.get_node("Safe/" + n) as Label).text)
-	_check(shown == ["Dawn 1: passed", "2 of 3 stars", Results.verdict_text(1500, stats["rival_score"]), "Level best 1500 (2 of 3 stars)"], "the results show the stars earned, the verdict and the level best", str(shown))
+	var shown := _results_texts(results, ["Heading", "Score", "Best"])
+	for i in 120:
+		if results.stars_shown() == 2:
+			break
+		await process_frame
+	_check(shown == ["Dawn 1: passed", "1500", "Best 1500"] and results.stars_shown() == 2, "the results show the two stars earned, the score and the level best", "%s, %d stars" % [shown, results.stars_shown()])
 	var next := results.get_node("Safe/NextButton") as Button
 	var retry := results.get_node("Safe/RetryButton") as Button
 	var levels := results.get_node("Safe/LevelsButton") as Button
-	_check(next.visible and retry.visible and levels.visible and next.has_focus() and (results.get_node("Safe/NewBest") as Control).visible, "Next (focused), Retry and Levels, and New best!", str(root.gui_get_focus_owner()))
+	_check(next.visible and retry.visible and levels.visible and next.has_focus() and (results.get_node("%NewBest") as Control).visible, "Next (focused), Retry and Levels, and New best!", str(root.gui_get_focus_owner()))
 	for button: Button in [next, retry, levels]:
 		var focus_style := button.get_theme_stylebox(&"focus")
 		_check(button.focus_mode == Control.FOCUS_ALL and focus_style != null and not (focus_style is StyleBoxEmpty), "%s takes focus with a visible focus style" % button.text, str(focus_style))
@@ -3867,22 +3888,119 @@ func _test_campaign_rival_linger_scale() -> void:
 		_check(bird.stolen and cued >= aim - FRAME - 0.001 and aim >= Content.AIM_TIME_MIN, "%s: the cue still runs aim_time before the steal" % level_id, "cued %.3f" % cued)
 
 
-## The verdict: a win when the score beats the rival's, a loss below it, a tie when equal;
-## a run without rival steals shows none. Stars read "N of 3 stars" (0: not passed).
+## The verdict (logged, no longer shown): a win when the score beats the rival's, a loss
+## below it, a tie when equal; a run without rival steals logs none and shows no Rival
+## panel.
 func _test_results_verdict() -> void:
 	_check(Results.verdict_text(500, 300) == "You 500 vs rival 300: you win!" and Results.verdict_text(100, 300) == "You 100 vs rival 300: the rival wins" and Results.verdict_text(200, 200) == "You 200 vs rival 200: a tie",
 		"the verdict is a win, a loss or a tie", Results.verdict_text(200, 200))
-	_check(Results.stars_text(0) == "0 stars: not passed" and Results.stars_text(1) == "1 of 3 stars" and Results.stars_text(3) == "3 of 3 stars", "the stars text", Results.stars_text(0))
 	var stats := {"mode": "endless", "score": 40, "shots": 2, "hits": 1, "kills": 1, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": false, "best": 100, "new_best": false, "save_error": ""}
+	var from := _log.size()
 	_game.goto(GameState.Flow.RESULTS, stats)
 	await _game.transition_finished
-	_check(not (current_scene.get_node("Safe/Stats/Verdict") as Control).visible, "a run without rival steals shows no verdict", "shown")
+	_check(not (current_scene.get_node("%RivalPanel") as Control).visible and not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Results] Verdict")), "a run without rival steals shows no Rival panel and logs no verdict", "shown or logged")
 	stats["rival_steals"] = true
+	from = _log.size()
 	_game.goto(GameState.Flow.RESULTS, stats)
 	await _game.transition_finished
-	var verdict := current_scene.get_node("Safe/Stats/Verdict") as Label
-	_check(verdict.visible and verdict.text == "You 40 vs rival 0: you win!", "a run with rival steals shows the verdict", verdict.text)
+	_check((current_scene.get_node("%RivalPanel") as Control).visible, "a run with rival steals shows the Rival panel", "hidden")
+	_check_logged(from, "^\\[Results\\] Verdict: You 40 vs rival 0: you win!$", "a run with rival steals logs the verdict")
+	_check_results_hide_dropped_lines(current_scene as Results, "Not bad.")
 	await _open_title()
+
+
+## The results' stars and panels (results-panels AC 1-3, 5, 6): a level shows three stars,
+## the earned ones (the first N) filling in one by one on the frame of their star sound,
+## STAR_SOUND_GAP apart, with a bounce past full size, or with reduce motion at the same
+## moments at full size; 0 stars shows three empty outlines and plays no star sound; the
+## New best! badge bounces with its fanfare (not with reduce motion). Opened without run
+## stats, the panels show dashes, no Rival panel and no stars.
+func _test_results_stars_and_panels() -> void:
+	_clear_tool_save()
+	var base := {"score": 1200, "shots": 4, "hits": 3, "kills": 3, "pigeons": 1, "escaped": 2, "stolen": 1, "rival_score": 100, "rival_line": "Not bad.", "rival_steals": true, "best": 1200, "new_best": false, "save_error": "", "level": "dawn_1", "best_stars": 3, "next_level": "dawn_2"}
+	for reduce_motion: bool in [false, true]:
+		_game.set_reduce_motion(reduce_motion)
+		for earned in Campaign.MAX_STARS + 1:
+			var label := "%d stars%s" % [earned, ", reduce motion" if reduce_motion else ""]
+			var stats := base.duplicate()
+			stats["stars"] = earned
+			stats["new_best"] = earned == Campaign.MAX_STARS
+			var from := _log.size()
+			_game.goto(GameState.Flow.RESULTS, stats)
+			await scene_changed
+			var results := current_scene as Results
+			var start := _game._clock
+			var shown_at: Array[float] = []
+			var sound_at: Array[float] = []
+			var star_peak := 0.0
+			var star_low := INF
+			var badge_peak := 0.0
+			for i in roundi((Results.STAR_SOUND_GAP * (earned + 2) + Results.STAR_POP_TIME) * 60.0):
+				await process_frame
+				while shown_at.size() < results.stars_shown():
+					shown_at.append(_game._clock)
+				var sounds := Array(_log.since(from)).filter(func(l: String) -> bool: return l == "[Audio] SFX star").size()
+				while sound_at.size() < sounds:
+					sound_at.append(_game._clock)
+				for slot: Control in (results.get_node("%Stars") as Control).get_children():
+					var full := slot.get_node("Full") as Control
+					if full.visible:
+						star_peak = maxf(star_peak, full.scale.x)
+						star_low = minf(star_low, full.scale.x)
+				badge_peak = maxf(badge_peak, (results.get_node("%NewBest") as Control).scale.x)
+			while _game.is_transitioning():
+				await process_frame
+			var slots := (results.get_node("%Stars") as Control).get_children()
+			var filled := slots.map(func(slot: Node) -> bool: return (slot.get_node("Full") as CanvasItem).visible)
+			var outlined := slots.all(func(slot: Node) -> bool: return (slot.get_node("Empty") as CanvasItem).visible)
+			var expected: Array = range(Campaign.MAX_STARS).map(func(i: int) -> bool: return i < earned)
+			_check((results.get_node("%Stars") as Control).visible and slots.size() == Campaign.MAX_STARS and filled == expected and outlined, "%s: three stars, the first %d filled, every slot outlined" % [label, earned], str(filled))
+			_check(shown_at.size() == earned and sound_at.size() == earned and results.stars_popped == earned, "%s: %d star sounds and %d stars popped in" % [label, earned, earned], "%d shown, %d sounds" % [shown_at.size(), sound_at.size()])
+			var timing: Array[String] = []
+			for i in mini(shown_at.size(), sound_at.size()):
+				if not is_equal_approx(shown_at[i], sound_at[i]):
+					timing.append("star %d shown at %.3f, its sound at %.3f" % [i + 1, shown_at[i] - start, sound_at[i] - start])
+				var due := Results.STAR_SOUND_GAP * (i + 1)
+				if absf(shown_at[i] - start - due) > 2.0 * FRAME + 0.001:
+					timing.append("star %d at %.3f s, due at %.2f s" % [i + 1, shown_at[i] - start, due])
+			_check(timing.is_empty(), "%s: each star pops in on the frame of its sound, STAR_SOUND_GAP apart" % label, "; ".join(timing))
+			if earned > 0 and not reduce_motion:
+				_check(star_peak >= Results.STAR_POP_SCALE - 0.1 and star_low < 0.5 and results.last_pop_style == "bounce", "%s: the stars pop in with a bounce past full size" % label, "scale %.2f..%.2f" % [star_low, star_peak])
+			elif earned > 0:
+				_check(star_peak == 1.0 and star_low == 1.0 and results.last_pop_style == "plain", "%s: the stars appear at full size, no bounce" % label, "scale %.2f..%.2f" % [star_low, star_peak])
+			if earned > 0:
+				_check_logged(from, "^\\[Results\\] Star %d of %d pops in \\(%s\\)$" % [earned, earned, "no bounce: reduce motion" if reduce_motion else "bounce"], "%s: the last star's pop is logged" % label)
+			if stats["new_best"]:
+				_check((badge_peak > 1.05) != reduce_motion, "%s: the New best! badge %s with its fanfare" % [label, "stays still" if reduce_motion else "bounces"], "peak scale %.2f" % badge_peak)
+	_game.set_reduce_motion(false)
+	var opened_from := _log.size()
+	_game.goto(GameState.Flow.RESULTS, {})
+	await _game.transition_finished
+	var empty := current_scene as Results
+	_check(_results_texts(empty, ["Score", "Accuracy", "Hits", "Best"]) == [Results.NO_VALUE, Results.NO_VALUE, Results.NO_VALUE, Results.best_text(0)] and not (empty.get_node("%RivalPanel") as Control).visible and not (empty.get_node("%Stars") as Control).visible,
+		"opened without run stats, the panels show dashes, no Rival panel, no stars", str(_results_texts(empty, ["Score", "Accuracy", "Hits", "Best"])))
+	_check((empty.get_node("Safe/PlayAgainButton") as Control).visible and (empty.get_node("Safe/TitleButton") as Control).visible and (empty.get_node("Safe/PlayAgainButton") as Control).has_focus(), "opened without run stats: Play again (focused) and Title", str(root.gui_get_focus_owner()))
+	_check_logged(opened_from, "^\\[Results\\] Opened without run stats \\(missing 'score'\\)$", "opening without stats is logged")
+	_clear_tool_save()
+	await _open_title()
+
+
+## The texts of the results' Labels named: a unique name (Score, Best, Accuracy, Shots,
+## Hits, Escaped, RivalScore, Steals) or Heading.
+func _results_texts(results: Results, names: Array) -> Array:
+	return names.map(func(n: String) -> String: return (results.get_node("Safe/Heading" if n == "Heading" else "%" + n) as Label).text)
+
+
+## No text shown on the results screen is the verdict, the pigeons hit or the rival's
+## line, and their labels are gone (results-panels AC 4).
+func _check_results_hide_dropped_lines(results: Results, rival_line: String) -> void:
+	var shown: Array[String] = []
+	for text: Label in results.find_children("*", "Label", true, false):
+		if text.is_visible_in_tree():
+			shown.append(text.text)
+	var dropped := shown.filter(func(text: String) -> bool: return "vs rival" in text or "igeon" in text or (rival_line != "" and rival_line in text))
+	var gone := ["Verdict", "Pigeons", "RivalLine"].all(func(n: String) -> bool: return results.find_child(n, true, false) == null)
+	_check(dropped.is_empty() and gone, "the results show no verdict, pigeons hit or rival's line", str(dropped))
 
 
 ## Chapter select: the four chapters with their stars out of 18; a chapter whose level 1 is
@@ -6371,7 +6489,7 @@ func _test_rival_laugh_before_results_blurt() -> void:
 		while _game.is_transitioning():
 			await process_frame
 		var results := current_scene as Results
-		_check(results != null and (results.get_node("Safe/RivalLine") as Label).visible, "%s: the parting line shows at once" % label, "scene %s" % current_scene)
+		_check(results != null and (results.get_node("%RivalPanel") as Control).visible, "%s: the results show at once, the rival's panel with them" % label, "scene %s" % current_scene)
 	_game.set_reduce_motion(false)
 	_game.heckle_blurts = GameState.HECKLE_BLURTS
 	_clear_tool_save()
