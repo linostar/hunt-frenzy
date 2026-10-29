@@ -19,7 +19,7 @@ extends Control
 ## GOOSE_GAP_MIN..MAX seconds, at most GEESE_MAX at once), in a band from below the top bar
 ## down to just above the first row of buttons, so a goose never covers a button. A tap on
 ## a goose (its hitbox polygon, as in play) shoots it: the shot and hit sounds, a feather
-## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt
+## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while Game.HECKLE_BLURTS is off)
 ## (cooldown permitting, as in play); it scores nothing and saves nothing, and is logged
 ## ("[Title] Shot goose #n"). A tap on empty sky plays the shot only; a tap on a button only
 ## presses it (the buttons lie above the shot surface). The scenery drifts slowly from side

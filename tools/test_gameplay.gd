@@ -4459,7 +4459,7 @@ func _test_audio_every_event_sound() -> void:
 	_check(heard == [&"wave_start", &"call_quack"], "the wave's first spawn plays wave_start, then the goose's call as its art shows above the grass", str(heard))
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	var from := _log.size()
-	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
+	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot"] + _heckle_sounds("miss"), "a miss plays the shot and the rival's miss heckle (silent while HECKLE_BLURTS is off)", str(_game.sfx_log))
 	_check_logged(from, "^\\[Audio\\] SFX shot x[01]\\.\\d{3}$", "every sound is logged by the one entry point, with its varied pitch")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
 		["splitter", [&"shot", &"split_pop", &"combo_up", &"call_gosling", &"call_gosling"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
@@ -4536,7 +4536,7 @@ func _test_audio_every_event_sound() -> void:
 	play.set_shell_pool(1)
 	shot = (play.get_node("ShotInput") as ShotInput).shot
 	var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
-	_check(last_shot.slice(0, 2) == [&"shot", &"heckle_miss"] and last_shot.count(&"out_of_shells") == 1 and last_shot.find(&"out_of_shells") < last_shot.find(&"wave_lost"),
+	_check(last_shot.slice(0, 1 + _heckle_sounds("miss").size()) == [&"shot"] + _heckle_sounds("miss") and last_shot.count(&"out_of_shells") == 1 and last_shot.find(&"out_of_shells") < last_shot.find(&"wave_lost"),
 		"the shot that uses the last shell plays out_of_shells", str(last_shot))
 	_check(last_shot.count(&"wave_lost") == 1 and play.wave.index == 2, "a lost Time Attack wave plays wave_lost", str(last_shot))
 	# A button press plays the tap; the results play the rival's blurt, a sound per star and the new best.
@@ -4557,7 +4557,7 @@ func _test_audio_every_event_sound() -> void:
 	await _game.transition_finished
 	for i in ceili(4 * Results.STAR_SOUND_GAP / FRAME) + 2:
 		await process_frame
-	_check(_game.sfx_log == [&"heckle_results", &"star", &"star", &"new_best"], "the results play the rival's blurt, one sound per star and the new best", str(_game.sfx_log))
+	_check(_game.sfx_log == _heckle_sounds("results") + [&"star", &"star", &"new_best"], "the results play the rival's blurt (silent while HECKLE_BLURTS is off), one sound per star and the new best", str(_game.sfx_log))
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -4586,6 +4586,19 @@ func _test_audio_heckle_blurts() -> void:
 		texts.append(_plan_text(voiced))
 	_check(texts.size() == RivalLines.CATEGORIES.size() and texts.all(func(text: String) -> bool: return texts.count(text) == 1), "every category sounds different", str(texts))
 	_check(GameState.blurt_plan("whistle", line).is_empty(), "an unknown category has no blurt", "")
+	# With HECKLE_BLURTS off (the experiment) a heckle shows its line but makes no sound,
+	# and the log says so.
+	_game.heckle_blurts = false
+	var muted := await _start_run(88)
+	var muted_from := _log.size()
+	_game.sfx_log.clear()
+	(muted.get_node("ShotInput") as ShotInput).shot.emit(_global(muted, SKY_POINTS[0]))
+	var muted_line := muted.heckle_shown()
+	_check(muted_line != "" and _game.sfx_log == [&"shot"] and _game.blurt_syllables_waiting() == 0, "with blurts off a miss heckle shows its line and plays no blurt", "%s, %d waiting for \"%s\"" % [_game.sfx_log, _game.blurt_syllables_waiting(), muted_line])
+	_check_logged(muted_from, "^\\[Audio\\] Heckle blurt muted \\(HECKLE_BLURTS off\\) for heckle_miss: \".+\"$", "the muted blurt is logged")
+	_check(not Array(_log.since(muted_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_")), "no heckle sound is logged with blurts off", "")
+	# The blurts themselves, switched on.
+	_game.heckle_blurts = true
 	var play := await _start_run(88)
 	var from := _log.size()
 	_game.sfx_log.clear()
@@ -4603,6 +4616,7 @@ func _test_audio_heckle_blurts() -> void:
 	for i in ceili(GameState.BLURT_SYLLABLES_MAX * GameState.BLURT_GAP * 1.2 / FRAME) + 2:
 		await process_frame
 	_check(_game.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.blurt_syllables_waiting())
+	_game.heckle_blurts = GameState.HECKLE_BLURTS
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -5114,6 +5128,15 @@ func _sounds_of(action: Callable) -> Array[StringName]:
 	return _game.sfx_log.duplicate()
 
 
+
+## The sound a heckle of `category` logs: its blurt, or none while blurts are off
+## (GameState.HECKLE_BLURTS, the experiment muting the rival's voice).
+func _heckle_sounds(category: String) -> Array[StringName]:
+	var sounds: Array[StringName] = []
+	if _game.heckle_blurts:
+		sounds.append(StringName("heckle_" + category))
+	return sounds
+
 ## "sound xpitch @at, ..." of a blurt, for comparing and failure messages.
 func _plan_text(plan: Array[GameState.Syllable]) -> String:
 	return ", ".join(plan.map(func(syllable: GameState.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
@@ -5453,7 +5476,7 @@ func _test_title_goose_shot() -> void:
 	await _touch(scenery.to_global(goose.transform * LOCAL_BODY))
 	goose.set_process(true)
 	_check(goose.state != Bird.State.FLYING and title.geese_shot == 1, "a tap on a title goose shoots it", "state %d" % goose.state)
-	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit", &"heckle_combo"], "the shot, the hit and the rival's blurt play", str(_game.sfx_log.slice(sounds)))
+	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit"] + _heckle_sounds("combo"), "the shot, the hit and the rival's blurt play (silent while HECKLE_BLURTS is off)", str(_game.sfx_log.slice(sounds)))
 	_check(title.feathers().live_count() == feathers_before + Feathers.FEATHERS_PER_BURST and Array(title.feathers().live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS[goose.spec.sprite]), "the goose bursts into feathers of its colours", "%d feathers" % title.feathers().live_count())
 	_check(title.rival_pose() == "sulk" and title.heckle_shown() in Content.rival_lines().lines[Title.HECKLE_CATEGORY], "the rival sulks and heckles", "%s, '%s'" % [title.rival_pose(), title.heckle_shown()])
 	_check_logged(from, "^\\[Title\\] Shot goose #%d at \\([\\d.]+, [\\d.]+\\): it falls; no score, nothing saved \\(1 shot on the title\\)$" % goose.number, "the title shot is logged")
@@ -6309,6 +6332,8 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 ## [Audio] line says it waits for rival_laugh. The bubble line shows at once.
 func _test_rival_laugh_before_results_blurt() -> void:
 	var laugh_length := (load("res://audio/sfx/rival_laugh.wav") as AudioStream).get_length()
+	# The parting blurt's wait for the laugh, with the blurts switched on.
+	_game.heckle_blurts = true
 	for reduce_motion: bool in [false, true]:
 		var label := "reduce motion" if reduce_motion else "the wipe"
 		_game.set_reduce_motion(reduce_motion)
@@ -6348,5 +6373,6 @@ func _test_rival_laugh_before_results_blurt() -> void:
 		var results := current_scene as Results
 		_check(results != null and (results.get_node("Safe/RivalLine") as Label).visible, "%s: the parting line shows at once" % label, "scene %s" % current_scene)
 	_game.set_reduce_motion(false)
+	_game.heckle_blurts = GameState.HECKLE_BLURTS
 	_clear_tool_save()
 	await _open_title()

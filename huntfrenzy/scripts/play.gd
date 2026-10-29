@@ -88,7 +88,7 @@ extends Node2D
 ## every rising bird on its spawn frame, a gosling at its launch; fleeing makes no sound), its call (its spec's call
 ## at its call_pitch); the rival's
 ## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
-## (Game.play_heckle). A timed run ticks ("countdown_tick") once at each of the last
+## (Game.play_heckle; silent while Game.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
 ## countdown runs on run_clock, so a pause stops it. The pause menu plays "pause" and
 ## "resume" and holds the run's sounds and ducks the music while open (Game.sync_audio_pause);

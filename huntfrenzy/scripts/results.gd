@@ -21,7 +21,7 @@ extends Control
 ## again, Levels opens its chapter's level select with this level focused (Retry is focused
 ## without Next).
 ## Laid out in the safe area.
-## Sound: the rival's parting line plays his blurt (Game.play_heckle, "results"; after a run
+## Sound: the rival's parting line plays his blurt (silent while Game.HECKLE_BLURTS is off) (Game.play_heckle, "results"; after a run
 ## ended by his steal it waits for his laugh to finish, the line itself shows at once); a level's
 ## stars each play "star", STAR_SOUND_GAP seconds apart, and a new best then plays "new_best".
 
