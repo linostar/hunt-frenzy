@@ -201,6 +201,8 @@ func _tests() -> Array[Callable]:
 		_test_rival_steals_off,
 		_test_rival_heckle_cooldown,
 		_test_rival_layout_and_pass_through,
+		_test_rival_footprint_and_poses,
+		_test_rival_lit_per_backdrop,
 		_test_rival_poses,
 		_test_rival_one_cue_at_a_time,
 		_test_rival_aim_gap,
@@ -2880,7 +2882,7 @@ func _test_rival_heckle_cooldown() -> void:
 	play.mode.rival_steals = true
 
 
-## The rival and his bubble sit in the grass band (at or below GRASS_Y) inside the visible
+## The rival (at or below the fringe's top) and his bubble (at or below GRASS_Y) sit in the grass band inside the visible
 ## area at 16:9, 19.5:9 and 4:3, ignore touches, and every rival line fits the bubble's two
 ## lines; a shot on the rival or on the shown bubble is a shot like any other (AC 11).
 func _test_rival_layout_and_pass_through() -> void:
@@ -2907,7 +2909,9 @@ func _test_rival_layout_and_pass_through() -> void:
 		var stray: Array[String] = []
 		for part: Control in [rival, bubble]:
 			var rect := part.get_global_rect()
-			if world.to_local(rect.position).y < Play.GRASS_Y or not shown.encloses(rect):
+			# The rival's hat may reach the fringe's top; the bubble stays below the grass line.
+			var top := Play.GRASS_Y - Play.GRASS_TIP if part == rival else Play.GRASS_Y
+			if world.to_local(rect.position).y < top - 0.01 or not shown.encloses(rect):
 				stray.append("%s %s" % [part.name, rect])
 		_check(stray.is_empty(), "%dx%d: the rival and his bubble sit in the grass band, on screen" % [window.x, window.y], str(stray))
 	root.size = BASE_WINDOW
@@ -2920,6 +2924,67 @@ func _test_rival_layout_and_pass_through() -> void:
 		_check(play.scoring.shots() == shots + 1 and play.scoring.misses == shots + 1 and play.ammo.shells == shells - 1, "a shot on the %s is a shot like any other (a miss on the grass)" % part.name, "%d shots, %d shells" % [play.scoring.shots(), play.ammo.shells])
 	_check_logged(from, "^\\[Play\\] Miss at ", "the shots on the rival and his bubble are logged as misses")
 
+
+
+## The rival's footprint (art polish): his rect is Play.RIVAL_RECT (80x120 at the
+## bottom-left of the bank), its top at or below the fringe's top (GRASS_Y - GRASS_TIP:
+## no art over the field) and inside the visible area; each pose's art has the rect's
+## aspect (it fills it, nothing letterboxed off its feet), stands on its bottom edge and
+## keeps inside it. The aim pose's highest art is the gun's muzzle in the right third, so
+## the aim cue visibly comes from his gun; every other pose's highest art is his hat,
+## left of it.
+func _test_rival_footprint_and_poses() -> void:
+	var play := await _start_run(78)
+	var rival := play.get_node("World/Rival") as TextureRect
+	var world := play.get_node("World") as Node2D
+	var rect := Rect2(world.to_local(rival.get_global_rect().position), rival.size)
+	_check(rect.is_equal_approx(Play.RIVAL_RECT) and Play.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
+	_check(rect.position.y >= Play.GRASS_Y - Play.GRASS_TIP and rect.position.x >= 0.0 and rect.end.y <= 540.0, "none of the rival's rect is above the fringe's top (y 416) or off the screen", str(rect))
+	var tops: Dictionary[String, Vector2i] = {}
+	for pose: Texture2D in [Play.RIVAL_IDLE, Play.RIVAL_AIM, Play.RIVAL_SULK, Play.RIVAL_BRAG]:
+		var image := pose.get_image()
+		var size := image.get_size()
+		var file := pose.resource_path.get_file()
+		_check(is_equal_approx(float(size.x) / size.y, rect.size.x / rect.size.y), "%s has the rival rect's aspect" % file, str(size))
+		var used := image.get_used_rect()
+		_check(used.end.y >= size.y - 2 and used.position.y >= 0 and used.position.x >= 0 and used.end.x <= size.x, "%s stands on the rect's bottom edge, inside it" % file, str(used))
+		var top := Vector2i(-1, -1)
+		for y in size.y:
+			for x in size.x:
+				if image.get_pixel(x, y).a > 0.5:
+					top = Vector2i(x, y)
+					break
+			if top.x >= 0:
+				break
+		tops[file] = top
+	var aim := tops["rival_aim.svg"]
+	var width := Play.RIVAL_AIM.get_width()
+	_check(aim.x * 3 >= width * 2, "the aim pose's highest art is the gun's muzzle, in the right third", "%s of %d" % [aim, width])
+	for file: String in ["rival_idle.svg", "rival_sulk.svg", "rival_brag.svg"]:
+		_check(tops[file].x * 3 < width * 2, "%s's highest art is his hat, not a raised gun" % file, str(tops[file]))
+
+
+## Each backdrop lights the rival (art polish): a level of every chapter starts with his
+## modulate at its backdrop's tint (logged), Endless on dawn's, and the title on the
+## sunset's; noon is neutral, dawn and sunset warm, night cool.
+func _test_rival_lit_per_backdrop() -> void:
+	for chapter in Content.chapters():
+		var from := _log.size()
+		var play := await _start_level(Campaign.chapter_levels(chapter.id)[0].id)
+		var tint := (play.get_node("World/Rival") as CanvasItem).modulate
+		_check(Backdrop.RIVAL_TINTS.has(chapter.backdrop) and tint.is_equal_approx(Backdrop.rival_tint(chapter.backdrop)), "%s: the rival is lit with the %s backdrop's tint" % [chapter.id, chapter.backdrop], str(tint))
+		_check_logged(from, "^\\[Play\\] Rival lit for backdrop %s: tint #%s$" % [chapter.backdrop, tint.to_html(false)], "%s: the rival's light is logged" % chapter.id)
+	var noon := Backdrop.rival_tint("noon")
+	var dawn := Backdrop.rival_tint("dawn")
+	var sunset := Backdrop.rival_tint("sunset")
+	var night := Backdrop.rival_tint("night")
+	_check(noon.is_equal_approx(Color(1, 1, 1)) and dawn.r > dawn.b and sunset.r > sunset.b and sunset.b < dawn.b and night.b > night.r and night.v < 0.9,
+		"noon is neutral, dawn and sunset warm (sunset warmer), night cool and dim", "%s %s %s %s" % [noon, dawn, sunset, night])
+	var endless := await _start_run(79)
+	_check((endless.get_node("World/Rival") as CanvasItem).modulate.is_equal_approx(Backdrop.rival_tint(endless.backdrop_id())), "Endless lights the rival for its first backdrop", endless.backdrop_id())
+	await _open_title()
+	var title := current_scene as Title
+	_check((title.get_node("Scenery/Rival") as CanvasItem).modulate.is_equal_approx(Backdrop.rival_tint(Title.TITLE_BACKDROP)), "the title lights the rival for its sunset backdrop", str((title.get_node("Scenery/Rival") as CanvasItem).modulate))
 
 ## The rival's poses (step 7): idle at the start; a scored kill makes him sulk for
 ## RIVAL_REACTION_TIME of game time (logged), then idle again; a miss whose heckle shows
@@ -3026,6 +3091,7 @@ func _test_backdrop_cycle_and_fade() -> void:
 	Engine.time_scale = 1.0
 	_check(play.wave.index == 4 and play.is_backdrop_fading() and play.backdrop_id() == "noon" and play.weather().id == "wind", "wave 4 cross-fades the noon backdrop in, with wind", "wave %d, fading %s, %s, %s" % [play.wave.index, play.is_backdrop_fading(), play.backdrop_id(), play.weather().id])
 	_check_logged(from, "^\\[Play\\] Backdrop dawn -> noon, weather wind, cross-fading over 0\\.80 s from wave 4$", "the cross-fade is logged")
+	var rival := play.get_node("World/Rival") as CanvasItem
 	# The loop stops on the frame wave 4 started in (_start_wave runs at the end of _process):
 	# its clock starts at -WAVE_LEAD and its first bird is due WAVE_LEAD of run time later.
 	var started_at := play.run_clock
@@ -3033,8 +3099,11 @@ func _test_backdrop_cycle_and_fade() -> void:
 	var faded_at := INF
 	var first_spawn := INF
 	var spawned := play.flying_birds().size()
+	var mid := Color(0, 0, 0, 0)
 	for i in 120:
 		await process_frame
+		if i == 0:
+			mid = rival.modulate
 		if faded_at == INF and not play.is_backdrop_fading():
 			faded_at = play.run_clock - started_at
 		if play.flying_birds().size() > spawned:
@@ -3042,6 +3111,10 @@ func _test_backdrop_cycle_and_fade() -> void:
 			break
 	var backdrops := play.get_node("World").get_children().filter(func(node: Node) -> bool: return node is Backdrop)
 	_check(faded_at <= Play.WAVE_LEAD and backdrops.size() == 1 and (backdrops[0] as Backdrop).id == "noon" and is_equal_approx((backdrops[0] as CanvasItem).modulate.a, 1.0), "the cross-fade ends within the lead-in, leaving only the noon backdrop", "faded %.3f s into the wave, %d backdrops" % [faded_at, backdrops.size()])
+	_check(mid != Backdrop.rival_tint("dawn") and mid != Backdrop.rival_tint("noon") and mid.r >= Backdrop.rival_tint("dawn").r - 0.001 and mid.b >= Backdrop.rival_tint("dawn").b - 0.001,
+		"the rival's light moves from dawn's toward noon's with the cross-fade", "%s" % mid)
+	_check(rival.modulate.is_equal_approx(Backdrop.rival_tint("noon")), "once the fade ends the rival is lit for noon", "%s" % rival.modulate)
+	_check_logged(from, "^\\[Play\\] Rival lit for backdrop noon: tint #ffffff$", "the rival's new light is logged")
 	_check(is_equal_approx(lead_clock, -Play.WAVE_LEAD) and first_spawn >= Play.WAVE_LEAD - 0.001 and first_spawn <= Play.WAVE_LEAD + FRAME + 0.001, "the wave's first bird spawns on time (the fade delays nothing)", "wave clock %.3f at its start, first spawn %.3f s of run time after it" % [lead_clock, first_spawn])
 	play.mode.rival_steals = true
 	var timed := await _start_run(75, GameState.TIME_ATTACK_MODE)
@@ -4386,7 +4459,7 @@ func _test_audio_every_event_sound() -> void:
 	_check(heard == [&"wave_start", &"call_quack"], "the wave's first spawn plays wave_start, then the goose's call as its art shows above the grass", str(heard))
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	var from := _log.size()
-	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot", &"heckle_miss"], "a miss plays the shot and the rival's miss heckle", str(_game.sfx_log))
+	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot"] + _heckle_sounds("miss"), "a miss plays the shot and the rival's miss heckle (silent while HECKLE_BLURTS is off)", str(_game.sfx_log))
 	_check_logged(from, "^\\[Audio\\] SFX shot x[01]\\.\\d{3}$", "every sound is logged by the one entry point, with its varied pitch")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
 		["splitter", [&"shot", &"split_pop", &"combo_up", &"call_gosling", &"call_gosling"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
@@ -4463,7 +4536,7 @@ func _test_audio_every_event_sound() -> void:
 	play.set_shell_pool(1)
 	shot = (play.get_node("ShotInput") as ShotInput).shot
 	var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
-	_check(last_shot.slice(0, 2) == [&"shot", &"heckle_miss"] and last_shot.count(&"out_of_shells") == 1 and last_shot.find(&"out_of_shells") < last_shot.find(&"wave_lost"),
+	_check(last_shot.slice(0, 1 + _heckle_sounds("miss").size()) == [&"shot"] + _heckle_sounds("miss") and last_shot.count(&"out_of_shells") == 1 and last_shot.find(&"out_of_shells") < last_shot.find(&"wave_lost"),
 		"the shot that uses the last shell plays out_of_shells", str(last_shot))
 	_check(last_shot.count(&"wave_lost") == 1 and play.wave.index == 2, "a lost Time Attack wave plays wave_lost", str(last_shot))
 	# A button press plays the tap; the results play the rival's blurt, a sound per star and the new best.
@@ -4484,7 +4557,7 @@ func _test_audio_every_event_sound() -> void:
 	await _game.transition_finished
 	for i in ceili(4 * Results.STAR_SOUND_GAP / FRAME) + 2:
 		await process_frame
-	_check(_game.sfx_log == [&"heckle_results", &"star", &"star", &"new_best"], "the results play the rival's blurt, one sound per star and the new best", str(_game.sfx_log))
+	_check(_game.sfx_log == _heckle_sounds("results") + [&"star", &"star", &"new_best"], "the results play the rival's blurt (silent while HECKLE_BLURTS is off), one sound per star and the new best", str(_game.sfx_log))
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -4513,6 +4586,19 @@ func _test_audio_heckle_blurts() -> void:
 		texts.append(_plan_text(voiced))
 	_check(texts.size() == RivalLines.CATEGORIES.size() and texts.all(func(text: String) -> bool: return texts.count(text) == 1), "every category sounds different", str(texts))
 	_check(GameState.blurt_plan("whistle", line).is_empty(), "an unknown category has no blurt", "")
+	# With HECKLE_BLURTS off (the experiment) a heckle shows its line but makes no sound,
+	# and the log says so.
+	_game.heckle_blurts = false
+	var muted := await _start_run(88)
+	var muted_from := _log.size()
+	_game.sfx_log.clear()
+	(muted.get_node("ShotInput") as ShotInput).shot.emit(_global(muted, SKY_POINTS[0]))
+	var muted_line := muted.heckle_shown()
+	_check(muted_line != "" and _game.sfx_log == [&"shot"] and _game.blurt_syllables_waiting() == 0, "with blurts off a miss heckle shows its line and plays no blurt", "%s, %d waiting for \"%s\"" % [_game.sfx_log, _game.blurt_syllables_waiting(), muted_line])
+	_check_logged(muted_from, "^\\[Audio\\] Heckle blurt muted \\(HECKLE_BLURTS off\\) for heckle_miss: \".+\"$", "the muted blurt is logged")
+	_check(not Array(_log.since(muted_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_")), "no heckle sound is logged with blurts off", "")
+	# The blurts themselves, switched on.
+	_game.heckle_blurts = true
 	var play := await _start_run(88)
 	var from := _log.size()
 	_game.sfx_log.clear()
@@ -4530,6 +4616,7 @@ func _test_audio_heckle_blurts() -> void:
 	for i in ceili(GameState.BLURT_SYLLABLES_MAX * GameState.BLURT_GAP * 1.2 / FRAME) + 2:
 		await process_frame
 	_check(_game.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.blurt_syllables_waiting())
+	_game.heckle_blurts = GameState.HECKLE_BLURTS
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -5041,6 +5128,15 @@ func _sounds_of(action: Callable) -> Array[StringName]:
 	return _game.sfx_log.duplicate()
 
 
+
+## The sound a heckle of `category` logs: its blurt, or none while blurts are off
+## (GameState.HECKLE_BLURTS, the experiment muting the rival's voice).
+func _heckle_sounds(category: String) -> Array[StringName]:
+	var sounds: Array[StringName] = []
+	if _game.heckle_blurts:
+		sounds.append(StringName("heckle_" + category))
+	return sounds
+
 ## "sound xpitch @at, ..." of a blurt, for comparing and failure messages.
 func _plan_text(plan: Array[GameState.Syllable]) -> String:
 	return ", ".join(plan.map(func(syllable: GameState.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
@@ -5380,7 +5476,7 @@ func _test_title_goose_shot() -> void:
 	await _touch(scenery.to_global(goose.transform * LOCAL_BODY))
 	goose.set_process(true)
 	_check(goose.state != Bird.State.FLYING and title.geese_shot == 1, "a tap on a title goose shoots it", "state %d" % goose.state)
-	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit", &"heckle_combo"], "the shot, the hit and the rival's blurt play", str(_game.sfx_log.slice(sounds)))
+	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit"] + _heckle_sounds("combo"), "the shot, the hit and the rival's blurt play (silent while HECKLE_BLURTS is off)", str(_game.sfx_log.slice(sounds)))
 	_check(title.feathers().live_count() == feathers_before + Feathers.FEATHERS_PER_BURST and Array(title.feathers().live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS[goose.spec.sprite]), "the goose bursts into feathers of its colours", "%d feathers" % title.feathers().live_count())
 	_check(title.rival_pose() == "sulk" and title.heckle_shown() in Content.rival_lines().lines[Title.HECKLE_CATEGORY], "the rival sulks and heckles", "%s, '%s'" % [title.rival_pose(), title.heckle_shown()])
 	_check_logged(from, "^\\[Title\\] Shot goose #%d at \\([\\d.]+, [\\d.]+\\): it falls; no score, nothing saved \\(1 shot on the title\\)$" % goose.number, "the title shot is logged")
@@ -6236,6 +6332,8 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 ## [Audio] line says it waits for rival_laugh. The bubble line shows at once.
 func _test_rival_laugh_before_results_blurt() -> void:
 	var laugh_length := (load("res://audio/sfx/rival_laugh.wav") as AudioStream).get_length()
+	# The parting blurt's wait for the laugh, with the blurts switched on.
+	_game.heckle_blurts = true
 	for reduce_motion: bool in [false, true]:
 		var label := "reduce motion" if reduce_motion else "the wipe"
 		_game.set_reduce_motion(reduce_motion)
@@ -6275,5 +6373,6 @@ func _test_rival_laugh_before_results_blurt() -> void:
 		var results := current_scene as Results
 		_check(results != null and (results.get_node("Safe/RivalLine") as Label).visible, "%s: the parting line shows at once" % label, "scene %s" % current_scene)
 	_game.set_reduce_motion(false)
+	_game.heckle_blurts = GameState.HECKLE_BLURTS
 	_clear_tool_save()
 	await _open_title()

@@ -200,6 +200,10 @@ const BLURT_VOWELS: Array[String] = ["a", "e", "o", "u"]
 ## A blurt has one syllable per word of its line, at most this many, BLURT_GAP seconds apart
 ## (varied a little).
 const BLURT_SYLLABLES_MAX := 6
+## Whether the rival's heckles speak (an experiment: off, his lines show in the bubble with
+## no gibberish blurt; his laugh on a steal still plays). One switch: set it true to bring
+## the blurts back (play_heckle, blurt_plan and the blurt_* WAVs are all kept).
+const HECKLE_BLURTS := false
 const BLURT_GAP := 0.13
 ## The rival's voice per heckle category (RivalLines.CATEGORIES): the timbre and the base
 ## pitch of the blurt (a mocking high nasal for a miss and a gloating higher one for a
@@ -280,6 +284,8 @@ var checked_theme := ""
 ## The ids of the latest sounds played, oldest first (SFX_LOG_SIZE at most; a heckle's blurt
 ## is "heckle_<category>"), and the pitch each played at (1 for a blurt); tests read them.
 var sfx_log: Array[StringName] = []
+## HECKLE_BLURTS for this run of the game (tests turn it on to check the blurts themselves).
+var heckle_blurts := HECKLE_BLURTS
 var sfx_pitches: Array[float] = []
 ## The loop asked for ("" before the first) and how often it changed (a crossfade each).
 var music_track := ""
@@ -1281,7 +1287,9 @@ func sfx_waiting() -> int:
 	return _later_queue.size()
 
 
-## Plays the rival's blurt for heckle `line` of `category` (blurt_plan) and logs it as
+## With heckle_blurts off (HECKLE_BLURTS, the default) plays nothing and logs "[Audio]
+## Heckle blurt muted (HECKLE_BLURTS off) for heckle_<category>: "<line>"". Else:
+## plays the rival's blurt for heckle `line` of `category` (blurt_plan) and logs it as
 ## "[Audio] SFX heckle_<category>"; its syllables start one after another on the sound clock
 ## (held while paused), from now or, while a play_sfx_later sound (his laugh) is queued or
 ## playing, once it has finished (logged with the wait).
@@ -1291,6 +1299,9 @@ func play_heckle(category: String, line: String) -> void:
 		report_error("No blurt for the heckle category '%s' (GameState.HECKLE_VOICES)" % category)
 		return
 	var id := StringName("heckle_" + category)
+	if not heckle_blurts:
+		print("[Audio] Heckle blurt muted (HECKLE_BLURTS off) for %s: \"%s\"" % [id, line])
+		return
 	_log_sound(id)
 	var start := maxf(_clock, _later_until)
 	var heard := PackedStringArray()

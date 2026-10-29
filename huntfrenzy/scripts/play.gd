@@ -43,9 +43,10 @@ extends Node2D
 ## and flee at once), and they never hold up a later wave's end (a wave ends on its own
 ## birds: Bird.wave_index). Its rival never steals
 ## (rival_steals false), so his tally is not on the HUD; he still heckles.
-## The rival hunter (Rival, data/rival_lines.json) stands in the grass band (at or below
-## GRASS_Y, so he never covers the field; he and his speech bubble ignore touches, so a
-## shot anywhere hits as before). In a mode with rival_steals, every frame Play asks
+## The rival hunter (Rival, data/rival_lines.json; RIVAL_RECT) stands on the bank in the
+## grass band (at or below the fringe's top, GRASS_Y - GRASS_TIP, so he never covers the
+## field; he and his speech bubble ignore touches, so a shot anywhere hits as before), lit
+## by the backdrop's tint (Backdrop.rival_tint, cross-fading with it). In a mode with rival_steals, every frame Play asks
 ## Rival.steal_state about each flying bird: once one has flown its linger_time (never the
 ## decoy, never a fleeing bird) the aim cue starts (a reticle on the bird, the rival
 ## raising his gun) and runs aim_time; a kill during it saves the bird (a damaging hit
@@ -87,7 +88,7 @@ extends Node2D
 ## every rising bird on its spawn frame, a gosling at its launch; fleeing makes no sound), its call (its spec's call
 ## at its call_pitch); the rival's
 ## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
-## (Game.play_heckle). A timed run ticks ("countdown_tick") once at each of the last
+## (Game.play_heckle; silent while Game.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
 ## countdown runs on run_clock, so a pause stops it. The pause menu plays "pause" and
 ## "resume" and holds the run's sounds and ducks the music while open (Game.sync_audio_pause);
@@ -139,6 +140,9 @@ const POPUP_SHAKE := 6.0
 const POPUP_SHAKES := 4
 const POPUP_SHAKE_TIME := 0.32
 const SHELL_TEXTURE := preload("res://art/shell.svg")
+## The rival's rect in World (the bottom-left of the bank, on the visible bottom at 16:9);
+## his art fills it (80x120, svg scale 3).
+const RIVAL_RECT := Rect2(16, 416, 80, 120)
 const RIVAL_IDLE := preload("res://art/rival_idle.svg")
 const RIVAL_AIM := preload("res://art/rival_aim.svg")
 const RIVAL_SULK := preload("res://art/rival_sulk.svg")
@@ -646,7 +650,9 @@ func _show_stage(to_backdrop: String, to_weather: String, wave_index: int) -> vo
 			print("[Play] Backdrop %s could not be shown (reported); weather %s from wave %d" % [to_backdrop, to_weather, wave_index])
 			return
 		_fit()
+		_rival.modulate = Backdrop.rival_tint(to_backdrop)
 		print("[Play] Backdrop %s, weather %s from wave %d" % [to_backdrop, to_weather, wave_index])
+		print("[Play] Rival lit for backdrop %s: tint #%s" % [to_backdrop, _rival.modulate.to_html(false)])
 		return
 	if _next_backdrop != null:
 		_finish_backdrop_fade()
@@ -661,6 +667,8 @@ func _show_stage(to_backdrop: String, to_weather: String, wave_index: int) -> vo
 	_fit()
 	_backdrop_tween = next.create_tween()
 	_backdrop_tween.tween_property(next, "modulate:a", 1.0, BACKDROP_FADE_TIME)
+	# The rival's light follows the backdrop fading in.
+	_backdrop_tween.parallel().tween_property(_rival, "modulate", Backdrop.rival_tint(to_backdrop), BACKDROP_FADE_TIME)
 	_backdrop_tween.tween_callback(_finish_backdrop_fade)
 	print("[Play] Backdrop %s -> %s, weather %s, cross-fading over %.2f s from wave %d" % [from, to_backdrop, to_weather, BACKDROP_FADE_TIME, wave_index])
 
@@ -671,6 +679,8 @@ func _finish_backdrop_fade() -> void:
 		_backdrop_tween.kill()
 		_backdrop_tween = null
 	_next_backdrop.modulate.a = 1.0
+	_rival.modulate = Backdrop.rival_tint(_next_backdrop.id)
+	print("[Play] Rival lit for backdrop %s: tint #%s" % [_next_backdrop.id, _rival.modulate.to_html(false)])
 	_backdrop.queue_free()
 	_backdrop = _next_backdrop
 	_next_backdrop = null

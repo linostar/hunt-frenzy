@@ -100,6 +100,8 @@ func _tests() -> Array[Callable]:
 		_test_i23_music_tracks_exist,
 		_test_i24_speed_spread_top_scale,
 		_test_i25_bird_calls,
+		_test_i26_rival_tint_per_backdrop,
+		_test_i27_grass_tiles,
 	]
 
 
@@ -1559,3 +1561,81 @@ func _test_i25_bird_calls() -> void:
 		["data/birds.json [gosling] call_pitch: expected float, got String"])
 	_expect_load_errors("I25 a bird without a call pitch", _mutated("birds.json", func(data: Array) -> void: (data[2] as Dictionary).erase("call_pitch")),
 		["data/birds.json [splitter] call_pitch: missing key"])
+
+
+## I26: every backdrop the data shows (a chapter's, a mode stage's) has a rival tint in
+## Backdrop.RIVAL_TINTS, so he is lit wherever he stands. Fires on a table missing one.
+func _test_i26_rival_tint_per_backdrop() -> void:
+	_check(_i26_problems(Backdrop.RIVAL_TINTS).is_empty(), "I26 every backdrop has a rival tint", "\n".join(_i26_problems(Backdrop.RIVAL_TINTS)))
+	var short := Backdrop.RIVAL_TINTS.duplicate()
+	short.erase("night")
+	_check(_matches(_i26_problems(short), ["backdrop 'night' has no rival tint (I26: add it to Backdrop.RIVAL_TINTS)"]), "I26 fires on a backdrop without a tint", "\n".join(_i26_problems(short)))
+
+
+func _i26_problems(tints: Dictionary) -> Array[String]:
+	var problems: Array[String] = []
+	for id in _backdrop_ids():
+		if not tints.has(id):
+			problems.append("backdrop '%s' has no rival tint (I26: add it to Backdrop.RIVAL_TINTS)" % id)
+	return problems
+
+
+## I27: every backdrop's grass tile (its imported texture) keeps the grass line: opaque
+## from Play.GRASS_TIP down (only the fringe above it), and seamless across its width (the
+## step from its last column to its first is no larger than its largest step between two
+## neighbouring columns). Fires on a tile with a hole below the fringe and on a broken seam.
+func _test_i27_grass_tiles() -> void:
+	var images: Dictionary[String, Image] = {}
+	for id in _backdrop_ids():
+		images[id] = (load(Content.backdrop_path(id, "grass")) as Texture2D).get_image()
+	_check(_i27_problems(images).is_empty(), "I27 every grass tile is opaque below the fringe and seamless", "\n".join(_i27_problems(images)))
+	var holed := images["dawn"].duplicate() as Image
+	holed.decompress()
+	holed.set_pixel(5, int(Play.GRASS_TIP) + 3, Color(0, 0, 0, 0))
+	var seam := images["noon"].duplicate() as Image
+	seam.decompress()
+	for y in seam.get_height():
+		seam.set_pixel(0, y, Color(1, 1, 1) if y % 2 == 0 else Color(0.11, 0.06, 0.09))
+	_check(_matches(_i27_problems({"dawn": holed, "noon": seam}), [
+		"dawn grass: not opaque at (5, 27), below the fringe (I27: opaque from y 24 down)",
+		"noon grass: the seam (last column to first) steps %.3f, more than any two neighbouring columns (%.3f) (I27: seamless)" % [_column_step(seam, seam.get_width() - 1, 0), _largest_step(seam)]]),
+		"I27 fires on a hole below the fringe and on a broken seam", "\n".join(_i27_problems({"dawn": holed, "noon": seam})))
+
+
+func _i27_problems(images: Dictionary) -> Array[String]:
+	var problems: Array[String] = []
+	for id: String in images:
+		var image: Image = images[id]
+		var hole := Vector2i(-1, -1)
+		for y in range(int(Play.GRASS_TIP), image.get_height()):
+			for x in image.get_width():
+				if image.get_pixel(x, y).a < 0.999:
+					hole = Vector2i(x, y)
+					break
+			if hole.x >= 0:
+				break
+		if hole.x >= 0:
+			problems.append("%s grass: not opaque at (%d, %d), below the fringe (I27: opaque from y %d down)" % [id, hole.x, hole.y, int(Play.GRASS_TIP)])
+		var seam := _column_step(image, image.get_width() - 1, 0)
+		var largest := _largest_step(image)
+		if seam > largest:
+			problems.append("%s grass: the seam (last column to first) steps %.3f, more than any two neighbouring columns (%.3f) (I27: seamless)" % [id, seam, largest])
+	return problems
+
+
+## The mean colour difference between columns `a` and `b` of `image`.
+func _column_step(image: Image, a: int, b: int) -> float:
+	var total := 0.0
+	for y in image.get_height():
+		var ca := image.get_pixel(a, y)
+		var cb := image.get_pixel(b, y)
+		total += absf(ca.r - cb.r) + absf(ca.g - cb.g) + absf(ca.b - cb.b) + absf(ca.a - cb.a)
+	return total / image.get_height()
+
+
+## The largest step between two neighbouring columns inside `image`.
+func _largest_step(image: Image) -> float:
+	var largest := 0.0
+	for x in image.get_width() - 1:
+		largest = maxf(largest, _column_step(image, x, x + 1))
+	return largest

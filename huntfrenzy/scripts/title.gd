@@ -19,7 +19,7 @@ extends Control
 ## GOOSE_GAP_MIN..MAX seconds, at most GEESE_MAX at once), in a band from below the top bar
 ## down to just above the first row of buttons, so a goose never covers a button. A tap on
 ## a goose (its hitbox polygon, as in play) shoots it: the shot and hit sounds, a feather
-## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt
+## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while Game.HECKLE_BLURTS is off)
 ## (cooldown permitting, as in play); it scores nothing and saves nothing, and is logged
 ## ("[Title] Shot goose #n"). A tap on empty sky plays the shot only; a tap on a button only
 ## presses it (the buttons lie above the shot surface). The scenery drifts slowly from side
@@ -53,7 +53,7 @@ const DRIFT_PERIOD := 24.0
 ## The rival's lines for a goose shot on the title (a grumble at the player's luck).
 const HECKLE_CATEGORY := "combo"
 ## The rival stands this far in from the safe area's left and above its bottom.
-const RIVAL_INSET := Vector2(16, 92)
+const RIVAL_INSET := Vector2(16, 124)
 
 ## Times Campaign, Endless and Time Attack have been pressed on this screen (tests and the
 ## smoke test read the log).
@@ -143,6 +143,7 @@ func _set_scenery() -> void:
 				weather = chapter.weather
 	if _backdrop.show_backdrop(TITLE_BACKDROP) and weather != "":
 		_weather.set_weather(weather)
+	_rival.modulate = Backdrop.rival_tint(TITLE_BACKDROP)
 	if _goose_spec == null:
 		print("[Title] Scenery: backdrop %s, no geese and no weather (%d content problem(s))" % [TITLE_BACKDROP, problems])
 		return

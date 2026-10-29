@@ -76,7 +76,9 @@ them so they match. Do not leave the code working around the difference.
 - **Art**: a bird's sprite is `res://art/<sprite>_fly_1.svg` and `_fly_2.svg` (flap frames), `_hit.svg` (the killed
   frame), `_dive.svg` (the head-first fall seen from behind: back to the camera, wings folded, head down, drawn upright on the canvas turned on end), plus `_damaged_fly_1.svg` and `_damaged_fly_2.svg` when `hp > 1`. Each other frame is drawn facing right, its centre the
   bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
-  `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds). Every colour in
+  `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds: a layered meadow
+  tile, static, lit per chapter, I27). The rival (`rival_<idle|aim|brag|sulk>.svg`, 80x120, svg scale 3) stands on
+  the bank at `Play.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
   the art comes from `art/palette.hex` (`tools/check_palette.gd`).
 
 ---
@@ -304,6 +306,12 @@ against a fallback value.
 - **I25** Every bird's `call` is one of the game's sound effects, `GameState.SFX_IDS` (each made by `tools/sfx.py`
   as `res://audio/sfx/<id>.wav`; the game checks every file exists when it starts): `unknown sound effect '<id>' (I25: a
   call must be one of GameState.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`Content.CALL_PITCH_MIN`..`MAX`, I2).
+- **I26** Every backdrop the data shows (a chapter's `backdrop`, a mode's `backdrops[].backdrop`) has a rival tint in
+  `Backdrop.RIVAL_TINTS` (palette colours: neutral at noon, warm at dawn and sunset, cool and moonlit at night), which
+  Play and the title set as the rival's modulate over it: `backdrop '<id>' has no rival tint (I26: ...)`.
+- **I27** Every backdrop's grass tile (`<id>_grass.svg`, 240x360) keeps the grass line and tiles: its imported texture
+  is opaque from `Play.GRASS_TIP` (24) down, so only the fringe of blade tips lies above the line, and its seam (its
+  last column to its first) steps no more than any two neighbouring columns inside it.
 
 ## Current content
 | bird | chapter | pattern | speed | flee | linger | points | hp | special | Endless |
