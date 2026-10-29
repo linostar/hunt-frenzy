@@ -5446,8 +5446,8 @@ func _test_credits_screen() -> void:
 	_check(credits != null and _game.state == GameState.Flow.CREDITS, "the credits screen shows", str(current_scene))
 	if credits == null:
 		return
-	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), _text_of(credits, "Lines")]
-	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "original", "generated as code", "evil laugh", "WeaponGuy", "OpenGameArt", "CC0",
+	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), credits.lines_text()]
+	for needed: String in ["Made by linostar", "Godot Engine (MIT license)", "Lilita One", "Nunito", "SIL Open Font License 1.1", "evil laugh", "WeaponGuy", "OpenGameArt", "CC0",
 		"Bird calls", "Bert76", "Oona Räisänen", "U.S. Fish and Wildlife Service", "public domain", "Wikimedia Commons"]:
 		_check(needed in text, "the credits say " + needed, text)
 	for font: String in ["res://ui/fonts/LilitaOne-OFL.txt", "res://ui/fonts/Nunito-OFL.txt"]:
@@ -5456,14 +5456,37 @@ func _test_credits_screen() -> void:
 			notice = notice.replace("  ", " ")
 		notice = notice.strip_edges()
 		_check(notice.begins_with("Copyright") and notice in text, "the credits carry the copyright line of " + font, notice)
+	_check(not "generated as code" in text and not "All art, music" in text, "the credits no longer claim all the art and audio is generated", text)
+	var rows := (credits.get_node("Safe/Lines") as Control).get_children()
+	var bulleted := (credits.get_node("Safe/Lines") as Node).find_children("*", "HBoxContainer", true, false)
+	var bullets_ok := bulleted.size() == 2 and bulleted.all(func(row: Node) -> bool: return row.get_child_count() == 2 and (row.get_child(0) as Label).text == "•" and (row.get_child(1) as Label).text.contains(": Copyright"))
+	_check(bullets_ok and rows.size() == Credits.LINES.size(), "the two fonts are bullet points, each line its own row", "%d rows, %d bulleted" % [rows.size(), bulleted.size()])
+	var left_ok := credits.line_labels().all(func(label: Label) -> bool: return label.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT)
+	if bullets_ok:
+		_check((bulleted[0] as Control).get_global_rect().position.x > (credits.get_node("Safe/Lines") as Control).get_global_rect().position.x, "the bullets are indented under the line that introduces them", str((bulleted[0] as Control).get_global_rect()))
+	_check(left_ok and (credits.get_node("Safe/Lines") as Control).get_global_rect().position.x >= _game.safe_rect().position.x + 16.0, "the credit lines are left-aligned with padding inside the safe area", str((credits.get_node("Safe/Lines") as Control).get_global_rect()))
+	var hanging := bulleted[0] as HBoxContainer if bullets_ok else null
+	if hanging != null:
+		_check((hanging.get_child(1) as Control).get_global_rect().position.x > (hanging.get_child(0) as Control).get_global_rect().end.x, "a bullet's text starts after its bullet, so wrapped lines hang under the text", str((hanging.get_child(1) as Control).get_global_rect()))
 	var scene_text := FileAccess.get_file_as_string("res://scenes/credits.tscn") + FileAccess.get_file_as_string("res://scripts/credits.gd")
 	for banned: String in ["nintendo", "duck hunt"]:
 		_check(not banned in text.to_lower() and not banned in scene_text.to_lower(), "nothing in the credits names " + banned, text)
 	var back := credits.get_node("Safe/BackButton") as Button
 	_check(back.has_focus() and not back.has_focus(true), "Back is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
 	var controls: Array[Control] = [back]
-	var labels: Array[Label] = [credits.get_node("Safe/Heading") as Label, credits.get_node("Safe/MadeBy") as Label, credits.get_node("Safe/Lines") as Label]
+	var labels: Array[Label] = [credits.get_node("Safe/Heading") as Label, credits.get_node("Safe/MadeBy") as Label]
+	labels.append_array(credits.line_labels())
 	await _check_screen_layout(credits, controls, labels)
+	_game.safe_area_override = Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)
+	root.size = LANDSCAPE_16_9
+	await process_frame
+	await process_frame
+	var block := credits.get_node("Safe/Lines") as Control
+	var last := credits.line_labels().back() as Control
+	_check(block.get_combined_minimum_size().y <= block.size.y + 0.5 and last.get_global_rect().end.y <= back.get_global_rect().position.y, "at safe height %d the credit lines fit above Back, no scrolling" % RESULTS_MIN_SAFE_HEIGHT, "needs %.0f in %s, last line ends %.0f, Back at %.0f" % [block.get_combined_minimum_size().y, block.get_global_rect(), last.get_global_rect().end.y, back.get_global_rect().position.y])
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
 	from = _log.size()
 	await _key(KEY_ENTER)
 	await _game.transition_finished
