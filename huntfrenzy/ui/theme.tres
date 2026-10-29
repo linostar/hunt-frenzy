@@ -1,4 +1,4 @@
-[gd_resource type="Theme" load_steps=21 format=3]
+[gd_resource type="Theme" load_steps=22 format=3]
 
 [ext_resource type="FontFile" path="res://ui/fonts/LilitaOne-Regular.ttf" id="1_display"]
 [ext_resource type="FontFile" path="res://ui/fonts/Nunito-wght.ttf" id="2_body"]
@@ -184,6 +184,22 @@ corner_radius_top_right = 10
 corner_radius_bottom_right = 10
 corner_radius_bottom_left = 10
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_hud_chip"]
+content_margin_left = 8.0
+content_margin_top = 4.0
+content_margin_right = 12.0
+content_margin_bottom = 6.0
+bg_color = Color(0.227, 0.29, 0.431, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 4
+border_color = Color(0.122, 0.102, 0.18, 1)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+
 [sub_resource type="FontVariation" id="FontVariation_level_name"]
 base_font = ExtResource("1_display")
 spacing_top = -5
@@ -227,6 +243,14 @@ NewBestBadge/colors/font_color = Color(0.122, 0.102, 0.18, 1)
 NewBestBadge/font_sizes/font_size = 18
 NewBestBadge/fonts/font = ExtResource("1_display")
 NewBestBadge/styles/normal = SubResource("StyleBoxFlat_badge")
+HudChip/base_type = &"PanelContainer"
+HudChip/styles/panel = SubResource("StyleBoxFlat_hud_chip")
+HudChipValue/base_type = &"Label"
+HudChipValue/colors/font_color = Color(0.984, 0.929, 0.804, 1)
+HudChipValue/colors/font_outline_color = Color(0.122, 0.102, 0.18, 1)
+HudChipValue/constants/outline_size = 4
+HudChipValue/font_sizes/font_size = 22
+HudChipValue/fonts/font = ExtResource("1_display")
 Panel/styles/panel = SubResource("StyleBoxFlat_panel")
 ResultsLevelName/base_type = &"Label"
 ResultsLevelName/colors/font_color = Color(0.984, 0.929, 0.804, 1)
