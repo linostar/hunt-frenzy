@@ -1,14 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="72" height="104" viewBox="0 0 72 104">
-  <!-- Zigzag swift: teal-blue, a lightning stripe down its back, a forked tail. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 52) is the bird's origin. -->
-  <path d="M31 26 L25 6 L36 16.4 L47 6 L41 26 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M30 63.6 L31.2 87 L40.8 87 L42 63.6 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M32.4 93.8 L36 100 L39.6 93.8 Z" fill="#f2b632" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <ellipse cx="36" cy="87" rx="8" ry="8.6" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M33 80 L36 73 L39 80 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <ellipse cx="36" cy="48" rx="16" ry="26" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M27.2 64.1 C15.2 62.3 15.2 49.3 24.8 28.5 C28.8 20 30.5 28 34.5 24 C31 32.4 31.5 45.4 31.5 57.1 C29.5 62.1 31.2 65.1 27.2 64.1 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M26.1 53.2 C24 40.2 28 24 29.5 32 C30.4 28 28 40.2 26.1 53.2 Z" fill="#6ec3f0"/>
-  <path d="M44.8 64.1 C56.8 62.3 56.8 49.3 47.2 28.5 C43.2 20 41.5 28 37.5 24 C41 32.4 40.5 45.4 40.5 57.1 C42.5 62.1 40.8 65.1 44.8 64.1 Z" fill="#2f7fa8" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M45.9 53.2 C48 40.2 44 24 42.5 32 C41.6 28 44 40.2 45.9 53.2 Z" fill="#6ec3f0"/>
-  <path d="M34 27 L40 42 L36 43 L39 69 L32 51 L36 49 Z" fill="#ffed99" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Zigzag swift: a slim sooty-brown common swift, long sickle wings folded past its forked tail, a faint teal sheen down its back, the edge of its pale cream throat showing under its head. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 52) is the bird's origin. -->
+  <path d="M31 26 L25 8 L36 17.1 L47 8 L41 26 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M30 63.6 L31.2 86 L40.8 86 L42 63.6 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M32.2 93.2 L36 99.5 L39.8 93.2 Z" fill="#1f1a2e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="86" rx="8.5" ry="9.2" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="48" rx="13" ry="26" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M28.9 64.1 C15.8 62.3 15.8 49.3 26.9 28.5 C30.1 20 30.5 28 34.5 24 C31 32.4 31.5 45.4 31.5 57.1 C29.5 62.1 32.9 65.1 28.9 64.1 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M27.9 53.2 C26.2 40.2 29.5 24 29.5 32 C31.4 28 29.5 40.2 27.9 53.2 Z" fill="#b8a58c"/>
+  <path d="M43.1 64.1 C56.2 62.3 56.2 49.3 45.1 28.5 C41.9 20 41.5 28 37.5 24 C41 32.4 40.5 45.4 40.5 57.1 C42.5 62.1 39.1 65.1 43.1 64.1 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M44.1 53.2 C45.8 40.2 42.5 24 42.5 32 C40.5 28 42.5 40.2 44.1 53.2 Z" fill="#b8a58c"/>
+  <path d="M30.2 34 C29.2 42 29.4 50 30.6 57 C31.4 50 31.4 42 31.6 34 Z" fill="#3fa7a0" fill-opacity="0.55"/>
+  <path d="M41.8 34 C42.8 42 42.6 50 41.4 57 C40.6 50 40.6 42 40.4 34 Z" fill="#3fa7a0" fill-opacity="0.55"/>
+  <path d="M29 90 C31.5 94 40.5 94 43 90 C40.5 92.4 31.5 92.4 29 90 Z" fill="#fbedcd"/>
 </svg>
