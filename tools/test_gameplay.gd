@@ -20,6 +20,8 @@ const BASE_WINDOW := Vector2i(960, 540)
 const LANDSCAPE_16_9 := Vector2i(1920, 1080)
 const LANDSCAPE_19_5_9 := Vector2i(2340, 1080)
 const LANDSCAPE_4_3 := Vector2i(1440, 1080)
+## The HUD bar's chips (Hud/Bar/Stats), each named for its stat.
+const HUD_CHIPS: Array[String] = ["Score", "Wave", "Time", "Shells", "Escaped"]
 const PORTRAIT_9_19_5 := Vector2i(1080, 2340)
 const LANDSCAPE_WINDOWS: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3]
 const MIN_TARGET := 44.0
@@ -874,8 +876,9 @@ func _test_save_corrupt_and_unknown_version() -> void:
 	_clear_tool_save()
 
 
-## The HUD bar: inside the safe area at the top, score, wave, shells as icons, combo,
-## escaped and the pause button (icon, "Pause", 48x48, the bar's only interactive Control);
+## The HUD bar: inside the safe area at the top, chips (rounded HudChip panels, each
+## named for its stat, an icon and the value only) for the score, wave, shells as icons and
+## escaped (no combo or rival label), and the pause button (icon, "Pause", 48x48, the bar's only interactive Control);
 ## the "Out of shells!" cue is readable on its own plate; the shot surface is below it.
 ## The run's start and its first wave are logged (plan AC 15).
 func _test_play_hud_layout() -> void:
@@ -886,8 +889,21 @@ func _test_play_hud_layout() -> void:
 	var bar := play.get_node("Hud/Bar") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Button
 	var shot_input := play.get_node("ShotInput") as Control
-	var texts := [_text(play, "Score"), _text(play, "Wave"), _text(play, "Combo"), _text(play, "Rival"), _text(play, "Escaped")]
-	_check(texts == ["Score 0", "Wave 1", "x1", "Rival 0", "Escaped 0/10"], "the HUD shows score, wave, combo, the rival's score and escapes", str(texts))
+	var texts := [_text(play, "Score"), _text(play, "Wave"), _text(play, "Escaped")]
+	_check(texts == ["0", "1", "0/10"], "the HUD chips show the score, the wave and the escapes as values only", str(texts))
+	var stats := play.get_node("Hud/Bar/Stats") as Control
+	var chips: Array[String] = []
+	for child in stats.get_children():
+		chips.append(String(child.name))
+	_check(chips == ["Score", "Wave", "Time", "Shells", "Empty", "Escaped"] and not (stats.get_node("Time") as Control).visible, "the HUD has no combo or rival label; the Time chip is hidden outside timed modes", str(chips))
+	var unnamed: Array[String] = []
+	for chip_name: String in HUD_CHIPS:
+		var chip := stats.get_node(chip_name) as PanelContainer
+		var icon := chip.get_node_or_null("Row/Icon") as TextureRect if chip_name != "Shells" else null
+		var style := chip.get_theme_stylebox(&"panel") as StyleBoxFlat
+		if chip.theme_type_variation != &"HudChip" or chip.accessibility_name != chip_name or style == null or style.corner_radius_top_left <= 0 or not is_equal_approx(style.bg_color.a, 1.0) or (chip_name != "Shells" and (icon == null or icon.texture == null)):
+			unnamed.append(chip_name)
+	_check(unnamed.is_empty(), "each HUD chip is a rounded HudChip panel named for its stat, with an icon beside its value", str(unnamed))
 	_check(_shell_icons(play) == play.wave.shells and play.wave.shells == 6, "the HUD shows the shells as icons", "%d icons" % _shell_icons(play))
 	_check(pause_button.accessibility_name == "Pause" and pause_button.text.is_empty() and pause_button.icon != null, "the pause button is an icon named Pause", pause_button.accessibility_name)
 	_check(pause_button.focus_mode == Control.FOCUS_ALL, "the pause button takes keyboard focus", str(pause_button.focus_mode))
@@ -923,12 +939,10 @@ func _test_play_hud_layout() -> void:
 ## The HUD bar never overflows. A pool of up to Play.SHELL_ICONS_MAX shells shows one icon
 ## per shell; a bigger one shows one icon and the shells left ("x11"). The largest pool
 ## modes.json can produce is max_birds x the most hits a bird the mode can spawn needs x
-## shells_per_hit (Endless: 8 x 3 (a splitter and its 2 goslings) x 3 = 72). The rival's
-## score is at most escape_limit x the most points a bird he can steal is worth (every
-## steal counts as an escape; Endless: 10 x 500 = 5000). At that pool
+## shells_per_hit (Endless: 8 x 3 (a splitter and its 2 goslings) x 3 = 72). At that pool
 ## and at the largest icon row, with the widest texts (a 9-digit score, wave 999, the empty
-## cue, the combo cap, the rival's top score, 10/10 escaped), every stat lies inside the safe area and left of the
-## pause button, at 16:9, 19.5:9, 4:3 and under a notch.
+## cue, 10/10 escaped), every chip lies inside the safe bar, left of the pause button and
+## clear of every other chip, at 16:9, 19.5:9, 4:3 and under a notch.
 func _test_play_hud_fits_any_pool() -> void:
 	var play := await _start_run(12)
 	var max_pool := 0
@@ -938,18 +952,7 @@ func _test_play_hud_fits_any_pool() -> void:
 			most = maxi(most, Wave.hits_needed(Content.bird(entry.bird)))
 		max_pool = maxi(max_pool, Ammo.pool_size(each.max_birds * most, each.shells_per_hit))
 	_check(max_pool == 72, "the largest pool modes.json can produce is 72 shells", str(max_pool))
-	var max_rival := 0
-	for each in Content.modes():
-		var ids: Array[String] = [each.golden_bird]
-		for entry in each.birds:
-			ids.append(entry.bird)
-			if Content.bird(entry.bird).split_count > 0:
-				ids.append(Content.bird(entry.bird).splits_into)
-		for id in ids:
-			if Content.bird(id).penalty == 0:
-				max_rival = maxi(max_rival, each.escape_limit * Content.bird(id).points)
-	_check(max_rival == 5000, "the rival's top score modes.json allows is 5000", str(max_rival))
-	var count := play.get_node("Hud/Bar/Stats/Shells/Count") as Label
+	var count := play.get_node("Hud/Bar/Stats/Shells/Icons/Count") as Label
 	play.set_shell_pool(Play.SHELL_ICONS_MAX)
 	_check(_shell_icons(play) == Play.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % Play.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
 	play.set_shell_pool(Play.SHELL_ICONS_MAX + 1)
@@ -963,10 +966,8 @@ func _test_play_hud_fits_any_pool() -> void:
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
 	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
 		play.scoring.score = GameState.SAVE_SCORE_MAX
-		play.scoring.multiplier = play.mode.combo_cap
 		play.wave.index = 999
 		play.escaped = play.mode.escape_limit
-		play.rival_score = max_rival
 		play.set_shell_pool(pool)
 		for i in cases.size():
 			_game.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
@@ -981,7 +982,8 @@ func _test_play_hud_fits_any_pool() -> void:
 				var rect := shown.get_global_rect()
 				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Play.HUD_BAR_HEIGHT + 0.5):
 					stray.append("%s %s" % [shown.name, rect])
-			_check(stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest HUD stays inside the safe bar, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
+			stray.append_array(_overlapping_chips(stats))
+			_check(stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest HUD stays inside the safe bar, no chip overlapping another, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -997,7 +999,7 @@ func _test_play_touch_hits_goose() -> void:
 	_check_logged(from, "^\\[Play\\] Hit goose #%d \\(hit 1/1, killed\\) at \\([\\d.]+, [\\d.]+\\): 100 points x1 = 100, score 100 \\(wave 1 at t -?[\\d.]+, 5 shells left\\)$" % bird.number, "the hit is logged with the bird, points and multiplier")
 	_check(bird.state != Bird.State.FLYING and play.scoring.hits == 1 and play.scoring.score == 100, "a touch on a goose hits it", "state %d, hits %d" % [bird.state, play.scoring.hits])
 	_check(play.ammo.shells == play.wave.shells - 1 and _shell_icons(play) == play.ammo.shells, "the hit used one shell", "%d left" % play.ammo.shells)
-	_check(_text(play, "Score") == "Score 100" and _text(play, "Combo") == "x2", "the HUD shows the score and combo", "%s %s" % [_text(play, "Score"), _text(play, "Combo")])
+	_check(_text(play, "Score") == "100" and play.scoring.multiplier == 2, "the HUD shows the score; the combo rises to x2", "%s x%d" % [_text(play, "Score"), play.scoring.multiplier])
 	var popups := play.get_node("World/Popups").get_children()
 	_check(popups.size() == 1 and (popups[0] as Label).text == "+100", "a score pop-up shows at the hit", str(popups))
 	var sprite := bird.get_node("Sprite") as Sprite2D
@@ -1068,7 +1070,7 @@ func _test_play_empty_pool_refuses() -> void:
 	_check(play.refused == 1 and play.scoring.shots() == shells and play.scoring.misses == shells, "a shot with no shells is refused (no shot, no miss)", "refused %d, shots %d" % [play.refused, play.scoring.shots()])
 	_check_logged(from, "^\\[Play\\] Out of shells: \\d+ flying birds flee, \\d+ still to spawn will flee \\(wave 1\\)$", "running out of shells is logged")
 	_check_logged(from, "^\\[Play\\] Shot refused at \\([\\d.]+, [\\d.]+\\): no shells left \\(wave 1 at t -?[\\d.]+, 1 refused\\)$", "the refused shot is logged")
-	_check(play.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells") as Control).modulate == Play.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.is_empty_cue_shown())
+	_check(play.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells/Icons") as Control).modulate == Play.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.is_empty_cue_shown())
 	var late := play.spawn_bird("goose", 4)
 	_check(late.flee_at == 0.0, "a goose spawned with no shells flees from the start", "flee_at %.2f" % late.flee_at)
 	var multiplier := play.scoring.multiplier
@@ -1563,20 +1565,19 @@ func _test_run_end_save_failure() -> void:
 
 
 ## Time Attack starts with its mode, seed and time limit logged (no escape limit, steals
-## off); the HUD bar shows the time left as text ("Time 60") instead of the rival's tally,
+## off); the HUD bar shows the time left in its Time chip ("60"),
 ## escapes without a limit, and the pause button is still its only interactive Control;
 ## the widest Time Attack bar (a 9-digit score, wave 999, the largest pool its data can
-## give, the empty cue, its combo cap, 999 escaped, the time) stays inside the safe bar
-## and clear of the pause button at 16:9, 19.5:9, 4:3 and under a notch.
+## give, the empty cue, 999 escaped, the time) stays inside the safe bar, no chip
+## overlapping another, clear of the pause button at 16:9, 19.5:9, 4:3 and under a notch.
 func _test_time_attack_start_and_hud() -> void:
 	var from := _log.size()
 	var play := await _start_run(51, GameState.TIME_ATTACK_MODE)
 	_check_logged(from, "^\\[Play\\] Run start: mode time_attack, seed 51 \\(time limit 60\\.00 s, no escape limit, combo cap 8, 2 shells per hit, rival steals off, aim 1\\.00 s, heckle cooldown 4\\.00 s\\)$", "the Time Attack start is logged with its mode, seed and time limit")
 	_check_logged(from, "^\\[Play\\] Wave 1 start: 3 birds \\(goose, goose, goose\\), 6 shells, speed x1\\.00, 60\\.00 s left$", "the first wave is logged with the time left")
-	var time := play.get_node("Hud/Bar/Stats/Time") as Label
-	var rival := play.get_node("Hud/Bar/Stats/Rival") as Label
-	_check(play.is_timed() and time.visible and time.text == "Time %d" % ceili(play.time_left()) and play.time_left() < 60.0 and play.time_left() > 59.0, "the HUD shows the seconds left", "%s '%s', %.3f left" % [time.visible, time.text, play.time_left()])
-	_check(not rival.visible and _text(play, "Escaped") == "Escaped 0", "no rival tally and no escape limit on the Time Attack HUD", "rival %s, '%s'" % [rival.visible, _text(play, "Escaped")])
+	var time := play.get_node("Hud/Bar/Stats/Time") as Control
+	_check(play.is_timed() and time.visible and _text(play, "Time") == "%d" % ceili(play.time_left()) and play.time_left() < 60.0 and play.time_left() > 59.0, "the HUD's Time chip shows the seconds left", "%s '%s', %.3f left" % [time.visible, _text(play, "Time"), play.time_left()])
+	_check(_text(play, "Escaped") == "0", "no escape limit on the Time Attack HUD", _text(play, "Escaped"))
 	var bar := play.get_node("Hud/Bar") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
 	_check(_interactive_controls(bar) == [pause_button], "the pause button is still the HUD bar's only interactive Control", str(_interactive_controls(bar)))
@@ -1592,7 +1593,6 @@ func _test_time_attack_start_and_hud() -> void:
 	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
 		play.set_shell_pool(pool)
 		play.scoring.score = GameState.SAVE_SCORE_MAX
-		play.scoring.multiplier = play.mode.combo_cap
 		play.wave.index = 999
 		play.escaped = 999
 		play.set_shell_pool(pool)
@@ -1609,6 +1609,7 @@ func _test_time_attack_start_and_hud() -> void:
 				var rect := shown.get_global_rect()
 				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Play.HUD_BAR_HEIGHT + 0.5):
 					stray.append("%s %s" % [shown.name, rect])
+			stray.append_array(_overlapping_chips(stats))
 			_check(time.visible and stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest Time Attack HUD (with the time) stays inside the safe bar, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
@@ -1641,7 +1642,7 @@ func _test_time_attack_clock_ends_exactly() -> void:
 		steady = steady and is_equal_approx(clocks[i] - clocks[i - 1], FRAME)
 	_check(steady, "the Time Attack clock runs one frame of game time per frame", str(clocks.slice(-4)))
 	_check(not clocks.is_empty() and is_equal_approx(clocks.back(), 3.0 - FRAME), "the run ends on the first frame that reaches the time limit", "last clock before the end %.15f" % (clocks.back() if not clocks.is_empty() else -1.0))
-	_check(shown.has("Time 3") and shown.has("Time 2") and shown.has("Time 1") and _text(play, "Time") == "Time 0", "the HUD counts the seconds down to 0", "%s ... %s" % [shown.slice(0, 2), _text(play, "Time")])
+	_check(shown.has("3") and shown.has("2") and shown.has("1") and _text(play, "Time") == "0", "the HUD counts the seconds down to 0", "%s ... %s" % [shown.slice(0, 2), _text(play, "Time")])
 	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 52, wave \\d+, time used 3\\.00 of 3\\.00 s, score 0, ", "the run end is logged with the waves and the time used")
 	await _game.transition_finished
 	_check(current_scene is Results and (current_scene.get_node("Safe/Heading") as Label).text == Results.TIMED_HEADING, "the results open when the time is up", str(current_scene))
@@ -1756,7 +1757,7 @@ func _test_time_attack_lost_wave_starts_next_at_once() -> void:
 			if found != null and times[k] == "":
 				times[k] = found.get_string(1)
 	_check(times[0] != "" and times[0] == times[1] and times[1] == times[2], "the wave is lost and the next starts at the same moment the pool runs out (no dead time)", "out %s, lost %s, next %s" % times)
-	_check(_text(play, "Wave") == "Wave 2" and _shell_icons(play) == mini(play.wave.shells, Play.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
+	_check(_text(play, "Wave") == "2" and _shell_icons(play) == mini(play.wave.shells, Play.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
 	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) (#\\d+: |skipped: cooldown)", "the lost wave draws a wave_end heckle (cooldown permitting)")
 	# Past every spawn time of wave 1 (0.9 and 1.8 s), only its first goose was ever up.
 	var most_wave_1 := 0
@@ -2649,7 +2650,7 @@ func _test_rival_rules() -> void:
 
 ## The aim cue (AC 6): a goose reaching its linger_time shows the reticle and the rival
 ## raises his gun; after aim_time he fires (AC 8): the goose falls as stolen on its hit
-## frame, its points (no combo) go to the rival (HUD "Rival 100"), it counts as an escape,
+## frame, its points (no combo) go to the rival (his score, kept for the results), it counts as an escape,
 ## the player's x3 combo is left alone, and a steal line shows even inside the cooldown of
 ## the combo heckle just before. Cue start, steal and heckles are logged (AC 14).
 func _test_rival_cue_and_steal() -> void:
@@ -2678,7 +2679,7 @@ func _test_rival_cue_and_steal() -> void:
 	_check((bird.get_node("Sprite") as Sprite2D).texture.resource_path == bird.spec.texture_path("hit"), "the stolen goose falls on its hit frame", (bird.get_node("Sprite") as Sprite2D).texture.resource_path)
 	_check(play.stolen == 1 and play.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.stolen, play.rival_score, escaped, play.escaped])
 	_check(play.scoring.multiplier == 3, "a steal leaves the player's combo alone", "x%d" % play.scoring.multiplier)
-	_check(_text(play, "Rival") == "Rival 100" and _text(play, "Escaped") == "Escaped %d/10" % play.escaped and not play.is_rival_aiming(), "the HUD shows the rival's score and the escape; he lowers his gun", "%s, %s" % [_text(play, "Rival"), _text(play, "Escaped")])
+	_check(play.rival_score == 100 and _text(play, "Escaped") == "%d/10" % play.escaped and not play.is_rival_aiming(), "the rival scores 100, the HUD shows the escape; he lowers his gun", "rival %d, %s" % [play.rival_score, _text(play, "Escaped")])
 	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\); he laughs in 0\\.30 s, no new cue for the 1\\.50 s aim gap$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
 	_check(Content.rival_lines().lines["steal"].has(play.heckle_shown()) and play.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.heckle_shown(), play.heckles])
 	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\), no blurt$", "the steal heckle is logged with its category and line")
@@ -3717,7 +3718,7 @@ func _test_campaign_level_plays_all_waves() -> void:
 	var play := await _start_level("dawn_2")
 	_check_logged(from, "^\\[Play\\] Run start: level dawn_2 \\(Dawn 2 of 6\\), seed 102 \\(3 waves, no escape limit, combo cap 3, 3 shells per hit, rival steals on, linger x1\\.00, aim 1\\.00 s, heckle cooldown 4\\.00 s, backdrop dawn, weather mist\\)$", "the level's run start is logged with its seed and settings")
 	_check_logged(from, "^\\[Play\\] Wave 1 start: 4 birds \\(.+\\), \\d+ shells, speed x1\\.00 \\(wave 1 of 3, level dawn_2\\)$", "a level's wave start is logged with its place in the level")
-	_check(_text(play, "Wave") == "Wave 1/3" and _text(play, "Escaped") == "Escaped 0", "the HUD shows wave x/N and the escapes without a limit", "%s, %s" % [_text(play, "Wave"), _text(play, "Escaped")])
+	_check(_text(play, "Wave") == "1/3" and _text(play, "Escaped") == "0", "the HUD shows wave x/N and the escapes without a limit", "%s, %s" % [_text(play, "Wave"), _text(play, "Escaped")])
 	_check(play.backdrop_id() == "dawn" and play.weather().id == "mist" and (play.get_node("World/Backdrop/Sky") as TextureRect).texture.resource_path == Content.backdrop_path("dawn", "sky"), "the level shows its chapter's backdrop and weather", "%s, %s" % [play.backdrop_id(), play.weather().id])
 	var waves_seen: Array[int] = []
 	Engine.time_scale = FAST_TIME_SCALE
@@ -4398,12 +4399,26 @@ func _global(play: Play, point: Vector2) -> Vector2:
 
 
 func _text(play: Play, stat: String) -> String:
-	return (play.get_node("Hud/Bar/Stats/" + stat) as Label).text
+	return (play.get_node("Hud/Bar/Stats/%s/Row/Value" % stat) as Label).text
+
+
+## The pairs of visible HUD chips (Hud/Bar/Stats children) whose rects overlap.
+func _overlapping_chips(stats: Control) -> Array[String]:
+	var shown: Array[Control] = []
+	for child in stats.get_children():
+		if (child as Control).visible:
+			shown.append(child as Control)
+	var found: Array[String] = []
+	for i in shown.size():
+		for j in range(i + 1, shown.size()):
+			if shown[i].get_global_rect().grow(-0.5).intersects(shown[j].get_global_rect().grow(-0.5)):
+				found.append("%s overlaps %s" % [shown[i].name, shown[j].name])
+	return found
 
 
 ## The shell icons shown (the Count label beside them is not one).
 func _shell_icons(play: Play) -> int:
-	return play.get_node("Hud/Bar/Stats/Shells").get_children().filter(func(icon: Node) -> bool: return icon is TextureRect and (icon as CanvasItem).visible).size()
+	return play.get_node("Hud/Bar/Stats/Shells/Icons").get_children().filter(func(icon: Node) -> bool: return icon is TextureRect and (icon as CanvasItem).visible).size()
 
 
 ## A real touch (press and release, index TOUCH_INDEX) at canvas position `at`.
@@ -5905,7 +5920,7 @@ func _test_hit_stop() -> void:
 	_check_logged(from, "^\\[Play\\] Hit stop 0\\.05 s on the kill of goose #%d " % victim.number, "the hit stop is logged")
 	await process_frame
 	shot_input.shot.emit(_global(play, second.transform * LOCAL_BODY))
-	_check(not second.is_flying() and _text(play, "Score") == "Score %d" % play.scoring.score and play.scoring.kills == 2, "a kill during the stop scores and the HUD shows it at once", _text(play, "Score"))
+	_check(not second.is_flying() and _text(play, "Score") == "%d" % play.scoring.score and play.scoring.kills == 2, "a kill during the stop scores and the HUD shows it at once", _text(play, "Score"))
 	_check(play.hit_stops == 1, "a second kill during the stop starts no second stop", "%d stops" % play.hit_stops)
 	_check_logged(from, "^\\[Play\\] Hit stop for goose #%d skipped: one is running " % second.number, "the skipped stop is logged")
 	var frames := 1

@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=15 format=3]
 
 [ext_resource type="Script" path="res://scripts/play.gd" id="1_play"]
 [ext_resource type="PackedScene" path="res://scenes/backdrop.tscn" id="2_backdrop"]
@@ -8,15 +8,19 @@
 [ext_resource type="Texture2D" path="res://art/pause.svg" id="6_pause"]
 [ext_resource type="Texture2D" path="res://art/rival_idle.svg" id="7_rival"]
 [ext_resource type="Script" path="res://scripts/feathers.gd" id="8_feathers"]
+[ext_resource type="Texture2D" path="res://art/hud_score.svg" id="10_score"]
+[ext_resource type="Texture2D" path="res://art/hud_wave.svg" id="11_wave"]
+[ext_resource type="Texture2D" path="res://art/hud_time.svg" id="12_time"]
+[ext_resource type="Texture2D" path="res://art/hud_escaped.svg" id="13_escaped"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_empty"]
 content_margin_left = 8.0
 content_margin_right = 8.0
 bg_color = Color(0.067, 0.059, 0.094, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bubble"]
 content_margin_left = 10.0
@@ -114,42 +118,110 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = 12.0
+offset_left = 8.0
+offset_top = 7.0
 offset_right = -64.0
+offset_bottom = -7.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme_override_constants/separation = 12
+theme_override_constants/separation = 10
 
-[node name="Score" type="Label" parent="Hud/Bar/Stats"]
+[node name="Score" type="PanelContainer" parent="Hud/Bar/Stats"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Score 0"
+mouse_filter = 2
+theme_type_variation = &"HudChip"
+accessibility_name = "Score"
+
+[node name="Row" type="HBoxContainer" parent="Hud/Bar/Stats/Score"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Hud/Bar/Stats/Score/Row"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("10_score")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Value" type="Label" parent="Hud/Bar/Stats/Score/Row"]
+layout_mode = 2
+theme_type_variation = &"HudChipValue"
+text = "0"
 vertical_alignment = 1
 
-[node name="Wave" type="Label" parent="Hud/Bar/Stats"]
+[node name="Wave" type="PanelContainer" parent="Hud/Bar/Stats"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Wave 1"
+mouse_filter = 2
+theme_type_variation = &"HudChip"
+accessibility_name = "Wave"
+
+[node name="Row" type="HBoxContainer" parent="Hud/Bar/Stats/Wave"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Hud/Bar/Stats/Wave/Row"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("11_wave")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Value" type="Label" parent="Hud/Bar/Stats/Wave/Row"]
+layout_mode = 2
+theme_type_variation = &"HudChipValue"
+text = "1"
 vertical_alignment = 1
 
-[node name="Time" type="Label" parent="Hud/Bar/Stats"]
+[node name="Time" type="PanelContainer" parent="Hud/Bar/Stats"]
 visible = false
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Time 60"
+mouse_filter = 2
+theme_type_variation = &"HudChip"
+accessibility_name = "Time"
+
+[node name="Row" type="HBoxContainer" parent="Hud/Bar/Stats/Time"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Icon" type="TextureRect" parent="Hud/Bar/Stats/Time/Row"]
+custom_minimum_size = Vector2(24, 24)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("12_time")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Value" type="Label" parent="Hud/Bar/Stats/Time/Row"]
+layout_mode = 2
+theme_type_variation = &"HudChipValue"
+text = "60"
 vertical_alignment = 1
 
-[node name="Shells" type="HBoxContainer" parent="Hud/Bar/Stats"]
+[node name="Shells" type="PanelContainer" parent="Hud/Bar/Stats"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"HudChip"
+accessibility_name = "Shells"
+
+[node name="Icons" type="HBoxContainer" parent="Hud/Bar/Stats/Shells"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_constants/separation = 2
 alignment = 1
 
-[node name="Count" type="Label" parent="Hud/Bar/Stats/Shells"]
+[node name="Count" type="Label" parent="Hud/Bar/Stats/Shells/Icons"]
 visible = false
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
+theme_type_variation = &"HudChipValue"
 text = "x0"
 vertical_alignment = 1
 
@@ -162,25 +234,31 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_empty")
 text = "Out of shells!"
 vertical_alignment = 1
 
-[node name="Combo" type="Label" parent="Hud/Bar/Stats"]
+[node name="Escaped" type="PanelContainer" parent="Hud/Bar/Stats"]
 layout_mode = 2
-theme_override_colors/font_color = Color(1, 0.93, 0.6, 1)
-theme_override_font_sizes/font_size = 20
-text = "x1"
-vertical_alignment = 1
+size_flags_horizontal = 10
+mouse_filter = 2
+theme_type_variation = &"HudChip"
+accessibility_name = "Escaped"
 
-[node name="Rival" type="Label" parent="Hud/Bar/Stats"]
+[node name="Row" type="HBoxContainer" parent="Hud/Bar/Stats/Escaped"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "Rival 0"
-vertical_alignment = 1
+mouse_filter = 2
+theme_override_constants/separation = 6
 
-[node name="Escaped" type="Label" parent="Hud/Bar/Stats"]
+[node name="Icon" type="TextureRect" parent="Hud/Bar/Stats/Escaped/Row"]
+custom_minimum_size = Vector2(24, 24)
 layout_mode = 2
-size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 20
-text = "Escaped 0/10"
-horizontal_alignment = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("13_escaped")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Value" type="Label" parent="Hud/Bar/Stats/Escaped/Row"]
+layout_mode = 2
+theme_type_variation = &"HudChipValue"
+text = "0/10"
 vertical_alignment = 1
 
 [node name="PauseButton" type="Button" parent="Hud/Bar" groups=["own_sound"]]

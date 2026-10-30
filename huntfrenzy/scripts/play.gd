@@ -28,7 +28,7 @@ extends Node2D
 ## A timed mode (Time Attack: ModeSpec.is_timed) has no escape limit (an escape only loses
 ## the bird's points) and ends after time_limit seconds of run_clock: game time from the
 ## run's start, frozen while the tree is paused (the pause menu, the rotate overlay), each
-## wave's WAVE_LEAD lead-in included. The HUD shows the seconds left ("Time 42", rounded
+## wave's WAVE_LEAD lead-in included. The HUD's Time chip shows the seconds left ("42", rounded
 ## up); the frame that reaches time_limit stops the clock exactly there and ends the run
 ## (the score recorded, a new best saved at once, then the results screen). Its next wave
 ## starts as soon as the current one is cleared (every bird of it spawned and none of them
@@ -42,7 +42,7 @@ extends Node2D
 ## wave's shells scores as any hit; a leftover splitter's goslings belong to the lost wave
 ## and flee at once), and they never hold up a later wave's end (a wave ends on its own
 ## birds: Bird.wave_index). Its rival never steals
-## (rival_steals false), so his tally is not on the HUD; he still heckles.
+## (rival_steals false); he still heckles.
 ## The rival hunter (Rival, data/rival_lines.json; RIVAL_RECT) stands on the bank in the
 ## grass band (at or below the fringe's top, GRASS_Y - GRASS_TIP, so he never covers the
 ## field; he and his speech bubble ignore touches, so a shot anywhere hits as before), lit
@@ -67,7 +67,14 @@ extends Node2D
 ## Cues, poses and the cooldown run on game time, so a pause freezes them.
 ## World holds the 960x540 base playfield, centred horizontally in the visible area;
 ## the sky and the grass stretch over the whole visible area. The HUD bar (a CanvasLayer)
-## sits at the top of the safe area.
+## sits at the top of the safe area: Hud/Bar/Stats is a row of chips (PanelContainers in
+## the theme's HudChip style, each with an accessibility_name naming its stat) left of the
+## pause button: Score (a target icon and the score), Wave (a flag and "n/N" in a level,
+## "n" in a mode), Time (a clock and the seconds left, timed modes only), Shells (one shell
+## icon per shell up to SHELL_ICONS_MAX, else one icon and "xN"), the "Out of shells!" cue
+## on its own plate while the empty cue shows, and Escaped (a flying bird and "E/limit",
+## "E" without a limit) pushed to the right end. Only values change (_update_hud). The
+## combo shows on the kill pop-ups ("+N xM") and the rival's score only on the results.
 ## Pause: the pause button, Escape (CancelKey), the window or app losing focus or
 ## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate
 ## overlay hiding after it showed during the run (or while the menu is open) open the
@@ -282,15 +289,14 @@ var _world_origin := Vector2.ZERO
 @onready var _shot_input: ShotInput = $ShotInput
 @onready var _cancel_key: CancelKey = $CancelKey
 @onready var _bar: Control = $Hud/Bar
-@onready var _score_label: Label = $Hud/Bar/Stats/Score
-@onready var _wave_label: Label = $Hud/Bar/Stats/Wave
-@onready var _shells: HBoxContainer = $Hud/Bar/Stats/Shells
-@onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Count
+@onready var _score_label: Label = $Hud/Bar/Stats/Score/Row/Value
+@onready var _wave_label: Label = $Hud/Bar/Stats/Wave/Row/Value
+@onready var _shells: HBoxContainer = $Hud/Bar/Stats/Shells/Icons
+@onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Icons/Count
 @onready var _empty_label: Label = $Hud/Bar/Stats/Empty
-@onready var _combo_label: Label = $Hud/Bar/Stats/Combo
-@onready var _time_label: Label = $Hud/Bar/Stats/Time
-@onready var _rival_label: Label = $Hud/Bar/Stats/Rival
-@onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped
+@onready var _time_chip: Control = $Hud/Bar/Stats/Time
+@onready var _time_label: Label = $Hud/Bar/Stats/Time/Row/Value
+@onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped/Row/Value
 @onready var _pause_button: Button = $Hud/Bar/PauseButton
 @onready var _pause_menu: Control = $PauseLayer/PauseMenu
 @onready var _resume_button: Button = $PauseLayer/PauseMenu/Panel/ResumeButton
@@ -365,7 +371,7 @@ func _process(frame_delta: float) -> void:
 		run_clock = next
 	wave_clock += step
 	if is_timed():
-		_time_label.text = "Time %d" % ceili(time_left())
+		_time_label.text = "%d" % ceili(time_left())
 		_tick_countdown(left_before, time_left())
 		if time_left() <= 0.0:
 			_game.play_sfx(&"time_up")
@@ -600,8 +606,7 @@ func _start_run() -> void:
 		var ends := "time limit %.2f s, no escape limit" % mode.time_limit if mode.is_timed() else "escape limit %d" % mode.escape_limit
 		print("[Play] Run start: mode %s, seed %d (%s, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
 			mode.id, run_seed, ends, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
-		_time_label.visible = mode.is_timed()
-		_rival_label.visible = mode.rival_steals
+		_time_chip.visible = mode.is_timed()
 	_start_wave(1)
 	_show_crosshair(true)
 
@@ -1284,19 +1289,17 @@ func _popup(point: Vector2, text: String, color: Color, kind: String, multiplier
 
 
 func _update_hud() -> void:
-	_score_label.text = "Score %d" % scoring.score
-	_wave_label.text = "Wave %d/%d" % [wave.index, level.waves] if level != null else "Wave %d" % wave.index
+	_score_label.text = "%d" % scoring.score
+	_wave_label.text = "%d/%d" % [wave.index, level.waves] if level != null else "%d" % wave.index
 	if _shell_count.visible:
 		_shell_count.text = "x%d" % ammo.shells
 	else:
 		for icon in _shells.get_children():
 			if icon != _shell_count:
 				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
-	_combo_label.text = "x%d" % scoring.multiplier
-	_rival_label.text = "Rival %d" % rival_score
 	if is_timed():
-		_time_label.text = "Time %d" % ceili(time_left())
-	_escaped_label.text = "Escaped " + _escapes()
+		_time_label.text = "%d" % ceili(time_left())
+	_escaped_label.text = _escapes()
 
 
 ## Lays the scene out in the visible area: the base playfield centred horizontally, the
