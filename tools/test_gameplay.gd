@@ -279,6 +279,7 @@ func _tests() -> Array[Callable]:
 		_test_settings_screen,
 		_test_settings_over_paused_run,
 		_test_credits_screen,
+		_test_top_scores_screen,
 		_test_title_scenery_and_geese,
 		_test_title_goose_shot,
 		_test_transition_wipe_and_fade,
@@ -443,20 +444,20 @@ func _test_fit_window_rect() -> void:
 	_check(full_hd.size == base, "fit_window_rect leaves a roomy 1x screen unchanged", str(full_hd))
 
 
-## The title's Campaign, Endless and Time Attack buttons in a row and Settings and Credits
-## in a row below them: at least 44x44, their text inside them, inside the safe area, with
-## a visible focus style, at 16:9, 19.5:9 and 4:3; Campaign is focused on arrival (no ring),
-## right moves Campaign -> Endless -> Time Attack -> Campaign, left goes the other way, Tab
-## runs Campaign -> Endless -> Time Attack -> Settings -> Credits -> Campaign, Down from the
-## first row reaches the second and Up returns.
+## The title's Campaign, Endless and Time Attack buttons in a row and Top Scores, Settings
+## and Credits in a row below them: at least 44x44, their text inside them, inside the safe
+## area, with a visible focus style, at 16:9, 19.5:9 and 4:3; Campaign is focused on
+## arrival (no ring), right moves Campaign -> Endless -> Time Attack -> Campaign, left goes
+## the other way, Tab runs Campaign -> Endless -> Time Attack -> Top Scores -> Settings ->
+## Credits -> Campaign, Down from the first row reaches the second and Up returns.
 func _test_title_button_layout() -> void:
 	await _open_title()
 	var title := current_scene as Title
 	var buttons := _title_buttons(title)
 	var campaign := buttons[0]
-	var second_row: Array[Button] = [title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button]
+	var second_row: Array[Button] = [title.get_node("Safe/TopScoresButton") as Button, title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button]
 	_check(campaign.has_focus(), "title focuses Campaign on arrival", str(root.gui_get_focus_owner()))
-	_check(second_row.map(func(button: Button) -> String: return button.text) == ["Settings", "Credits"], "the title offers Settings and Credits", str(second_row.map(func(button: Button) -> String: return button.text)))
+	_check(second_row.map(func(button: Button) -> String: return button.text) == ["Top Scores", "Settings", "Credits"], "the title offers Top Scores, Settings and Credits", str(second_row.map(func(button: Button) -> String: return button.text)))
 	for button: Button in buttons + second_row:
 		var focus_style := button.get_theme_stylebox(&"focus")
 		_check(focus_style != null and not (focus_style is StyleBoxEmpty), "%s has a visible focus style" % button.name, str(focus_style))
@@ -468,7 +469,7 @@ func _test_title_button_layout() -> void:
 		var order: Array[Button] = []
 		match key:
 			KEY_TAB:
-				order.assign([buttons[1], buttons[2], second_row[0], second_row[1], buttons[0]])
+				order.assign([buttons[1], buttons[2], second_row[0], second_row[1], second_row[2], buttons[0]])
 			KEY_RIGHT:
 				order.assign([buttons[1], buttons[2], buttons[0]])
 			_:
@@ -482,7 +483,7 @@ func _test_title_button_layout() -> void:
 	for key: Key in [KEY_DOWN, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_DOWN]:
 		await _key(key)
 		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
-	_check(vertical == ["SettingsButton", "CreditsButton", "TimeAttackButton", "CreditsButton", "TimeAttackButton"], "Down and Up move between the two rows, Right along the second", str(vertical))
+	_check(vertical == ["TopScoresButton", "SettingsButton", "EndlessButton", "SettingsButton", "EndlessButton"], "Down and Up move between the two rows, Right along the second", str(vertical))
 	for window in LANDSCAPE_WINDOWS:
 		root.size = window
 		await process_frame
@@ -492,27 +493,26 @@ func _test_title_button_layout() -> void:
 			var rect := button.get_global_rect()
 			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and button.get_combined_minimum_size().x <= rect.size.x + 0.5 and button.get_combined_minimum_size().y <= rect.size.y + 0.5, label + " size, its text inside", "%s, text needs %s" % [rect.size, button.get_combined_minimum_size()])
 			_check(_game.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.safe_rect()])
-		var rects := buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())
-		_check(is_equal_approx(rects[0].get_center().y, rects[1].get_center().y) and is_equal_approx(rects[1].get_center().y, rects[2].get_center().y) and rects[0].end.x < rects[1].position.x and rects[1].end.x < rects[2].position.x,
-			"%dx%d Campaign, Endless and Time Attack sit in a row" % [window.x, window.y], str(rects))
+		for row: Array[Button] in [buttons, second_row]:
+			var rects := row.map(func(button: Button) -> Rect2: return button.get_global_rect())
+			_check(is_equal_approx(rects[0].get_center().y, rects[1].get_center().y) and is_equal_approx(rects[1].get_center().y, rects[2].get_center().y) and rects[0].end.x < rects[1].position.x and rects[1].end.x < rects[2].position.x,
+				"%dx%d %s sit in a row" % [window.x, window.y, ", ".join(row.map(func(button: Button) -> String: return str(button.name)))], str(rects))
 	root.size = BASE_WINDOW
 	await process_frame
 
 
-## The Endless and Time Attack buttons show that mode's best score from the save.
+## The Endless and Time Attack buttons show only the mode's name, whatever the bests (the
+## Top Scores screen shows those; menu-stars AC 1).
 func _test_title_shows_mode_bests() -> void:
 	_clear_tool_save()
 	_game.bests[GameState.ENDLESS_MODE] = 1234
 	_game.bests[GameState.TIME_ATTACK_MODE] = 5678
-	var from := _log.size()
 	await _open_title()
 	var buttons := _title_buttons(current_scene as Title)
-	_check(buttons[1].text == "Endless\nBest 1234" and buttons[2].text == "Time Attack\nBest 5678" and buttons[0].text == "Campaign", "the Endless and Time Attack buttons show their mode's best", "%s | %s" % [buttons[1].text, buttons[2].text])
-	_check_logged(from, "^\\[Title\\] Bests: Endless 1234, Time Attack 5678$", "the bests the title shows are logged")
+	_check(buttons.map(func(button: Button) -> String: return button.text) == ["Campaign", "Endless", "Time Attack"], "the mode buttons show only their name, no best", str(buttons.map(func(button: Button) -> String: return button.text)))
+	var source := FileAccess.get_file_as_string("res://scripts/title.gd")
+	_check(not "MODE_BUTTON_TEXT" in source and not "Best %d" in source and not "best(" in source, "the title script no longer formats the bests", "")
 	_clear_tool_save()
-	await _open_title()
-	buttons = _title_buttons(current_scene as Title)
-	_check(buttons[1].text == "Endless\nBest 0" and buttons[2].text == "Time Attack\nBest 0", "with no best yet the buttons say Best 0", "%s | %s" % [buttons[1].text, buttons[2].text])
 
 
 ## With a notch narrowing the safe area, the title lays out in the safe rect, not the
@@ -528,8 +528,8 @@ func _test_title_follows_notched_safe_area() -> void:
 	await process_frame
 	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
 	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
-	buttons.append_array([title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button])
-	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless, Time Attack, Settings and Credits are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
+	buttons.append_array([title.get_node("Safe/TopScoresButton") as Button, title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button])
+	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless, Time Attack, Top Scores, Settings and Credits are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
 	_game.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -639,7 +639,7 @@ func _test_title_content_error_banner() -> void:
 	var banner := title.get_node("Safe/ContentErrorBanner") as Label
 	var buttons := _title_buttons(title)
 	_check(banner.visible and banner.text == Title.CONTENT_ERROR_MESSAGE % problems, "content errors show the banner", "%s '%s'" % [banner.visible, banner.text])
-	_check(buttons.all(func(button: Button) -> bool: return button.disabled), "content errors disable Campaign, Endless and Time Attack", "enabled")
+	_check(buttons.all(func(button: Button) -> bool: return button.disabled) and (title.get_node("Safe/TopScoresButton") as Button).disabled, "content errors disable Campaign, Endless, Time Attack and Top Scores", "enabled")
 	for button in buttons:
 		await _tap(button)
 	_check(title.campaign_presses == 0 and title.endless_presses == 0 and title.time_attack_presses == 0 and not _game.is_transitioning(), "a disabled Campaign, Endless or Time Attack starts nothing", "%d, %d, %d presses" % [title.campaign_presses, title.endless_presses, title.time_attack_presses])
@@ -1961,8 +1961,10 @@ func _test_time_attack_results() -> void:
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow_args.get("seed") != 56, "Retry starts a new Time Attack run", str(_game.flow_args))
-	await _open_title()
-	_check((current_scene.get_node("Safe/TimeAttackButton") as Button).text == "Time Attack\nBest 100", "the title shows the new Time Attack best", (current_scene.get_node("Safe/TimeAttackButton") as Button).text)
+	_game.goto(GameState.Flow.TOP_SCORES)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is TopScores and (current_scene.get_node("%TimeAttackBest") as Label).text == "100", "the top scores show the new Time Attack best", (current_scene.get_node("%TimeAttackBest") as Label).text if current_scene is TopScores else str(current_scene))
 	_clear_tool_save()
 
 
@@ -3218,10 +3220,11 @@ func _test_ui_theme_and_fonts() -> void:
 
 
 ## With the theme's fonts, every menu button's text fits inside it at the largest values the
-## save holds (AC 10): the title's Endless and Time Attack bests at SAVE_SCORE_MAX, every
-## chapter at 18/18 stars and every level at 3/3 stars with a best of SAVE_SCORE_MAX, at
-## 16:9 and 4:3 (each button's minimum size, its text included, within the size its scene
-## gives it: a Button grows to fit its text, so a grown one would push into its neighbours).
+## save holds (AC 10): the title's buttons, every chapter at 18/18 stars (its star row
+## inside the button) and every level at 3/3 stars, at 16:9 and 4:3 (each button's minimum
+## size, its text included, within the size its scene gives it: a Button grows to fit its
+## text, so a grown one would push into its neighbours); and the top scores screen's
+## Endless and Time Attack bests at SAVE_SCORE_MAX fit their panels in the safe area.
 func _test_menu_texts_fit_largest_values() -> void:
 	_clear_tool_save()
 	for mode_id in GameState.BEST_MODES:
@@ -3250,9 +3253,27 @@ func _test_menu_texts_fit_largest_values() -> void:
 				var designed := Vector2(button.offset_right - button.offset_left, button.offset_bottom - button.offset_top)
 				if need.x > designed.x + 0.5 or need.y > designed.y + 0.5:
 					overflow.append("%s needs %s in its %s" % [button.name, need, designed])
-			# The chapter buttons show stars only; the title and level select show the best score.
-			var shows_max: bool = screen[0] == GameState.Flow.CHAPTER_SELECT or str(GameState.SAVE_SCORE_MAX) in " ".join(texts)
-			_check(overflow.is_empty() and shows_max, "%s %dx%d: every button's text fits at the largest values (%s)" % [GameState.Flow.keys()[screen[0]], window.x, window.y, "; ".join(texts)], "; ".join(overflow))
+			# A chapter's star row ("18/18" beside its star) fits inside its button too.
+			for node_path: String in screen[2]:
+				var row := current_scene.get_node(node_path).get_node_or_null("Detail") as Control
+				if row != null and row.get_combined_minimum_size().x > (current_scene.get_node(node_path) as Control).size.x - 12.0:
+					overflow.append("%s's star row needs %.0f" % [node_path, row.get_combined_minimum_size().x])
+			_check(overflow.is_empty(), "%s %dx%d: every button's text fits at the largest values (%s)" % [GameState.Flow.keys()[screen[0]], window.x, window.y, "; ".join(texts)], "; ".join(overflow))
+	# The bests now live on the top scores screen: the largest fit their panels on screen.
+	_game.goto(GameState.Flow.TOP_SCORES)
+	await _game.transition_finished
+	await process_frame
+	for window: Vector2i in [LANDSCAPE_16_9, LANDSCAPE_4_3]:
+		root.size = window
+		await process_frame
+		await process_frame
+		var problems: Array[String] = []
+		for label: Label in current_scene.find_children("*", "Label", true, false):
+			var rect := label.get_global_rect()
+			if label.get_combined_minimum_size().x > rect.size.x + 0.5 or not _game.safe_rect().encloses(rect):
+				problems.append("%s '%s' %s" % [label.name, label.text, rect])
+		var values := [(current_scene.get_node("%EndlessBest") as Label).text, (current_scene.get_node("%TimeAttackBest") as Label).text]
+		_check(problems.is_empty() and values == [str(GameState.SAVE_SCORE_MAX), str(GameState.SAVE_SCORE_MAX)], "TOP_SCORES %dx%d: the largest bests and 18/18 stars fit their panels inside the safe area" % [window.x, window.y], "; ".join(problems))
 	root.size = BASE_WINDOW
 	await process_frame
 	_clear_tool_save()
@@ -3783,8 +3804,8 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	var select := current_scene as LevelSelect
 	_check(select != null and _game.flow_args == {"chapter": "dawn", "level": "dawn_1"} and (select.get_node("Safe/Level1") as Control).has_focus(), "Levels opens the chapter's level select on the level just played (not the last open one, dawn_2)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
 	if select != null:
-		var texts := ["Level1", "Level2", "Level3"].map(func(n: String) -> String: return (select.get_node("Safe/" + n) as Button).text)
-		_check(texts == ["Level 1\n2/3 stars, best 1500", "Level 2\nNew", "Level 3\nLocked"], "the level select shows the new best and the level it opened", str(texts))
+		var stars_seen := [0, 1, 2].map(func(i: int) -> String: return "%s %d" % [(select.get_node("Safe/Level%d" % (i + 1)) as Button).text, select.stars_shown(i)])
+		_check(stars_seen == ["Level 1 2", "Level 2 0", "Level 3 -1"], "the level select shows the stars earned and the level it opened", str(stars_seen))
 	_game.goto(GameState.Flow.RESULTS, stats)
 	await _game.transition_finished
 	await _tap(current_scene.get_node("Safe/RetryButton") as Control)
@@ -4021,8 +4042,9 @@ func _test_chapter_select() -> void:
 	for i in 4:
 		buttons.append(screen.get_node("Safe/Chapter%d" % (i + 1)) as Button)
 	var back := screen.get_node("Safe/BackButton") as Button
-	var texts := buttons.map(func(button: Button) -> String: return button.text)
-	_check(texts == ["Dawn\n0/18 stars", "Noon\nLocked", "Sunset\nLocked", "Night\nLocked"] and buttons.map(func(button: Button) -> bool: return button.disabled) == [false, true, true, true], "at first only dawn is open, with its stars out of 18", str(texts))
+	var texts := buttons.map(func(button: Button) -> String: return "%s %s" % [button.text, screen.detail_text(buttons.find(button))])
+	_check(texts == ["Dawn 0/18", "Noon locked", "Sunset locked", "Night locked"] and buttons.map(func(button: Button) -> bool: return button.disabled) == [false, true, true, true], "at first only dawn is open, its star image beside its stars out of 18, the others showing the lock", str(texts))
+	_check_chapter_skins(screen, buttons)
 	_check(buttons[0].has_focus() and not buttons[0].has_focus(true), "the last open chapter is focused on arrival, ring hidden", str(root.gui_get_focus_owner()))
 	_check_logged(from, "^\\[ChapterSelect\\] Chapter dawn at \\[P: .*\\] \\(open, 0 stars\\)$", "the chapter buttons' rects are logged")
 	buttons.append(back)
@@ -4046,17 +4068,20 @@ func _test_chapter_select() -> void:
 	screen = current_scene as ChapterSelect
 	var dawn := screen.get_node("Safe/Chapter1") as Button
 	var noon := screen.get_node("Safe/Chapter2") as Button
-	_check(dawn.text == "Dawn\n18/18 stars" and noon.text == "Noon\n0/18 stars" and not noon.disabled and noon.has_focus() and (screen.get_node("Safe/Chapter3") as Button).disabled, "passing dawn_6 opens noon, now focused", "%s / %s" % [dawn.text, noon.text])
+	_check(screen.detail_text(0) == "18/18" and screen.detail_text(1) == "0/18" and not noon.disabled and noon.has_focus() and (screen.get_node("Safe/Chapter3") as Button).disabled, "passing dawn_6 opens noon, now focused", "%s %s / %s %s" % [dawn.text, screen.detail_text(0), noon.text, screen.detail_text(1)])
 	await _tap(dawn)
 	await _game.transition_finished
 	_check(current_scene is LevelSelect and _game.flow_args == {"chapter": "dawn"}, "a chapter opens its level select", str(_game.flow_args))
 	_clear_tool_save()
 
 
-## Level select: the chapter's six levels with their best stars and score (New when never
-## finished, the boss level marked); a locked level says Locked and cannot be started by a
-## touch or Enter; the last open level is focused; a level starts it; Back goes to the
-## chapter select. Layout as for the chapter select.
+## Level select: the chapter's six levels captioned "Level X" over three star images (full
+## for the best stars earned, three empty when never finished; no score), the boss level
+## with its skull badge; a locked level shows the lock instead of stars and cannot be started
+## by a touch or Enter; every button wears the chapter's sky like its chapter select button;
+## the heading is the chapter's name, a star image and its stars; the last open level is
+## focused; a level starts it; Back goes to the chapter select. Layout as for the chapter
+## select.
 func _test_level_select() -> void:
 	_clear_tool_save()
 	_game.progress["dawn_1"] = Campaign.Record.new(2, 1500)
@@ -4069,9 +4094,21 @@ func _test_level_select() -> void:
 		buttons.append(screen.get_node("Safe/Level%d" % (i + 1)) as Button)
 	var back := screen.get_node("Safe/BackButton") as Button
 	var texts := buttons.map(func(button: Button) -> String: return button.text)
-	_check(texts == ["Level 1\n2/3 stars, best 1500", "Level 2\nNew", "Level 3\nLocked", "Level 4\nLocked", "Level 5\nLocked", "Level 6 (boss)\nLocked"], "each level shows its best stars and score, New, Locked or boss", str(texts))
+	_check(texts == ["Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6"], "each level's caption is only Level X", str(texts))
+	var stars := range(6).map(func(i: int) -> int: return screen.stars_shown(i))
+	_check(stars == [2, 0, -1, -1, -1, -1], "the stars earned show full, a never-finished level three empty, a locked level the lock", str(stars))
+	_check(range(6).map(func(i: int) -> bool: return screen.has_boss_badge(i)) == [false, false, false, false, false, true], "only the boss level carries the skull badge", "")
+	var drawn: Array[String] = []
+	for i in 6:
+		for image: TextureRect in buttons[i].find_children("*", "TextureRect", true, false):
+			drawn.append("%s/%s %s" % [buttons[i].name, image.name, image.texture.resource_path.get_file()])
+			_check(image.mouse_filter == Control.MOUSE_FILTER_IGNORE and Rect2(Vector2.ZERO, buttons[i].size).grow(0.5).encloses(Rect2(image.get_global_position() - buttons[i].get_global_position(), image.size)), "%s's %s ignores the pointer and lies inside it" % [buttons[i].name, image.name], str(image.get_rect()))
+	_check(drawn.slice(0, 3) == ["Level1/Star1 star_full.svg", "Level1/Star2 star_full.svg", "Level1/Star3 star_empty.svg"] and "Level6/Boss skull.svg" in drawn and "Level3/Lock lock.svg" in drawn, "the star, lock and skull images are the art's", str(drawn))
+	var all_text := " ".join(buttons.map(func(button: Button) -> String: return " ".join(button.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)) + button.text))
+	_check(not "best" in all_text.to_lower() and not "1500" in all_text, "no best score on the buttons", all_text)
+	_check_chapter_skins(screen, buttons)
 	_check(buttons.map(func(button: Button) -> bool: return button.disabled) == [false, false, true, true, true, true] and buttons[1].has_focus(), "locked levels are disabled; the last open level is focused", str(root.gui_get_focus_owner()))
-	_check((screen.get_node("Safe/Heading") as Label).text == "Dawn: 2/18 stars", "the heading shows the chapter's stars", (screen.get_node("Safe/Heading") as Label).text)
+	_check(screen.heading_text() == "Dawn 2/18" and (screen.get_node("Safe/Heading/Star") as TextureRect).texture == ChapterSkin.STAR_FULL, "the heading shows the chapter's name, a star image and its stars", screen.heading_text())
 	buttons.append(back)
 	await _check_select_layout(screen, buttons)
 	buttons.pop_back()
@@ -4165,6 +4202,30 @@ func _test_select_focus_returns() -> void:
 ## Every control of `controls` (a select screen's buttons): at least 44x44, focusable with a
 ## visible focus style, inside the safe area at 16:9, 19.5:9, 4:3 and under a notch, below
 ## the top HUD bar and not overlapping another.
+## Every chapter or level button of `screen` wears its chapter's sky (ChapterSkin) for the
+## normal, hover and pressed states (the theme's focus ring over it), the disabled sky
+## dimmed, the caption in the chapter's label colour (at least 3:1 against the top of its
+## sky), and its images ignore the pointer, so a touch on one presses the button.
+func _check_chapter_skins(screen: Control, buttons: Array[Button]) -> void:
+	var tops: Dictionary[String, Color] = {"dawn": Color(0.788, 0.714, 0.894), "noon": Color(0.431, 0.765, 0.941), "sunset": Color(0.557, 0.424, 0.722), "night": Color(0.416, 0.471, 0.753)}
+	for button in buttons:
+		var backdrop := ""
+		var normal := button.get_theme_stylebox(&"normal") as StyleBoxTexture
+		if normal != null and normal.texture != null:
+			backdrop = normal.texture.resource_path.get_file().trim_prefix("chapter_").get_slice("_", 0)
+		var states_ok := normal != null and [&"hover", &"pressed", &"hover_pressed"].all(func(state: StringName) -> bool:
+			var style := button.get_theme_stylebox(state) as StyleBoxTexture
+			return style != null and style.texture != null and style.texture.resource_path.begins_with("res://art/chapter_%s_" % backdrop))
+		var disabled := button.get_theme_stylebox(&"disabled") as StyleBoxTexture
+		var dimmed := disabled != null and disabled.texture == normal.texture and disabled.modulate_color.a < 0.6
+		var focus := button.get_theme_stylebox(&"focus")
+		_check(backdrop in tops and states_ok and dimmed and focus is StyleBoxFlat and not (focus as StyleBoxFlat).draw_center, "%s %s wears the %s sky in every state, dimmed when disabled, the focus ring over it" % [screen.name, button.name, backdrop], str(normal))
+		var color := button.get_theme_color(&"font_color")
+		var contrast := _contrast(color, tops.get(backdrop, Color.BLACK))
+		_check(color == ChapterSkin.label_color(backdrop) and (contrast >= 3.0 or button.get_theme_constant(&"outline_size") > 0), "%s %s's caption reads on its sky (%.1f:1%s)" % [screen.name, button.name, contrast, ", outlined" if button.get_theme_constant(&"outline_size") > 0 else ""], str(color))
+		_check(button.find_children("*", "Control", true, false).all(func(child: Control) -> bool: return child.mouse_filter == Control.MOUSE_FILTER_IGNORE), "%s %s's images and labels ignore the pointer" % [screen.name, button.name], "")
+
+
 func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
 	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
@@ -5517,6 +5578,77 @@ func _test_credits_screen() -> void:
 	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Escape on the credits returns to the title too", str(current_scene))
 
 
+## The top scores screen from the title's Top Scores button: the Endless and Time Attack
+## bests and one panel per chapter with its star image and "earned/most" (the theme's
+## StatPanel, StatCaption and StatValue), logged; it fits at every aspect, a notch and a
+## short safe area; Back (focused) and Escape return to the title with Top Scores focused
+## (menu-stars AC 2, 3).
+func _test_top_scores_screen() -> void:
+	_clear_tool_save()
+	_game.bests[GameState.ENDLESS_MODE] = 4321
+	_game.bests[GameState.TIME_ATTACK_MODE] = 987
+	for index in range(1, 7):
+		_game.progress["dawn_%d" % index] = Campaign.Record.new(3 if index < 3 else 1, 2000)
+	_game.progress["noon_1"] = Campaign.Record.new(2, 900)
+	await _open_title()
+	var title := current_scene as Title
+	var from := _log.size()
+	await _tap(title.get_node("Safe/TopScoresButton") as Control)
+	_check(title.top_scores_presses == 1 and _game.transition_log.back().begins_with("TITLE -> TOP_SCORES (res://scenes/top_scores.tscn)"), "a tap on Top Scores opens the top scores through goto", str(_game.transition_log.back()))
+	_check_logged(from, "^\\[Title\\] Top Scores pressed \\(1\\); opening the top scores$", "the Top Scores press is logged")
+	await _game.transition_finished
+	await process_frame
+	var scores := current_scene as TopScores
+	_check(scores != null and _game.state == GameState.Flow.TOP_SCORES, "the top scores screen shows", str(current_scene))
+	if scores == null:
+		_clear_tool_save()
+		return
+	_check((scores.get_node("%EndlessBest") as Label).text == "4321" and (scores.get_node("%TimeAttackBest") as Label).text == "987", "the top scores show the Endless and Time Attack bests", "%s, %s" % [(scores.get_node("%EndlessBest") as Label).text, (scores.get_node("%TimeAttackBest") as Label).text])
+	_check(scores.chapter_stars_text() == ["dawn 10/18", "noon 2/18", "sunset 0/18", "night 0/18"], "one panel per chapter with its stars earned out of the most", str(scores.chapter_stars_text()))
+	_check_logged(from, "^\\[TopScores\\] Opened: Endless best 4321, Time Attack best 987; chapter stars dawn 10/18, noon 2/18, sunset 0/18, night 0/18$", "the values shown are logged")
+	_check_logged(from, "^\\[TopScores\\] Back button at \\[P: ", "Back's rect is logged")
+	var panels := scores.find_children("*", "PanelContainer", true, false)
+	_check(panels.size() == 6 and panels.all(func(panel: PanelContainer) -> bool: return panel.theme_type_variation == &"StatPanel"), "every score sits in a StatPanel", str(panels.size()))
+	var values: Array[Label] = []
+	var labels: Array[Label] = [scores.get_node("Safe/Heading") as Label]
+	for panel: PanelContainer in panels:
+		for label: Label in panel.find_children("*", "Label", true, false):
+			labels.append(label)
+			if label.theme_type_variation == &"StatValue":
+				values.append(label)
+		var star := panel.find_child("Star", true, false) as TextureRect
+		if panel.get_parent().name == "Chapters":
+			_check(star != null and star.texture == ChapterSkin.STAR_FULL and star.get_global_rect().size.y <= 40.0, "the %s panel has a tiny star image" % panel.name, str(star))
+	_check(values.size() == 6 and labels.filter(func(label: Label) -> bool: return label.theme_type_variation == &"StatCaption").size() == 6, "captions and values use StatCaption and StatValue", "%d values" % values.size())
+	var back := scores.get_node("Safe/BackButton") as Button
+	_check(back.has_focus() and not back.has_focus(true), "Back is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
+	var controls: Array[Control] = [back]
+	await _check_screen_layout(scores, controls, labels)
+	_game.safe_area_override = Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)
+	root.size = LANDSCAPE_4_3
+	await process_frame
+	await process_frame
+	var body := scores.get_node("Safe/Body") as Control
+	_check(body.get_combined_minimum_size().y <= body.size.y + 0.5 and body.get_global_rect().end.y <= back.get_global_rect().position.y and panels.all(func(panel: Control) -> bool: return _game.safe_rect().encloses(panel.get_global_rect())), "at safe height %d every panel fits above Back" % RESULTS_MIN_SAFE_HEIGHT, "needs %.0f in %s" % [body.get_combined_minimum_size().y, body.get_global_rect()])
+	_game.safe_area_override = Rect2()
+	root.size = BASE_WINDOW
+	await process_frame
+	from = _log.size()
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/TopScoresButton") as Button).has_focus(), "Back returns to the title with Top Scores focused", str(root.gui_get_focus_owner()))
+	_check_logged(from, "^\\[TopScores\\] Back pressed; returning to the title$", "Back is logged")
+	await _key(KEY_ENTER)
+	await _game.transition_finished
+	await process_frame
+	await _key(KEY_ESCAPE)
+	await _game.transition_finished
+	await process_frame
+	_check(current_scene is Title and (current_scene.get_node("Safe/TopScoresButton") as Button).has_focus(), "Escape on the top scores returns to the title too", str(current_scene))
+	_clear_tool_save()
+
+
 ## The text of the Label `label_name` under a screen's Safe.
 func _text_of(screen: Control, label_name: String) -> String:
 	return (screen.get_node("Safe/" + label_name) as Label).text
@@ -5538,7 +5670,7 @@ func _test_title_scenery_and_geese() -> void:
 	var rival := title.get_node("Scenery/Rival") as TextureRect
 	_check(rival.visible and title.rival_pose() == "idle" and _game.safe_rect().encloses(rival.get_global_rect()) and rival.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the rival idles in the grass inside the safe area and ignores touches", str(rival.get_global_rect()))
 	var buttons: Array[Control] = []
-	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"]:
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "TopScoresButton", "SettingsButton", "CreditsButton"]:
 		buttons.append(title.get_node("Safe/" + button_name) as Control)
 	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
@@ -5559,7 +5691,7 @@ func _test_title_scenery_and_geese() -> void:
 	title = current_scene as Title
 	scenery = title.get_node("Scenery") as Node2D
 	buttons.clear()
-	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"]:
+	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "TopScoresButton", "SettingsButton", "CreditsButton"]:
 		buttons.append(title.get_node("Safe/" + button_name) as Control)
 	var frames := 0
 	var seen := 0
@@ -5640,7 +5772,7 @@ func _test_title_goose_shot() -> void:
 	_check_logged(from, "^\\[Title\\] Shot goose #%d at \\([\\d.]+, [\\d.]+\\): it falls; no score, nothing saved \\(1 shot on the title\\)$" % goose.number, "the title shot is logged")
 	_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) #1: ", "the title heckle is logged")
 	var bubble := (title.get_node("Scenery/Bubble") as Label).get_global_rect()
-	var clear_of_buttons := ["CampaignButton", "EndlessButton", "TimeAttackButton", "SettingsButton", "CreditsButton"].all(func(button_name: String) -> bool: return not bubble.intersects((title.get_node("Safe/" + button_name) as Control).get_global_rect()))
+	var clear_of_buttons := ["CampaignButton", "EndlessButton", "TimeAttackButton", "TopScoresButton", "SettingsButton", "CreditsButton"].all(func(button_name: String) -> bool: return not bubble.intersects((title.get_node("Safe/" + button_name) as Control).get_global_rect()))
 	_check(_game.safe_rect().grow(0.5).encloses(bubble) and clear_of_buttons and (title.get_node("Scenery/Bubble") as Label).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the title's heckle bubble is inside the safe area, clear of the buttons, ignoring touches", str(bubble))
 	var fell := [false]
 	goose.gone.connect(func(_b: Bird) -> void: fell[0] = true)
