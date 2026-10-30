@@ -6,7 +6,9 @@ extends RefCounted
 ## A mode (Endless, Time Attack; each with its own modes.json numbers): wave n holds min(start_birds + (n - 1) x bird_growth, max_birds) birds, one
 ## every spawn_interval seconds from 0, each with its own seed. Each spawn slot is the
 ## mode's golden_bird with chance golden_chance from golden_from_wave on; otherwise it is a
-## weighted pick among the mix's birds whose from_wave <= n. The speed scale is
+## weighted pick among the mix's birds whose from_wave <= n. A mix bird with a
+## guaranteed_wave is then given a slot in that wave if the picks left it out (_guarantee).
+## The speed scale is
 ## min(1 + (n - 1) x speed_growth, speed_cap); the shells are
 ## Ammo.pool_size(sum of hits_needed over the spawns, shells_per_hit).
 ## Campaign: a level plays `waves` waves; each holds wave_birds birds from its mix, one every
@@ -47,7 +49,6 @@ static func for_mode(mode: ModeSpec, wave_index: int, run_seed: int) -> Plan:
 	var total := 0
 	for entry in mix:
 		total += entry.weight
-	var hits := 0
 	for i in bird_count(mode, wave_index):
 		var spawn := Spawn.new()
 		# Every slot rolls for golden, so the draws (and every later seed) do not depend on
@@ -60,9 +61,42 @@ static func for_mode(mode: ModeSpec, wave_index: int, run_seed: int) -> Plan:
 		spawn.time = i * mode.spawn_interval
 		spawn.bird_seed = rng.randi()
 		plan.spawns.append(spawn)
+	_guarantee(mode, plan, run_seed)
+	var hits := 0
+	for spawn in plan.spawns:
 		hits += hits_needed(Content.bird(spawn.bird_id))
 	plan.shells = Ammo.pool_size(hits, mode.shells_per_hit)
 	return plan
+
+
+## Gives each mix bird whose guaranteed_wave is this wave at least one slot: when the pick
+## left it out, one slot (seeded by the run seed, the wave and the bird, from an RNG of its
+## own, so no other draw shifts) turns into it, keeping its time and flight seed. The slot
+## is one that is neither the golden bird, a decoy nor another guaranteed bird; failing
+## that (a wave of goldens and decoys), any slot that is not another guaranteed bird.
+static func _guarantee(mode: ModeSpec, plan: Plan, run_seed: int) -> void:
+	var guaranteed: Array[String] = []
+	for entry in mode.birds:
+		if entry.guaranteed_wave == plan.index:
+			guaranteed.append(entry.bird)
+	for bird_id in guaranteed:
+		if plan.spawns.any(func(spawn: Spawn) -> bool: return spawn.bird_id == bird_id):
+			continue
+		var plain: Array[int] = []
+		var other: Array[int] = []
+		for i in plan.spawns.size():
+			var id := plan.spawns[i].bird_id
+			if id in guaranteed:
+				continue
+			other.append(i)
+			if id != mode.golden_bird and Content.bird(id).penalty == 0:
+				plain.append(i)
+		var slots := plain if not plain.is_empty() else other
+		if slots.is_empty():
+			continue
+		var rng := RandomNumberGenerator.new()
+		rng.seed = hash([run_seed, plan.index, "guarantee", bird_id])
+		plan.spawns[slots[rng.randi_range(0, slots.size() - 1)]].bird_id = bird_id
 
 
 ## Wave `wave_index` (1..level.waves) of `level`, from the level's fixed seed: the same level

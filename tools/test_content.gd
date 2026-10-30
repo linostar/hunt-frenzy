@@ -77,6 +77,7 @@ func _tests() -> Array[Callable]:
 		_test_lookup_api,
 		_test_i1_files_ids_and_keys,
 		_test_i2_types_and_ranges,
+		_test_guaranteed_wave_field,
 		_test_i3_references,
 		_test_i4_hitbox_geometry,
 		_test_i5_hitbox_matches_art,
@@ -295,6 +296,33 @@ func _test_i1_files_ids_and_keys() -> void:
 
 
 ## I2: every field has its type and lies in its range or enum.
+## A mode mix entry's optional guaranteed_wave: Time Attack's zigzag has 5, nothing else has
+## one; an int within 1..WAVE_MAX, not before the entry's from_wave (equal is fine), only in a
+## mode's mix (a level's mix has no waves to name: an unknown key there).
+func _test_guaranteed_wave_field() -> void:
+	var guaranteed: Array[String] = []
+	for mode in Content.modes():
+		for entry in mode.birds:
+			if entry.guaranteed_wave != 0:
+				guaranteed.append("%s %s %d" % [mode.id, entry.bird, entry.guaranteed_wave])
+	_check(guaranteed == ["time_attack zigzag 5"], "only Time Attack's zigzag has a guaranteed wave (5)", str(guaranteed))
+	_expect_load_errors("guaranteed_wave equal to from_wave: no problem", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["guaranteed_wave"] = 3), [])
+	_expect_load_errors("guaranteed_wave before from_wave", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["guaranteed_wave"] = 2),
+		["data/modes.json [time_attack] birds[2].guaranteed_wave: 2 is before from_wave 3 (the bird is not in the mix yet)"])
+	_expect_load_errors("guaranteed_wave out of range (0)", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["guaranteed_wave"] = 0),
+		["data/modes.json [time_attack] birds[2].guaranteed_wave: 0 is outside 1..1000"])
+	_expect_load_errors("guaranteed_wave out of range (1001)", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["guaranteed_wave"] = 1001),
+		["data/modes.json [time_attack] birds[2].guaranteed_wave: 1001 is outside 1..1000"])
+	_expect_load_errors("guaranteed_wave not an int", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["guaranteed_wave"] = "5"),
+		["data/modes.json [time_attack] birds[2].guaranteed_wave: expected int, got String"])
+	_expect_load_errors("guaranteed_wave not a whole number", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["guaranteed_wave"] = 4.5),
+		["data/modes.json [time_attack] birds[2].guaranteed_wave: expected int, got 4.5"])
+	_expect_load_errors("guaranteed_wave with a bad from_wave blames only from_wave", _mutated("modes.json", func(data: Array) -> void: data[1]["birds"][2]["from_wave"] = 0),
+		["data/modes.json [time_attack] birds[2].from_wave: 0 is outside 1..1000"])
+	_expect_load_errors("guaranteed_wave in a level's mix", _mutated("levels.json", func(data: Array) -> void: data[0]["mix"][0]["guaranteed_wave"] = 1),
+		["data/levels.json [%s] mix[0].guaranteed_wave: unknown key" % Content.levels()[0].id])
+
+
 func _test_i2_types_and_ranges() -> void:
 	_expect_load_errors("I2 wrong type", _mutated("birds.json", func(data: Array) -> void: data[0]["speed"] = "fast"),
 		["data/birds.json [goose] speed: expected float, got String"])

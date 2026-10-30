@@ -653,7 +653,8 @@ static func _check_linger(aim_time: float) -> void:
 	_file = "data/rival_lines.json"
 
 
-## A wave mix: a non-empty array of {"bird", "from_wave", "weight"} objects (a mode's), or
+## A wave mix: a non-empty array of {"bird", "from_wave", "weight"} objects, each with an
+## optional "guaranteed_wave" at or after its from_wave (a mode's), or
 ## of {"bird", "weight"} objects when `with_from_wave` is false (a level's, every bird from
 ## wave 1), each bird a known id at most once, at least one of them from wave 1 (so every
 ## wave has a bird to pick). `prefix` names the object it is in ("boss.").
@@ -682,12 +683,17 @@ static func _mix(object: Dictionary, key: String, with_from_wave := true, prefix
 			if not part.has(name):
 				_error("%s.%s" % [field, name], "missing key")
 		for name: Variant in part:
-			if not str(name) in keys:
+			if not str(name) in keys and not (with_from_wave and str(name) == "guaranteed_wave"):
 				_error("%s.%s" % [field, name], "unknown key")
 		var entry := ModeSpec.Entry.new()
 		entry.bird = _reference(part, "bird", _birds, "bird", field + ".")
 		if with_from_wave:
 			entry.from_wave = _int(part, "from_wave", 1, WAVE_MAX, field + ".")
+			if part.has("guaranteed_wave"):
+				entry.guaranteed_wave = _int(part, "guaranteed_wave", 1, WAVE_MAX, field + ".")
+				# Compared only when both read cleanly, so a fallback value is never blamed.
+				if _int_ok(part, "guaranteed_wave", 1, WAVE_MAX) and _int_ok(part, "from_wave", 1, WAVE_MAX) and entry.guaranteed_wave < entry.from_wave:
+					_error(field + ".guaranteed_wave", "%d is before from_wave %d (the bird is not in the mix yet)" % [entry.guaranteed_wave, entry.from_wave])
 		entry.weight = _int(part, "weight", 1, WEIGHT_MAX, field + ".")
 		if entry.bird != "":
 			if seen.has(entry.bird):
@@ -797,6 +803,15 @@ static func _int(object: Dictionary, key: String, low: int, high: int, prefix :=
 		_error(field, "%d is outside %d..%d" % [int(number), low, high])
 		return low
 	return int(number)
+
+
+## True when `object[key]` is present and an int within low..high (what _int accepts).
+static func _int_ok(object: Dictionary, key: String, low: int, high: int) -> bool:
+	var value: Variant = object.get(key)
+	if typeof(value) != TYPE_FLOAT and typeof(value) != TYPE_INT:
+		return false
+	var number: float = value
+	return number == floorf(number) and number >= low and number <= high
 
 
 static func _bool(object: Dictionary, key: String) -> bool:
