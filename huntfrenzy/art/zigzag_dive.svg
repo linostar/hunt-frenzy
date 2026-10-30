@@ -1,15 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="72" height="104" viewBox="0 0 72 104">
-  <!-- Zigzag swift: a slim sooty-brown common swift, long sickle wings folded past its forked tail, a faint teal sheen down its back, the edge of its pale cream throat showing under its head. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 52) is the bird's origin. -->
-  <path d="M31 26 L25 8 L36 17.1 L47 8 L41 26 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M30 63.6 L31.2 86 L40.8 86 L42 63.6 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M32.2 93.2 L36 99.5 L39.8 93.2 Z" fill="#1f1a2e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <ellipse cx="36" cy="86" rx="8.5" ry="9.2" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <ellipse cx="36" cy="48" rx="13" ry="26" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M28.9 64.1 C15.8 62.3 15.8 49.3 26.9 28.5 C30.1 20 30.5 28 34.5 24 C31 32.4 31.5 45.4 31.5 57.1 C29.5 62.1 32.9 65.1 28.9 64.1 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M27.9 53.2 C26.2 40.2 29.5 24 29.5 32 C31.4 28 29.5 40.2 27.9 53.2 Z" fill="#b8a58c"/>
-  <path d="M43.1 64.1 C56.2 62.3 56.2 49.3 45.1 28.5 C41.9 20 41.5 28 37.5 24 C41 32.4 40.5 45.4 40.5 57.1 C42.5 62.1 39.1 65.1 43.1 64.1 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-  <path d="M44.1 53.2 C45.8 40.2 42.5 24 42.5 32 C40.5 28 42.5 40.2 44.1 53.2 Z" fill="#b8a58c"/>
+  <!-- Zigzag swift: a slim sooty-brown common swift, long sickle wings folded along its cigar body to its short notched tail, a faint teal sheen down its back, the edge of its pale cream throat showing under its head. Back view, dive (the head-first fall): seen from behind as it dives, tail up, wings folded on both sides, head down; drawn upright on its side-view canvas turned on end, centre (36, 52) is the bird's origin. -->
+  <path d="M31 27 L25 12 L36 19.1 L47 12 L41 27 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M31.5 63 L32.4 84 L39.6 84 L40.5 63 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M32.9 90 L36 96 L39.1 90 Z" fill="#1f1a2e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="84" rx="7" ry="7.6" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <ellipse cx="36" cy="48" rx="9" ry="25" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M31.1 63.5 C20.7 61.8 20.7 49.2 29.7 29.2 C31.9 21 30.5 29 34.5 25 C31 33 31.5 45.5 31.5 56.8 C29.5 61.5 35 64.5 31.1 63.5 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M30.4 53 C29.2 40.5 31.5 25 29.5 33 C32.9 29 31.5 40.5 30.4 53 Z" fill="#b8a58c"/>
+  <path d="M41 63.5 C51.3 61.8 51.3 49.2 42.3 29.2 C40 21 41.5 29 37.5 25 C41 33 40.5 45.5 40.5 56.8 C42.5 61.5 37 64.5 41 63.5 Z" fill="#5e4d3e" stroke="#1f1a2e" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M41.6 53 C42.8 40.5 40.5 25 42.5 33 C39.1 29 40.5 40.5 41.6 53 Z" fill="#b8a58c"/>
   <path d="M30.2 34 C29.2 42 29.4 50 30.6 57 C31.4 50 31.4 42 31.6 34 Z" fill="#3fa7a0" fill-opacity="0.55"/>
   <path d="M41.8 34 C42.8 42 42.6 50 41.4 57 C40.6 50 40.6 42 40.4 34 Z" fill="#3fa7a0" fill-opacity="0.55"/>
-  <path d="M29 90 C31.5 94 40.5 94 43 90 C40.5 92.4 31.5 92.4 29 90 Z" fill="#fbedcd"/>
+  <path d="M30.5 87.5 C32.5 90.8 39.5 90.8 41.5 87.5 C39.5 89.4 32.5 89.4 30.5 87.5 Z" fill="#fbedcd"/>
 </svg>
