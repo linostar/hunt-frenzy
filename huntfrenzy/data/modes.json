@@ -37,7 +37,7 @@
     "birds": [
       {"bird": "goose", "from_wave": 1, "weight": 10},
       {"bird": "armored", "from_wave": 2, "weight": 3},
-      {"bird": "zigzag", "from_wave": 3, "weight": 3},
+      {"bird": "zigzag", "from_wave": 3, "weight": 3, "guaranteed_wave": 5},
       {"bird": "decoy", "from_wave": 3, "weight": 2},
       {"bird": "splitter", "from_wave": 4, "weight": 2}
     ],

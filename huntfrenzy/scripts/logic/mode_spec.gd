@@ -3,12 +3,15 @@ extends Resource
 ## One game mode from data/modes.json. Built by Content (data/SCHEMA.md documents every field).
 
 
-## One bird of the mode's wave mix: the type, the first wave it can appear in and its
-## weight in the seeded pick among the birds already unlocked.
+## One bird of the mode's wave mix: the type, the first wave it can appear in, its weight
+## in the seeded pick among the birds already unlocked and an optional guaranteed wave.
 class Entry:
 	var bird := ""
 	var from_wave := 1
 	var weight := 1
+	## The one wave that always holds at least one of this bird (Wave.for_mode turns a slot
+	## into it when the pick left it out); 0: none (the optional key is absent).
+	var guaranteed_wave := 0
 
 
 ## One look of the mode's run: a backdrop id and the weather drawn over it (as a chapter's).

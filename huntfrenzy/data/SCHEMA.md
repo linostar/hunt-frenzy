@@ -70,7 +70,11 @@ them so they match. Do not leave the code working around the difference.
 - **Waves** (`scripts/logic/wave.gd`, `Wave.for_mode`: Endless and Time Attack, each with its own numbers): wave n holds `min(start_birds + (n - 1) x bird_growth, max_birds)`
   birds, one every `spawn_interval` from 0. Each spawn slot is the mode's `golden_bird` with chance `golden_chance`
   from wave `golden_from_wave` on; otherwise it is a pick, weighted by `weight`, among the `birds` entries whose
-  `from_wave <= n`. The speed scale is `min(1 + (n - 1) x speed_growth, speed_cap)`.
+  `from_wave <= n`. Then each `birds` entry whose `guaranteed_wave` is n is given a slot if the picks left it out: one
+  slot that is not the golden bird, a decoy or another guaranteed bird (any slot but another guaranteed bird when there
+  is none) turns into it, keeping its time and flight seed, chosen by an RNG of its own seeded from the run seed, n and
+  the bird (so no other draw shifts and the same seed gives the same wave); the shells count the wave after it. The
+  speed scale is `min(1 + (n - 1) x speed_growth, speed_cap)`.
 - **Shells**: a wave's pool is `(sum over its birds of Wave.hits_needed) x shells_per_hit`, where
   `hits_needed = hp + split_count` (each split child takes one hit, I7) and 0 for a decoy (never to be shot).
 - **Art**: a bird's sprite is `res://art/<sprite>_fly_1.svg` and `_fly_2.svg` (flap frames), `_hit.svg` (the killed
@@ -127,6 +131,7 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `birds[].bird` | string | bird id | |
 | `birds[].from_wave` | int | 1..1000 | The first wave it can appear in. |
 | `birds[].weight` | int | 1..100 | Its weight in the seeded pick among the unlocked birds. |
+| `birds[].guaranteed_wave` | int | 1..1000, at least `from_wave` | Optional (default: none). The one wave that always holds at least one of this bird (Waves, above); Time Attack's zigzag has 5. |
 | `golden_bird` | string | bird id | The bird a spawn slot turns into by chance. |
 | `golden_from_wave` | int | 1..1000 | The first wave a slot can turn golden (2 or later: I9). |
 | `golden_chance` | float | 0..1 | The chance per spawn slot. |
@@ -218,7 +223,7 @@ against a fallback value.
   at most once and has a bird from wave 1. `rival_lines.json` is a non-empty object with exactly `aim_time`,
   `cooldown` and `lines`, and `lines` holds exactly the five categories.
 - **I2** Every field has its type and lies in its range or enum above (every rival line is a string of 1..40
-  characters; a backdrop id is snake_case).
+  characters; a backdrop id is snake_case; a mode mix entry's `guaranteed_wave` is not before its `from_wave`).
 - **I3** Cross-references resolve: a bird's and a level's `chapter`, `birds[].bird`, `mix[].bird`, `boss.mix[].bird`,
   `golden_bird`, `splits_into`; every sprite has its `fly_1`, `fly_2` and `hit` frames, plus `damaged_fly_1` and
   `damaged_fly_2` when `hp > 1`; every backdrop (a chapter's, a mode's `backdrops[].backdrop`) has each of its layers
@@ -350,7 +355,7 @@ deadline, the gosling's linger the tightest).
 
 Time Attack: 60 s, 3 birds in wave 1, one more per wave up to 8 (wave 6), speed +0.06 per wave up to x1.5, a spawn
 every 0.9 s, 2 shells per hit needed (a full pool every wave), combo cap 8; goose from wave 1, armored from 2, zigzag
-and decoy from 3, splitter from 4, golden 10% of slots from wave 2; no escape limit, rival steals off (he heckles); the
+and decoy from 3 (wave 5 always holds a zigzag), splitter from 4, golden 10% of slots from wave 2; no escape limit, rival steals off (he heckles); the
 noon backdrop with its wind throughout, music time_attack.
 
 Rival: aim 1.0 s (so every cue ends at least 0.5 s before the bird flees: the gosling's 1.5 + 1.0 against its 3.0),

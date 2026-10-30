@@ -169,6 +169,7 @@ func _tests() -> Array[Callable]:
 		_test_flight_launch_and_split_headings,
 		_test_wave_schedule,
 		_test_wave_time_attack_schedule,
+		_test_wave_guaranteed_bird,
 		_test_wave_unlocks_by_wave,
 		_test_wave_mix_follows_weights,
 		_test_wave_golden_chance,
@@ -788,6 +789,63 @@ func _test_wave_time_attack_schedule() -> void:
 		timed = timed and is_equal_approx(plan.spawns[i].time, i * 0.9)
 	_check(plan.shells == Ammo.pool_size(hits, 2) and timed, "Time Attack: a full pool of 2 shells per hit needed, a spawn every 0.9 s", "%d shells for %d hits" % [plan.shells, hits])
 	_check(not _same_plan(plan, Wave.for_mode(Content.mode(GameState.ENDLESS_MODE), 5, 42)), "Time Attack's waves are its own, not Endless's", "same plan")
+
+
+## A mix entry's guaranteed_wave (Time Attack's zigzag: 5): that wave holds the bird in every
+## run, the plan stays a pure function of the seed, and nothing else moves: with the guarantee
+## turned off, the same seeds give the same waves 1-12, except that a wave 5 the picks left
+## without a zigzag differs in one slot only (its time and flight seed kept), and its shells
+## count the wave as it is. Endless has no guarantee, so its plans are untouched.
+func _test_wave_guaranteed_bird() -> void:
+	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
+	var zigzag: ModeSpec.Entry = time_attack.birds.filter(func(entry: ModeSpec.Entry) -> bool: return entry.bird == "zigzag")[0]
+	_check(zigzag.guaranteed_wave == 5 and zigzag.from_wave == 3 and zigzag.weight == 3, "Time Attack: the zigzag still unlocks at wave 3 (weight 3) and is guaranteed in wave 5", "from %d, weight %d, guaranteed %d" % [zigzag.from_wave, zigzag.weight, zigzag.guaranteed_wave])
+	var endless := Content.mode(GameState.ENDLESS_MODE)
+	_check(endless.birds.all(func(entry: ModeSpec.Entry) -> bool: return entry.guaranteed_wave == 0), "Endless guarantees no bird", "")
+	var missing: Array[int] = []
+	var deterministic := true
+	var shells_ok := true
+	var changed := 0
+	var off_problems: Array[String] = []
+	var guaranteed_plans: Dictionary[int, Array] = {}
+	for run_seed in 2000:
+		var plan := Wave.for_mode(time_attack, 5, run_seed)
+		if not plan.spawns.any(func(spawn: Wave.Spawn) -> bool: return spawn.bird_id == "zigzag"):
+			missing.append(run_seed)
+		deterministic = deterministic and _same_plan(plan, Wave.for_mode(time_attack, 5, run_seed))
+		var hits := 0
+		for spawn in plan.spawns:
+			hits += Wave.hits_needed(Content.bird(spawn.bird_id))
+		shells_ok = shells_ok and plan.shells == Ammo.pool_size(hits, time_attack.shells_per_hit)
+		if run_seed < 300:
+			var waves: Array = []
+			for index in range(1, 13):
+				waves.append(Wave.for_mode(time_attack, index, run_seed))
+			guaranteed_plans[run_seed] = waves
+	zigzag.guaranteed_wave = 0
+	for run_seed: int in guaranteed_plans:
+		for index in range(1, 13):
+			var with: Wave.Plan = guaranteed_plans[run_seed][index - 1]
+			var without := Wave.for_mode(time_attack, index, run_seed)
+			if _same_plan(with, without):
+				continue
+			var differing: Array[int] = []
+			for i in with.spawns.size():
+				if with.spawns[i].bird_id != without.spawns[i].bird_id:
+					differing.append(i)
+			var only_slot := index == 5 and with.spawns.size() == without.spawns.size() and differing.size() == 1
+			var swapped := only_slot and with.spawns[differing[0]].bird_id == "zigzag" and not without.spawns.any(func(spawn: Wave.Spawn) -> bool: return spawn.bird_id == "zigzag")
+			var plain := swapped and without.spawns[differing[0]].bird_id != time_attack.golden_bird and Content.bird(without.spawns[differing[0]].bird_id).penalty == 0
+			var kept := only_slot and with.spawns[differing[0]].time == without.spawns[differing[0]].time and with.spawns[differing[0]].bird_seed == without.spawns[differing[0]].bird_seed
+			if plain and kept:
+				changed += 1
+			else:
+				off_problems.append("seed %d wave %d: slots %s" % [run_seed, index, differing])
+	zigzag.guaranteed_wave = 5
+	_check(missing.is_empty(), "Time Attack wave 5 holds a zigzag in every one of 2000 runs", "missing for seeds %s" % [missing])
+	_check(deterministic, "Time Attack wave 5: the same run seed gives the same plan, guarantee included", "differs")
+	_check(shells_ok, "Time Attack wave 5: the shells count the guaranteed zigzag", "a pool does not match its birds")
+	_check(off_problems.is_empty() and changed > 50, "the guarantee only turns one plain slot of a zigzag-less wave 5 into a zigzag (time and flight seed kept); every other wave is as before", "%d waves changed; problems: %s" % [changed, off_problems.slice(0, 5)])
 
 
 ## Whether two wave plans are the same: index, shells, speed and every spawn.
