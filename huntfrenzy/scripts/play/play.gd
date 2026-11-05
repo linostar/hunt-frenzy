@@ -11,8 +11,12 @@ extends Node2D
 ## escape_limit counted escapes, a level after its last wave, a timed mode (Time Attack) when
 ## run_clock (frozen while paused) reaches time_limit; a timed wave whose pool runs out is lost
 ## at once (_lose_wave). Each bird flies at the wave's speed x its own seeded factor.
-## Play runs the waves, the shot hit test, scoring, sounds, the hit stop and the crosshair, and
-## hands the rest to child nodes and helpers:
+## Play sequences the run: its start, the waves and their spawns, the clocks, the escapes and
+## the run's end; it hands the rest to child nodes and helpers:
+## - shots (ShotResolver): what a shot does (refused, hit, damage, kill, decoy, split), its
+##   sounds and pop-ups;
+## - hit_stop (HitStop): the world's stop after a kill;
+## - crosshair (Crosshair): the mouse pointer;
 ## - rival (RivalController): the rival hunter's steals, aim cues, pose, heckles and light;
 ## - hud (HudController): the HUD bar's chips; Play pushes its values (update_hud);
 ## - pause (PauseMenu): the pause menu, the settings over it, Escape and the focus, page and
@@ -24,24 +28,12 @@ extends Node2D
 ## Everything is logged with enough context (the run seed, wave times, shot positions) to
 ## replay the run.
 
-## Emitted when a kill starts a hit stop of `seconds`.
-signal hit_stop_started(seconds: float)
-## Emitted on every pointer change: `shown` ("crosshair" or "arrow (<why>)") and the arguments
-## it passed to Input.set_custom_mouse_cursor (a null texture: the default arrow).
-signal cursor_changed(shown: String, texture: Texture2D, shape: Input.CursorShape, hotspot: Vector2)
-
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 ## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning). One shared object for
 ## the whole process (every reader and both test scripts): a test that changes a value puts
 ## it back, as _test_tuning_values (run first and last) checks. Play's own alias of Game.tuning
 ## (preload caches it: the same object); the controllers and every other script read Game.tuning.
 const TUNING: Tuning = preload("res://data/tuning.tres")
-## The mouse pointer while the run is live (64x64 at most; its hotspot is its centre).
-const CROSSHAIR := preload("res://art/crosshair.svg")
-## The pop-up of a hit that only damages a bird.
-const DAMAGE_TEXT := "Clank!"
-## The run's most frequent sounds, each played at a seeded pitch (TUNING.sound_pitch_spread).
-const VARIED_SOUNDS: Array[StringName] = [AudioManager.SFX_SHOT, AudioManager.SFX_HIT, AudioManager.SFX_ESCAPE]
 
 ## The mode (Endless, Time Attack), or null in a campaign level.
 var mode: ModeSpec
@@ -59,14 +51,10 @@ var escaped := 0
 ## Seconds since the run started (game time: frozen while paused); the heckle cooldown and
 ## a timed mode's clock run on it.
 var run_clock := 0.0
-## Shots refused because the pool was empty.
-var refused := 0
 ## Seconds since the current wave started, from -TUNING.wave_lead (its first spawn is at 0).
 var wave_clock := 0.0
 ## Countdown ticks played this run (a timed run's last TUNING.countdown_seconds).
 var countdown_ticks := 0
-## True while the mouse pointer is the crosshair (each change: cursor_changed).
-var crosshair_shown := false
 
 var _game: GameState
 var _next_spawn := 0
@@ -74,34 +62,31 @@ var _next_spawn := 0
 var _spawned := 0
 ## True once the run has ended or is being left: no more shots, pauses or waves.
 var _over := false
-## Draws the pitch of each VARIED_SOUNDS sound (seeded in _start_run).
-var _pitch_rng := RandomNumberGenerator.new()
-## Seconds of hit stop still to run (0: none).
-var _hit_stop_left := 0.0
 
 @onready var _world: Node2D = $World
 @onready var _birds: Node2D = $World/Birds
-@onready var _feathers: Feathers = $World/Feathers
-@onready var _popups: Node2D = $World/Popups
 @onready var _shot_input: ShotInput = $ShotInput
 @onready var shaker: ScreenShake = $Shaker
 @onready var hud: HudController = $HudController
 @onready var pause: PauseMenu = $Pause
 @onready var rival: RivalController = $RivalController
 @onready var stage: StageFader = $Stage
+@onready var shots: ShotResolver = $Shots
+@onready var hit_stop: HitStop = $HitStop
+@onready var crosshair: Crosshair = $Crosshair
 
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
 	_game.screen.screen_fit_changed.connect(_fit)
-	_shot_input.shot.connect(_on_shot)
+	_shot_input.shot.connect(shots.resolve)
 	_fit()
 	_start_run()
 	pause.note_rotation_at_start()
 
 
 ## Window and app focus or visibility loss pauses the run (notifications arrive while
-## the tree is paused too; open_pause ignores repeats); leaving the tree puts the arrow back.
+## the tree is paused too; open_pause ignores repeats).
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_WINDOW_FOCUS_OUT:
@@ -110,9 +95,6 @@ func _notification(what: int) -> void:
 			pause.open_pause("app lost focus")
 		NOTIFICATION_APPLICATION_PAUSED:
 			pause.open_pause("app paused or hidden")
-		NOTIFICATION_EXIT_TREE:
-			# Whatever ends the scene, the arrow comes back.
-			show_crosshair(false, "left the play scene")
 
 
 ## One frame of the run, in order: the shake, the hit stop, the clocks, the due spawns, the
@@ -121,7 +103,7 @@ func _process(frame_delta: float) -> void:
 	if _over or wave == null:
 		return
 	shaker.update(frame_delta)
-	var delta := _run_hit_stop(frame_delta)
+	var delta := hit_stop.run(frame_delta)
 	if delta < 0.0 or _advance_clock(delta):
 		return
 	_spawn_due()
@@ -130,20 +112,6 @@ func _process(frame_delta: float) -> void:
 		return
 	rival.update_pose()
 	_check_wave_end()
-
-
-## The part of `frame_delta` the world runs this frame: all of it without a hit stop, -1
-## while the stop holds the whole frame, else what is left once the stop ends inside it
-## (Bird.hold does the same).
-func _run_hit_stop(frame_delta: float) -> float:
-	if _hit_stop_left <= 0.0:
-		return frame_delta
-	_hit_stop_left -= frame_delta
-	if _hit_stop_left >= 0.0:
-		return -1.0
-	var rest := -_hit_stop_left
-	_hit_stop_left = 0.0
-	return rest
 
 
 ## Advances run_clock and wave_clock by `delta`; a timed run shows its time, ticks its
@@ -208,8 +176,8 @@ func spawn_bird(bird_id: String, bird_seed: int, from := Flight.NOT_LAUNCHED, he
 	bird.appeared.connect(_on_bird_appeared)
 	# A gosling launched by the kill that started a hit stop waits it out with the others
 	# (placed at its launch point first: Bird._ready sets its transform).
-	if _hit_stop_left > 0.0 and from.is_finite():
-		bird.hold(_hit_stop_left)
+	if hit_stop.left() > 0.0 and from.is_finite():
+		bird.hold(hit_stop.left())
 	_birds.add_child(bird)
 	return bird
 
@@ -230,19 +198,6 @@ func _wave_birds_flying() -> Array[Bird]:
 	var result: Array[Bird] = []
 	result.assign(flying_birds().filter(func(bird: Bird) -> bool: return bird.wave_index == wave.index))
 	return result
-
-
-## The frontmost (latest spawned, drawn on top) flying bird whose hitbox holds `point`
-## (World coordinates), or null. A point on the grass (at or below Layout.GRASS_Y) hits nothing:
-## the grass is drawn over the birds behind it.
-func bird_at(point: Vector2) -> Bird:
-	if point.y >= Layout.GRASS_Y:
-		return null
-	var flying := flying_birds()
-	for i in range(flying.size() - 1, -1, -1):
-		if flying[i].contains(point):
-			return flying[i]
-	return null
 
 
 ## True once the run has ended or is being left (no more shots, pauses or waves).
@@ -300,12 +255,12 @@ func _start_run() -> void:
 		run_seed = args["seed"]
 		scoring = Scoring.new(mode.combo_cap)
 	rival.rival_lines = Content.rival_lines()
-	_pitch_rng.seed = hash([run_seed, "sound pitch"])
+	shots.start(run_seed)
 	print("[Play] Run start: %s" % _run_start_note())
 	if mode != null:
 		hud.show_timer(mode.is_timed())
 	_start_wave(1)
-	show_crosshair(true)
+	crosshair.set_shown(true)
 
 
 ## The run start log's details: what runs, its seed, how it ends and the rules it plays by.
@@ -352,41 +307,18 @@ func set_shell_pool(count: int) -> void:
 	update_hud()
 
 
-## A shot at `at` (canvas): ignored once the run is over, while paused or during a transition.
-## Sounds: with a shell "shot", then what it hit (_kill_sound for a kill, "armored_clank" for
-## damage, "decoy_penalty", "combo_up" when the combo rose; nothing more for a miss), and
-## "out_of_shells" after the last shell; with none, only "empty_click".
-func _on_shot(at: Vector2) -> void:
-	if _over or get_tree().paused or _game.flow.is_transitioning():
-		return
-	var point := _world.to_local(at)
-	if not ammo.use():
-		refused += 1
-		_game.audio.play_sfx(AudioManager.SFX_EMPTY_CLICK)
-		print("[Play] Shot refused at %s: no shells left (%s, %d refused)" % [_at(at), wave_note(), refused])
-		hud.show_empty_cue()
-		return
-	_play_sound(AudioManager.SFX_SHOT)
-	var target := bird_at(point)
-	if target != null and target.spec.penalty > 0:
-		_hit_decoy(target, point, at)
-	elif target != null:
-		_hit_bird(target, point, at)
-	else:
-		scoring.miss()
-		print("[Play] Miss at %s: combo reset, score %d (%s)" % [_at(at), scoring.score, _shot_note()])
-		if rival.heckle("miss"):
-			rival.react(RivalController.RIVAL_BRAG, "brags after the miss")
-	if ammo.is_empty():
-		_game.audio.play_sfx(AudioManager.SFX_OUT_OF_SHELLS)
-		var fleeing := flying_birds()
-		for bird in fleeing:
-			bird.flee()
-		var waiting := wave.spawns.size() - _next_spawn
-		print("[Play] Out of shells: %d flying birds flee, %d still to spawn %s (wave %d%s)" % [fleeing.size(), waiting, "are skipped" if is_timed() else "will flee", wave.index, clock_note()])
-		if is_timed() and not (waiting == 0 and _wave_birds_flying().is_empty()):
-			_lose_wave(waiting)
-	update_hud()
+## The shot that used the wave's last shell (ShotResolver.resolve): "out_of_shells" plays, the
+## flying birds flee and the rest of the wave spawns fleeing; a timed mode's wave is lost at
+## once unless that shot cleared it.
+func shells_ran_out() -> void:
+	_game.audio.play_sfx(AudioManager.SFX_OUT_OF_SHELLS)
+	var fleeing := flying_birds()
+	for bird in fleeing:
+		bird.flee()
+	var waiting := wave.spawns.size() - _next_spawn
+	print("[Play] Out of shells: %d flying birds flee, %d still to spawn %s (wave %d%s)" % [fleeing.size(), waiting, "are skipped" if is_timed() else "will flee", wave.index, clock_note()])
+	if is_timed() and not (waiting == 0 and _wave_birds_flying().is_empty()):
+		_lose_wave(waiting)
 
 
 ## A timed mode's wave whose pool ran out is lost at once: its `waiting` birds still to
@@ -404,116 +336,6 @@ func _lose_wave(waiting: int) -> void:
 		wave.index, waiting, counted, escapes(), _wave_birds_flying().size(), clock_note()])
 	rival.heckle("wave_end")
 	_start_wave(wave.index + 1)
-
-
-## A hit on a bird other than the decoy: damage short of its hp, else a kill that scores
-## (and splits a splitter).
-func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
-	var multiplier := scoring.multiplier
-	if not target.hit():
-		scoring.damage()
-		_game.audio.play_sfx(AudioManager.SFX_ARMORED_CLANK)
-		_popup(point, DAMAGE_TEXT, HitPopup.Kind.DAMAGE)
-		print("[Play] Hit %s: no points, combo x%d kept, score %d (%s)" % [_hit_note(target, at, false), multiplier, scoring.score, _shot_note()])
-		return
-	var awarded := scoring.hit(target.spec.points)
-	_play_sound(_kill_sound(target.spec))
-	if scoring.multiplier > multiplier:
-		_game.audio.play_sfx(AudioManager.SFX_COMBO_UP)
-	_start_hit_stop(target)
-	_feathers.burst(point, target.spec.sprite)
-	if target.spec.hp > 1:
-		shaker.shake(ScreenShake.ARMORED_KILL)
-	elif _is_golden(target.spec):
-		shaker.shake(ScreenShake.GOLDEN_KILL)
-	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier], HitPopup.Kind.SCORE if multiplier == 1 else HitPopup.Kind.COMBO, multiplier)
-	print("[Play] Hit %s: %d points x%d = %d, score %d (%s)" % [_hit_note(target, at, true), target.spec.points, multiplier, awarded, scoring.score, _shot_note()])
-	rival.react(RivalController.RIVAL_SULK, "sulks at the %d points on %s #%d" % [awarded, target.spec.id, target.number])
-	if target.is_cued():
-		rival.cancel_cue(target, "shot by the player")
-	if scoring.multiplier >= RivalController.COMBO_HECKLE_MIN and scoring.multiplier > multiplier:
-		rival.heckle("combo")
-	if target.spec.split_count > 0:
-		_split(target, point)
-
-
-## Plays sound `id`, a VARIED_SOUNDS one at its next seeded pitch within TUNING.sound_pitch_spread.
-func _play_sound(id: StringName) -> void:
-	var pitch := _pitch_rng.randf_range(1.0 - TUNING.sound_pitch_spread, 1.0 + TUNING.sound_pitch_spread) if id in VARIED_SOUNDS else 1.0
-	_game.audio.play_sfx(id, pitch)
-
-
-## The sound of a kill: an armored bird's (hp above 1) last hit, a splitter bursting, the
-## run's golden bird, or a plain hit.
-func _kill_sound(spec: BirdSpec) -> StringName:
-	if spec.hp > 1:
-		return AudioManager.SFX_ARMORED_KILL
-	if spec.split_count > 0:
-		return AudioManager.SFX_SPLIT_POP
-	if _is_golden(spec):
-		return AudioManager.SFX_GOLDEN_CHIME
-	return AudioManager.SFX_HIT
-
-
-## True for the run's golden bird (its level's or mode's golden_bird).
-func _is_golden(spec: BirdSpec) -> bool:
-	return spec.id == (level.golden_bird if level != null else mode.golden_bird)
-
-
-## Stops the world for TUNING.hit_stop_time (TUNING.hit_stop_heavy_time for an armored or the golden
-## bird) after `target`'s kill: every bird holds still that long (Bird.hold) and _process
-## stops the clocks; while a stop runs, another kill starts none. The birds, the rival and
-## every clock lose exactly the stop's time, so it shifts every later event by the same amount
-## and never changes what happens; the HUD, the pop-ups, the feathers and input keep running.
-## Logged.
-func _start_hit_stop(target: Bird) -> void:
-	var heavy := target.spec.hp > 1 or _is_golden(target.spec)
-	var time := TUNING.hit_stop_heavy_time if heavy else TUNING.hit_stop_time
-	if _hit_stop_left > 0.0:
-		print("[Play] Hit stop for %s skipped: one is running (%.3f s left)" % [_bird_name(target), _hit_stop_left])
-		return
-	_hit_stop_left = time
-	hit_stop_started.emit(time)
-	for child in _birds.get_children():
-		(child as Bird).hold(time)
-	print("[Play] Hit stop %.2f s on the kill of %s (%s%s)" % [time, _bird_name(target), wave_note(), clock_note()])
-
-
-## Seconds of hit stop still to run (0 when none runs).
-func hit_stop_left() -> float:
-	return _hit_stop_left
-
-
-## Launches the killed splitter's goslings from `point` (World coordinates) on diverging
-## headings; each has its own seed derived from the splitter's.
-func _split(parent: Bird, point: Vector2) -> void:
-	var children := PackedStringArray()
-	var headings := Flight.split_headings(parent.spec.split_count)
-	for i in headings.size():
-		var child_seed := hash([parent.bird_seed, i])
-		var child := spawn_bird(parent.spec.splits_into, child_seed, point, headings[i])
-		# A lost wave's splitter (Time Attack) launches goslings of that wave, fleeing.
-		if parent.wave_index != wave.index:
-			child.wave_index = parent.wave_index
-			child.flee()
-		children.append("#%d seed %d heading (%.2f, %.2f)" % [child.number, child_seed, headings[i].x, headings[i].y])
-	print("[Play] Split %s at %s into %d %s: %s (%s)%s" % [_bird_name(parent), _at(point), headings.size(), parent.spec.splits_into, ", ".join(children), wave_note(), ", fleeing (no shells)" if ammo.is_empty() else ""])
-
-
-## A hit on the decoy: its penalty comes off the score (never below 0) and the combo resets.
-func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
-	target.hit()
-	var deducted := scoring.penalty(target.spec.penalty)
-	_game.audio.play_sfx(AudioManager.SFX_DECOY_PENALTY)
-	_feathers.burst(point, target.spec.sprite)
-	shaker.shake(ScreenShake.DECOY_HIT)
-	_popup(point, "-%d" % deducted, HitPopup.Kind.PENALTY)
-	print("[Play] Hit %s: penalty %d, -%d, combo reset, score %d (%d pigeons hit, %s)" % [_hit_note(target, at, true), target.spec.penalty, deducted, scoring.score, scoring.penalties, _shot_note()])
-
-
-## Bursts feathers in `sprite`'s colours at `point` (World coordinates).
-func burst_feathers(point: Vector2, sprite: String) -> void:
-	_feathers.burst(point, sprite)
 
 
 ## Whether the rival steals in this run: always in a campaign level, per mode in Endless.
@@ -534,23 +356,13 @@ func escape_limit_reached() -> bool:
 
 
 ## "(x, y)" of a shot or hit point, for the log lines.
-static func _at(point: Vector2) -> String:
+static func at_note(point: Vector2) -> String:
 	return "(%.1f, %.1f)" % [point.x, point.y]
 
 
 ## "<type> #n" of `bird`, for the log lines.
-static func _bird_name(bird: Bird) -> String:
+static func bird_name(bird: Bird) -> String:
 	return "%s #%d" % [bird.spec.id, bird.number]
-
-
-## "<type> #n (hit k/hp[, killed]) at (x, y)": a hit on `target` at `at`, for the log lines.
-static func _hit_note(target: Bird, at: Vector2, killed: bool) -> String:
-	return "%s (hit %d/%d%s) at %s" % [_bird_name(target), target.hits_taken, target.spec.hp, ", killed" if killed else "", _at(at)]
-
-
-## "wave n at t T, S shells left" in a shot's log lines.
-func _shot_note() -> String:
-	return "%s, %d shells left" % [wave_note(), ammo.shells]
 
 
 ## Counts one more bird lost (the rival's steal; Play counts its own escapes).
@@ -568,44 +380,24 @@ func clock_note() -> String:
 	return ", %.2f s left" % time_left() if is_timed() else ""
 
 
-## Makes the mouse pointer the crosshair (`on`, the run is live) or the default arrow
-## again (`why`: paused, the run is over, the rotate overlay, left the scene); while the
-## rotate overlay is up it is always the arrow (the run is paused under it, whichever came
-## first). A change is logged and emitted (cursor_changed), a repeat does nothing.
-func show_crosshair(on: bool, why := "") -> void:
-	if on and _game.screen.is_rotate_overlay_shown():
-		on = false
-		why = "rotate overlay"
-	if on == crosshair_shown:
-		return
-	crosshair_shown = on
-	var texture: Texture2D = CROSSHAIR if on else null
-	var hotspot := CROSSHAIR.get_size() / 2.0 if on else Vector2.ZERO
-	# The one place the pointer is set.
-	Input.set_custom_mouse_cursor(texture, Input.CURSOR_ARROW, hotspot)
-	var shown := "crosshair" if on else "arrow (%s)" % why
-	print("[Play] Cursor: %s" % shown)
-	cursor_changed.emit(shown, texture, Input.CURSOR_ARROW, hotspot)
-
-
 ## A bird's art first showed above the grass line: it gives its call (its spec's call at its
 ## call_pitch).
 func _on_bird_appeared(bird: Bird) -> void:
 	if _over:
 		return
 	_game.audio.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
-	print("[Play] Call of %s as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, %s%s)" % [_bird_name(bird), bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave_note(), clock_note()])
+	print("[Play] Call of %s as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, %s%s)" % [bird_name(bird), bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave_note(), clock_note()])
 
 
 func _on_bird_escaped(bird: Bird) -> void:
 	if _over:
 		return
 	if not bird.spec.escape_counts:
-		print("[Play] Escaped %s (not counted, %s, %s)" % [_bird_name(bird), escapes(), wave_note()])
+		print("[Play] Escaped %s (not counted, %s, %s)" % [bird_name(bird), escapes(), wave_note()])
 		return
 	escaped += 1
-	_play_sound(AudioManager.SFX_ESCAPE)
-	print("[Play] Escaped %s (%s, %s)" % [_bird_name(bird), escapes(), wave_note()])
+	shots.play_sound(AudioManager.SFX_ESCAPE)
+	print("[Play] Escaped %s (%s, %s)" % [bird_name(bird), escapes(), wave_note()])
 	update_hud()
 	if escape_limit_reached():
 		end_run()
@@ -621,7 +413,7 @@ func end_run() -> void:
 ## next scene must not start paused).
 func _stop() -> void:
 	_over = true
-	show_crosshair(false, "the run is over")
+	crosshair.set_shown(false, "the run is over")
 	shaker.stop()
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	pause.hide_menu()
@@ -660,13 +452,6 @@ func _tick_countdown(before: float, now: float) -> void:
 			countdown_ticks += 1
 			_game.audio.play_sfx(AudioManager.SFX_COUNTDOWN_TICK)
 			print("[Play] Countdown tick %d: %d s left (%.2f s, wave %d)" % [countdown_ticks, second, now, wave.index])
-
-
-## A pop-up of `text` of `kind` (HitPopup) centred on `point` (World coordinates), kept
-## inside the visible area.
-func _popup(point: Vector2, text: String, kind: HitPopup.Kind, multiplier := 1) -> void:
-	var shown := Rect2(_game.screen.visible_rect().position - _world.position, _game.screen.visible_rect().size)
-	HitPopup.spawn(_popups, point, text, kind, multiplier, shown, _game.save.reduce_motion)
 
 
 ## Shows the run's values on the HUD.

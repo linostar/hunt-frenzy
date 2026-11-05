@@ -20,7 +20,7 @@ const PATH := "res://data/tuning.tres"
 @export_range(0.0, 5.0, 0.05, "suffix:s") var backdrop_fade_time := 0.8
 ## A timed run ticks at each of its last this many whole seconds.
 @export_range(0, 60) var countdown_seconds := 10
-## The run's most frequent sounds (Play.VARIED_SOUNDS) play each time at a pitch up to this
+## The run's most frequent sounds (ShotResolver.VARIED_SOUNDS) play each time at a pitch up to this
 ## much (a fraction) off 1, drawn from an RNG seeded by the run seed.
 @export_range(0.0, 0.5, 0.005) var sound_pitch_spread := 0.04
 

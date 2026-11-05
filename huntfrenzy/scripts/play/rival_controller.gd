@@ -24,8 +24,9 @@ extends Node
 ## cooldown run on Play.run_clock, so a pause freezes them.
 ## Of Play (its parent) it uses only run_clock, run_seed, linger_scale, flying_birds(),
 ## steals_on(), is_over(), the combo (scoring.multiplier, for its log), wave_note(),
-## escapes(), count_escape(), burst_feathers(), update_hud(), escape_limit_reached() and
-## end_run(); it shakes the world through its sibling Shaker and reads Game.tuning.
+## escapes(), count_escape(), update_hud(), escape_limit_reached() and end_run(); it shakes
+## the world through its sibling Shaker, bursts feathers through the World's Feathers and
+## reads Game.tuning.
 
 const RIVAL_IDLE := preload("res://art/rival_idle.svg")
 const RIVAL_AIM := preload("res://art/rival_aim.svg")
@@ -55,6 +56,7 @@ var _reaction_until := -INF
 @onready var _game := get_node(GameState.AUTOLOAD_PATH) as GameState
 @onready var _play := get_parent() as Play
 @onready var _shaker: ScreenShake = $"../Shaker"
+@onready var _feathers: Feathers = $"../World/Feathers"
 @onready var _rival: TextureRect = $"../World/Rival"
 @onready var _bubble: Label = $"../World/Bubble"
 
@@ -152,7 +154,7 @@ func _steal(bird: Bird) -> void:
 	update_pose()
 	_game.audio.play_sfx(AudioManager.SFX_RIVAL_STEAL)
 	_game.audio.play_sfx_later(AudioManager.SFX_RIVAL_LAUGH, _game.tuning.rival_laugh_delay)
-	_play.burst_feathers(bird.position, bird.spec.sprite)
+	_feathers.burst(bird.position, bird.spec.sprite)
 	_shaker.shake(ScreenShake.STEAL)
 	stolen += 1
 	rival_score += bird.spec.points
