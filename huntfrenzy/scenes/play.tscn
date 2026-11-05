@@ -1,4 +1,4 @@
-[gd_scene load_steps=20 format=3]
+[gd_scene load_steps=23 format=3]
 
 [ext_resource type="Script" path="res://scripts/play/play.gd" id="1_play"]
 [ext_resource type="PackedScene" path="res://scenes/backdrop.tscn" id="2_backdrop"]
@@ -17,6 +17,9 @@
 [ext_resource type="Script" path="res://scripts/play/pause_menu.gd" id="ctl_pause_menu"]
 [ext_resource type="Script" path="res://scripts/play/rival_controller.gd" id="ctl_rival_controller"]
 [ext_resource type="Script" path="res://scripts/play/stage_fader.gd" id="ctl_stage_fader"]
+[ext_resource type="Script" path="res://scripts/play/shot_resolver.gd" id="ctl_shot_resolver"]
+[ext_resource type="Script" path="res://scripts/play/hit_stop.gd" id="ctl_hit_stop"]
+[ext_resource type="Script" path="res://scripts/play/crosshair.gd" id="ctl_crosshair"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_empty"]
 content_margin_left = 8.0
@@ -422,8 +425,22 @@ script = ExtResource("ctl_hud_controller")
 [node name="Pause" type="Node" parent="."]
 script = ExtResource("ctl_pause_menu")
 
-[node name="RivalController" type="Node" parent="."]
+[node name="RivalController" type="Node" parent="." node_paths=PackedStringArray("play", "shaker", "feathers", "rival_sprite", "bubble")]
 script = ExtResource("ctl_rival_controller")
+play = NodePath("..")
+shaker = NodePath("../Shaker")
+feathers = NodePath("../World/Feathers")
+rival_sprite = NodePath("../World/Rival")
+bubble = NodePath("../World/Bubble")
 
 [node name="Stage" type="Node" parent="."]
 script = ExtResource("ctl_stage_fader")
+
+[node name="Shots" type="Node" parent="."]
+script = ExtResource("ctl_shot_resolver")
+
+[node name="HitStop" type="Node" parent="."]
+script = ExtResource("ctl_hit_stop")
+
+[node name="Crosshair" type="Node" parent="."]
+script = ExtResource("ctl_crosshair")

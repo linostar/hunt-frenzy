@@ -51,5 +51,5 @@ static func _record_mode(play: Play, save: SaveStore) -> Dictionary:
 static func _summary(play: Play) -> String:
 	var scoring := play.scoring
 	return "score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d" % [
-		scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, play.refused, play.escaped,
+		scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, play.shots.refused, play.escaped,
 		play.rival.stolen, play.rival.rival_score]

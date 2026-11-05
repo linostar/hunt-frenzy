@@ -11,7 +11,8 @@ extends Node
 ## (open_settings: the tree stays paused, the sounds held and the music ducked); its Back (or
 ## Escape) closes it and focuses Settings again, and the menu's toggles follow whatever it
 ## changed. Of Play (its parent) it uses only is_over(), restart(), quit(),
-## show_crosshair(), wave_note(), clock_note() and the score (scoring.score) for its logs.
+## crosshair (Crosshair.set_shown), wave_note(), clock_note() and the score (scoring.score)
+## for its logs.
 
 const SETTINGS_SCENE := preload("res://scenes/settings.tscn")
 ## The pause menu's mute toggles: the bus and whether it is on.
@@ -58,7 +59,7 @@ func _ready() -> void:
 
 
 ## Called once the run has started: the overlay may have shown before the scene existed
-## (during the fade into the run); Play.show_crosshair already kept the arrow then.
+## (during the fade into the run); Crosshair.set_shown already kept the arrow then.
 func note_rotation_at_start() -> void:
 	_rotated = not _play.is_over() and _game.screen.is_rotate_overlay_shown()
 
@@ -79,7 +80,7 @@ func open_pause(cause: String) -> void:
 	if _pause_menu.visible:
 		return
 	_pause_menu.show()
-	_play.show_crosshair(false, "paused")
+	_play.crosshair.set_shown(false, "paused")
 	_game.audio.play_sfx(&"pause")
 	_resume_button.grab_focus(true)
 	pause_log.append(cause)
@@ -98,7 +99,7 @@ func resume(cause := "Resume") -> void:
 	_game.audio.play_sfx(&"resume")
 	get_tree().paused = false
 	_game.audio.sync_audio_pause()
-	_play.show_crosshair(true)
+	_play.crosshair.set_shown(true)
 	print("[Play] Resumed (%s): %s, score %d%s" % [cause, _play.wave_note(), _play.scoring.score, _play.clock_note()])
 
 
@@ -166,7 +167,7 @@ func _on_cancel() -> void:
 func _on_rotate_overlay_changed(shown: bool) -> void:
 	if shown:
 		_rotated = not _play.is_over()
-		_play.show_crosshair(false, "rotate overlay")
+		_play.crosshair.set_shown(false, "rotate overlay")
 	elif _rotated or is_paused():
 		_rotated = false
 		open_pause("rotate overlay")
