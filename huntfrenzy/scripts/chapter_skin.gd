@@ -21,21 +21,19 @@ const SKIN_PATH := "res://art/chapter_%s_%s.svg"
 const SKIN_MARGIN := 16.0
 ## A locked button's sky and text alpha.
 const DISABLED_ALPHA := 0.45
-const INK := Color(0.122, 0.102, 0.18)
-const CREAM := Color(0.984, 0.929, 0.804)
 ## The label colour per backdrop; cream labels get an ink outline of OUTLINE_SIZE.
 const LABEL_COLORS: Dictionary[String, Color] = {
-	"dawn": Color(0.122, 0.102, 0.18),
-	"noon": Color(0.122, 0.102, 0.18),
-	"sunset": Color(0.984, 0.929, 0.804),
-	"night": Color(0.984, 0.929, 0.804),
+	"dawn": Palette.INK,
+	"noon": Palette.INK,
+	"sunset": Palette.CREAM,
+	"night": Palette.CREAM,
 }
 const OUTLINE_SIZE := 6
 
 
 ## The label colour on backdrop `backdrop_id`'s sky (ink for one without an entry).
 static func label_color(backdrop_id: String) -> Color:
-	return LABEL_COLORS.get(backdrop_id, INK)
+	return LABEL_COLORS.get(backdrop_id, Palette.INK)
 
 
 ## Dresses `button` in backdrop `backdrop_id`'s sky with the label colour that reads on it;
@@ -69,8 +67,8 @@ static func apply(button: Button, backdrop_id: String, content: Vector4) -> bool
 	for slot: StringName in [&"font_color", &"font_hover_color", &"font_pressed_color", &"font_hover_pressed_color", &"font_focus_color"]:
 		button.add_theme_color_override(slot, color)
 	button.add_theme_color_override(&"font_disabled_color", Color(color, 0.7))
-	if color == CREAM:
-		button.add_theme_color_override(&"font_outline_color", INK)
+	if color == Palette.CREAM:
+		button.add_theme_color_override(&"font_outline_color", Palette.INK)
 		button.add_theme_constant_override(&"outline_size", OUTLINE_SIZE)
 	return true
 
@@ -85,7 +83,7 @@ static func label(text: String, backdrop_id: String, font_size: int) -> Label:
 	shown.add_theme_font_size_override(&"font_size", font_size)
 	var color := label_color(backdrop_id)
 	shown.add_theme_color_override(&"font_color", color)
-	shown.add_theme_constant_override(&"outline_size", OUTLINE_SIZE if color == CREAM else 0)
+	shown.add_theme_constant_override(&"outline_size", OUTLINE_SIZE if color == Palette.CREAM else 0)
 	return shown
 
 

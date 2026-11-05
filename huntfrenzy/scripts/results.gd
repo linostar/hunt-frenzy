@@ -45,8 +45,8 @@ const TIMED_HEADING := "TIME UP"
 ## clear on the dark background behind their ink outline).
 const PASS_TEXT := "PASS"
 const FAIL_TEXT := "FAIL"
-const PASS_COLOR := Color(0.651, 0.788, 0.431)
-const FAIL_COLOR := Color(1, 0.451, 0.4)
+const PASS_COLOR := Palette.LEAF
+const FAIL_COLOR := Palette.CORAL
 ## The headings' top margin in the safe area, the padding between a level's two heading
 ## lines and the gap kept between the heading and the stars. A level's two-line heading
 ## uses the theme's ResultsLevelName (30 px) and ResultsOutcome (52 px) styles: Lilita One

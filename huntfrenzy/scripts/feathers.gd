@@ -17,16 +17,14 @@ const FEATHERS_MAX := 48
 const FEATHERS_PER_BURST := 10
 ## Each sprite's feather colours (palette entries; tests check every bird sprite has some).
 const COLORS: Dictionary[String, Array] = {
-	"goose": [Color(0.722, 0.647, 0.549), Color(0.541, 0.459, 0.376), Color(0.984, 0.929, 0.804)],
-	"armored": [Color(0.722, 0.769, 0.816), Color(0.435, 0.498, 0.58), Color(0.31, 0.365, 0.447)],
-	"splitter": [Color(0.561, 0.847, 0.784), Color(0.247, 0.655, 0.627), Color(1.0, 0.824, 0.659)],
-	"gosling": [Color(1.0, 0.929, 0.6), Color(0.949, 0.714, 0.196), Color(1.0, 0.824, 0.659)],
-	"zigzag": [Color(0.369, 0.302, 0.243), Color(0.984, 0.929, 0.804), Color(0.247, 0.655, 0.627)],
-	"golden": [Color(0.949, 0.714, 0.196), Color(1.0, 0.929, 0.6), Color(0.788, 0.541, 0.118)],
-	"decoy": [Color(0.788, 0.714, 0.894), Color(0.557, 0.424, 0.722), Color(1.0, 1.0, 1.0)],
+	"goose": [Palette.TAN, Palette.BROWN, Palette.CREAM],
+	"armored": [Palette.STEEL_LIGHT, Palette.STEEL, Palette.STEEL_DARK],
+	"splitter": [Palette.MINT, Palette.TEAL, Palette.PEACH],
+	"gosling": [Palette.PALE_GOLD, Palette.GOLD, Palette.PEACH],
+	"zigzag": [Palette.BROWN_DARK, Palette.CREAM, Palette.TEAL],
+	"golden": [Palette.GOLD, Palette.PALE_GOLD, Palette.GOLD_DARK],
+	"decoy": [Palette.LILAC, Palette.VIOLET, Palette.WHITE],
 }
-## The feathers' outline (the art's ink).
-const INK := Color(0.122, 0.102, 0.18)
 ## Launch speed (base units per second), within FAN of straight up.
 const SPEED_MIN := 160.0
 const SPEED_MAX := 320.0
@@ -134,7 +132,7 @@ func _draw() -> void:
 		var shape := Transform2D(feather.angle, feather.position + sway) * _shape
 		var fill := feather.color
 		fill.a = fade
-		var outline := INK
+		var outline := Palette.INK
 		outline.a = fade
 		draw_colored_polygon(shape, fill)
 		var closed := shape.duplicate()

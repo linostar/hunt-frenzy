@@ -15,10 +15,10 @@ extends Node2D
 ## moonlit at night. Palette colours only (art/palette.hex). Every backdrop the data shows
 ## has one (SCHEMA.md I26).
 const RIVAL_TINTS: Dictionary[String, Color] = {
-	"dawn": Color(0.984, 0.929, 0.804),
-	"noon": Color(1, 1, 1),
-	"sunset": Color(1, 0.824, 0.659),
-	"night": Color(0.553, 0.592, 0.839),
+	"dawn": Palette.CREAM,
+	"noon": Palette.WHITE,
+	"sunset": Palette.PEACH,
+	"night": Palette.PERIWINKLE,
 }
 
 ## Where the far and near layers start (World y, base units).
@@ -34,7 +34,7 @@ var id := ""
 ## The rival's tint over backdrop `backdrop_id`; white (none) for a backdrop without one,
 ## which I26 rules out for every backdrop in the data.
 static func rival_tint(backdrop_id: String) -> Color:
-	return RIVAL_TINTS.get(backdrop_id, Color(1, 1, 1))
+	return RIVAL_TINTS.get(backdrop_id, Palette.WHITE)
 
 
 ## Shows backdrop `backdrop_id`'s layers. Returns false (each missing layer reported, the
