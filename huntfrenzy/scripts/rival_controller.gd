@@ -128,7 +128,7 @@ func update_steals() -> void:
 func _start_cue(bird: Bird, eligible: int) -> void:
 	bird.set_cue(true)
 	update_pose()
-	_game.audio.play_sfx(&"rival_aim")
+	_game.audio.play_sfx(AudioManager.SFX_RIVAL_AIM)
 	var since := "no cue before" if _last_cue_end == -INF else "%.2f s since the last cue ended" % (_play.run_clock - _last_cue_end)
 	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (the longest flown of %d eligible; %s, aim gap %.2f s) (%s, rival score %d, %d stolen)" % [
 		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * _play.linger_scale, rival_lines.aim_time, eligible, since, _game.tuning.rival_aim_gap, _play.wave_note(), rival_score, stolen])
@@ -150,10 +150,10 @@ func _steal(bird: Bird) -> void:
 	bird.steal()
 	_last_cue_end = _play.run_clock
 	update_pose()
-	_game.audio.play_sfx(&"rival_steal")
-	_game.audio.play_sfx_later(&"rival_laugh", _game.tuning.rival_laugh_delay)
+	_game.audio.play_sfx(AudioManager.SFX_RIVAL_STEAL)
+	_game.audio.play_sfx_later(AudioManager.SFX_RIVAL_LAUGH, _game.tuning.rival_laugh_delay)
 	_play.burst_feathers(bird.position, bird.spec.sprite)
-	_shaker.shake("steal")
+	_shaker.shake(ScreenShake.STEAL)
 	stolen += 1
 	rival_score += bird.spec.points
 	_play.count_escape()
