@@ -7,6 +7,12 @@ extends Node
 
 ## The backdrop and weather reach this far past the visible area, so a shake never bares an edge.
 const SHAKE_MARGIN := 12.0
+## The shake causes (Play.TUNING.shakes keys), so a misspelt one fails to compile.
+const ARMORED_KILL := "armored kill"
+const GOLDEN_KILL := "golden kill"
+const DECOY_HIT := "decoy hit"
+const STEAL := "steal"
+const LOST_WAVE := "lost wave"
 
 ## The shake running: its cause, amplitude, time and how far into it (none: time 0).
 var _cause := ""

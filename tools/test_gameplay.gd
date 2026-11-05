@@ -4453,6 +4453,37 @@ func _start_run(run_seed: int, mode_id := GameState.ENDLESS_MODE) -> Play:
 	return current_scene as Play
 
 
+## Counts `play`'s hit stops from now (Play.hit_stop_started): the count is element 0.
+func _count_hit_stops(play: Play) -> Array[int]:
+	var stops: Array[int] = [0]
+	play.hit_stop_started.connect(func(_seconds: float) -> void: stops[0] += 1)
+	return stops
+
+
+## Records the pointer changes of every Play scene entering the tree from now on, connected
+## before its _ready (Play.cursor_changed): "log" holds each change's "crosshair" or
+## "arrow (<why>)", "calls" its [texture, shape, hotspot] passed to
+## Input.set_custom_mouse_cursor, both since the latest Play entered. Stop with
+## _unwatch_cursor.
+func _watch_cursor() -> Dictionary:
+	var changes: Array = []
+	var calls: Array = []
+	var record := func(shown: String, texture: Texture2D, shape: Input.CursorShape, hotspot: Vector2) -> void:
+		changes.append(shown)
+		calls.append([texture, shape, hotspot])
+	var hook := func(node: Node) -> void:
+		if node is Play:
+			changes.clear()
+			calls.clear()
+			(node as Play).cursor_changed.connect(record)
+	node_added.connect(hook)
+	return {"log": changes, "calls": calls, "hook": hook}
+
+
+func _unwatch_cursor(seen: Dictionary) -> void:
+	node_added.disconnect(seen["hook"] as Callable)
+
+
 ## Spawns a bird (a goose unless `bird_id` says otherwise) with `bird_seed` already `age`
 ## seconds into its flight (inside the field, above the grass) and waits a frame so it is
 ## placed there.
@@ -5929,13 +5960,14 @@ func _test_hit_stop() -> void:
 	var where := watcher.position
 	var from := _log.size()
 	var shot_input := play.get_node("ShotInput") as ShotInput
+	var stops := _count_hit_stops(play)
 	shot_input.shot.emit(_global(play, victim.transform * LOCAL_BODY))
-	_check(is_equal_approx(play.hit_stop_left(), _game.tuning.hit_stop_time) and _game.tuning.hit_stop_time <= 0.06 and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop (at most 0.06) that holds the other birds" % _game.tuning.hit_stop_time, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
+	_check(is_equal_approx(play.hit_stop_left(), _game.tuning.hit_stop_time) and _game.tuning.hit_stop_time <= 0.06 and stops[0] == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop (at most 0.06) that holds the other birds" % _game.tuning.hit_stop_time, "left %.3f, stops %d" % [play.hit_stop_left(), stops[0]])
 	_check_logged(from, "^\\[Play\\] Hit stop 0\\.05 s on the kill of goose #%d " % victim.number, "the hit stop is logged")
 	await process_frame
 	shot_input.shot.emit(_global(play, second.transform * LOCAL_BODY))
 	_check(not second.is_flying() and _text(play, "Score") == "%d" % play.scoring.score and play.scoring.kills == 2, "a kill during the stop scores and the HUD shows it at once", _text(play, "Score"))
-	_check(play.hit_stops == 1, "a second kill during the stop starts no second stop", "%d stops" % play.hit_stops)
+	_check(stops[0] == 1, "a second kill during the stop starts no second stop", "%d stops" % stops[0])
 	_check_logged(from, "^\\[Play\\] Hit stop for goose #%d skipped: one is running " % second.number, "the skipped stop is logged")
 	var frames := 1
 	var frozen := true
@@ -6074,6 +6106,11 @@ func _test_screen_shake() -> void:
 	for cause: String in _game.tuning.shakes:
 		var reach: float = _game.tuning.shakes[cause][0]
 		_check(reach <= ScreenShake.SHAKE_MARGIN, "the %s shake stays within the backdrop's margin" % cause, "%.1f > %.1f" % [reach, ScreenShake.SHAKE_MARGIN])
+	var causes := [ScreenShake.ARMORED_KILL, ScreenShake.GOLDEN_KILL, ScreenShake.DECOY_HIT, ScreenShake.STEAL, ScreenShake.LOST_WAVE]
+	var tuned := Play.TUNING.shakes.keys()
+	causes.sort()
+	tuned.sort()
+	_check(causes == tuned, "ScreenShake names exactly the tuned shake causes", "%s vs %s" % [causes, tuned])
 	var play := await _start_run(64)
 	var world := play.get_node("World") as Node2D
 	var bar := play.get_node("Hud/Bar") as Control
@@ -6156,7 +6193,7 @@ func _test_popup_motion() -> void:
 			var box := label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
 			outside = outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
 			await process_frame
-		var rest: float = label.get_meta(&"rest_scale")
+		var rest: float = (label as HitPopup).rest_scale
 		scales.append(rest)
 		var color := label.get_theme_color(&"font_color")
 		_check(largest > rest * 1.2 and is_equal_approx(label.scale.x, rest) and color == POPUP_COLOR, "pop-up %d '%s' bounces in past its size and settles, in the pop-up colour" % [n + 1, label.text], "largest %.2f, now %.2f, rest %.2f" % [largest, label.scale.x, rest])
@@ -6218,14 +6255,15 @@ func _test_reduce_motion_everywhere() -> void:
 	armored.set_process(false)
 	var still := true
 	var bounced := false
+	var stops := _count_hit_stops(play)
 	for shot in armored.spec.hp:
 		await _touch(_global(play, armored.transform * LOCAL_BODY))
-	_check(play.hit_stops == 1 and play.hit_stop_left() > 0.0, "the hit stop still runs", "%d stops" % play.hit_stops)
+	_check(stops[0] == 1 and play.hit_stop_left() > 0.0, "the hit stop still runs", "%d stops" % stops[0])
 	_check(feathers.live_count() == Feathers.FEATHERS_PER_BURST, "feathers still burst", "%d" % feathers.live_count())
 	var label := play.get_node("World/Popups").get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
 	for i in 30:
 		still = still and world.position == origin
-		bounced = bounced or not is_equal_approx(label.scale.x, label.get_meta(&"rest_scale"))
+		bounced = bounced or not is_equal_approx(label.scale.x, (label as HitPopup).rest_scale)
 		await process_frame
 	_check(still, "an armored kill does not shake the world", str(world.position - origin))
 	_check(not bounced, "the score pop-up does not bounce", "scaled")
@@ -6491,7 +6529,7 @@ func _test_rival_aim_gap() -> void:
 ## AC 13: the mouse pointer is the crosshair while the run is live (its texture at most
 ## 64 px a side), the arrow on pause, back to the crosshair on resume, the arrow at the
 ## run's end (the results) and on leaving Play; each change logged. The calls Play made to
-## Input.set_custom_mouse_cursor (Play.cursor_calls, recorded by its one seam) are read:
+## Input.set_custom_mouse_cursor (Play.cursor_changed, emitted by its one seam) are read:
 ## the crosshair with CURSOR_ARROW and its hotspot at the texture's centre, the reset with
 ## a null texture.
 func _test_crosshair_cursor() -> void:
@@ -6500,29 +6538,32 @@ func _test_crosshair_cursor() -> void:
 	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, size / 2.0]
 	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
 	var from := _log.size()
+	var cursor := _watch_cursor()
+	var changes: Array = cursor["log"]
+	var calls: Array = cursor["calls"]
 	var play := await _start_run(73)
-	_check(play.crosshair_shown and play.cursor_log == ["crosshair"] and play.cursor_calls == [crosshair_call], "a live run sets the crosshair, its hotspot at its centre", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.crosshair_shown and changes == ["crosshair"] and calls == [crosshair_call], "a live run sets the crosshair, its hotspot at its centre", "%s, calls %s" % [changes, calls])
 	_check_logged(from, "^\\[Play\\] Cursor: crosshair$", "the crosshair is logged")
 	play.pause.open_pause("pause button")
-	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)" and play.cursor_calls.back() == arrow_call, "the pause menu resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(not play.crosshair_shown and changes.back() == "arrow (paused)" and calls.back() == arrow_call, "the pause menu resets the pointer to the arrow", "%s, calls %s" % [changes, calls])
 	play.pause.resume()
-	_check(play.crosshair_shown and play.cursor_log.back() == "crosshair" and play.cursor_calls.back() == crosshair_call, "resuming sets the crosshair again", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.crosshair_shown and changes.back() == "crosshair" and calls.back() == crosshair_call, "resuming sets the crosshair again", "%s, calls %s" % [changes, calls])
 	await _key(KEY_ESCAPE)
-	_check(not play.crosshair_shown and play.cursor_calls.back() == arrow_call, "Escape's pause resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(not play.crosshair_shown and calls.back() == arrow_call, "Escape's pause resets the pointer to the arrow", "%s, calls %s" % [changes, calls])
 	await _key(KEY_ESCAPE)
-	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "Escape's resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.crosshair_shown and calls.back() == crosshair_call, "Escape's resume sets the crosshair", "%s, calls %s" % [changes, calls])
 	play.end_run()
-	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)" and play.cursor_calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
-	_check(play.cursor_calls.size() == 6, "every change made exactly one Input call", str(play.cursor_calls))
+	_check(not play.crosshair_shown and changes.back() == "arrow (the run is over)" and calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [changes, calls])
+	_check(calls.size() == 6, "every change made exactly one Input call", str(calls))
 	await _game.flow.transition_finished
 	_check(_game.flow.state == SceneFlow.Flow.RESULTS, "the run ended on the results", str(_game.flow.state))
 	_check_logged(from, "^\\[Play\\] Cursor: arrow \\(the run is over\\)$", "the arrow is logged with its cause")
 	play = await _start_run(74)
-	_check(play.crosshair_shown, "a new run shows the crosshair", str(play.cursor_log))
-	var calls := play.cursor_calls
+	_check(play.crosshair_shown, "a new run shows the crosshair", str(changes))
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
 	_check(calls.back() == arrow_call, "leaving Play resets the pointer to the arrow", str(calls))
+	_unwatch_cursor(cursor)
 
 
 ## Finding 3 of the PR 10 review: while the rotate overlay is up the pointer is the arrow,
@@ -6534,6 +6575,9 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, Play.CROSSHAIR.get_size() / 2.0]
 	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
 	await _open_title()
+	var cursor := _watch_cursor()
+	var changes: Array = cursor["log"]
+	var calls: Array = cursor["calls"]
 	_game.flow.goto(SceneFlow.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 77})
 	await process_frame
 	root.size = PORTRAIT_9_19_5
@@ -6541,22 +6585,23 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	await _game.flow.transition_finished
 	await process_frame
 	var play := current_scene as Play
-	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [changes, calls])
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(play.pause.is_paused() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: rotating back opens the pause menu, still the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.pause.is_paused() and not play.crosshair_shown and not crosshair_call in calls, "overlay first: rotating back opens the pause menu, still the arrow", "%s, calls %s" % [changes, calls])
 	play.pause.resume()
-	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "overlay first: Resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(play.crosshair_shown and calls.back() == crosshair_call, "overlay first: Resume sets the crosshair", "%s, calls %s" % [changes, calls])
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and play.cursor_log.back() == "arrow (rotate overlay)" and play.cursor_calls.back() == arrow_call, "mid-run: turning upright resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and changes.back() == "arrow (rotate overlay)" and calls.back() == arrow_call, "mid-run: turning upright resets the pointer to the arrow", "%s, calls %s" % [changes, calls])
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(play.pause.is_paused() and not play.crosshair_shown, "mid-run: rotating back leaves the arrow over the pause menu", str(play.cursor_log))
+	_check(play.pause.is_paused() and not play.crosshair_shown, "mid-run: rotating back leaves the arrow over the pause menu", str(changes))
 	play.pause.resume()
-	_check(play.crosshair_shown, "mid-run: Resume sets the crosshair", str(play.cursor_log))
+	_check(play.crosshair_shown, "mid-run: Resume sets the crosshair", str(changes))
+	_unwatch_cursor(cursor)
 	await _open_title()
 
 
