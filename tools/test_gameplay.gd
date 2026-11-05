@@ -328,6 +328,11 @@ func _test_tuning_values() -> void:
 		"popup_shake": 6.0, "popup_shakes": 4, "popup_shake_time": 0.32, "popup_rise": 48.0, "popup_time": 0.8,
 		"shakes": {"armored kill": [6.0, 0.25], "golden kill": [8.0, 0.3], "decoy hit": [10.0, 0.3], "steal": [7.0, 0.3], "lost wave": [12.0, 0.4]},
 		"shake_hz": 18.0, "heckle_time": 2.5, "rival_reaction_time": 1.2, "rival_aim_gap": 1.5, "rival_laugh_delay": 0.3,
+		"feather_speed_min": 160.0, "feather_speed_max": 320.0, "feather_fan": 150.0, "feather_spin": 6.0, "feather_gravity": 260.0,
+		"feather_drag": 0.12, "feather_sway": 22.0, "feather_sway_hz": 1.6, "feather_life_min": 0.9, "feather_life_max": 1.4, "feather_fade_time": 0.35,
+		"wipe_time": 0.35, "fade_time": 0.15,
+		"title_goose_gap_min": 1.6, "title_goose_gap_max": 3.0, "title_geese_max": 4, "title_first_goose_at": 0.1,
+		"title_drift_amplitude": 10.0, "title_drift_period": 24.0,
 	}
 	var names: Array[String] = []
 	for property in _game.tuning.get_property_list():
@@ -5733,7 +5738,7 @@ func _test_title_scenery_and_geese() -> void:
 	_check(float(seen) / frames >= 0.9, "a goose is in view in at least 90% of the title's frames", "%d of %d frames" % [seen, frames])
 	_check(covering.is_empty(), "no goose ever covers a title button", "; ".join(covering.slice(0, 5)))
 	_check(outside_band.is_empty(), "every goose stays inside its band", "; ".join(outside_band.slice(0, 5)))
-	_check(drift_seen > Title.DRIFT_AMPLITUDE * 0.3 and drift_seen <= Title.DRIFT_AMPLITUDE + 0.01, "the scenery drifts from side to side within its amplitude", "drift %.2f" % drift_seen)
+	_check(drift_seen > _game.tuning.title_drift_amplitude * 0.3 and drift_seen <= _game.tuning.title_drift_amplitude + 0.01, "the scenery drifts from side to side within its amplitude", "drift %.2f" % drift_seen)
 	await _open_title()
 	title = current_scene as Title
 	var again: Array[Vector2] = []
@@ -5835,16 +5840,16 @@ func _title_goose_in_view(title: Title) -> Bird:
 	return null
 
 
-## Screen changes use the marsh-grass wipe: it rises over the screen in WIPE_TIME (at most
-## 0.4 s), the scene changes under full cover, it sinks away in WIPE_TIME; the cover's own
+## Screen changes use the marsh-grass wipe: it rises over the screen in Game.tuning.wipe_time (at most
+## 0.4 s), the scene changes under full cover, it sinks away in Game.tuning.wipe_time; the cover's own
 ## colour stays invisible and it blocks touches throughout; goto still logs both ends.
-## With reduce motion a plain fade takes FADE_TIME each way and the wipe never shows
+## With reduce motion a plain fade takes Game.tuning.fade_time each way and the wipe never shows
 ## (plan ACs 3, 8).
 func _test_transition_wipe_and_fade() -> void:
 	await _open_title()
 	var cover := _game.get_node("Fade/Cover") as ColorRect
 	var wipe := _game.get_node("Fade/Cover/Wipe") as Wipe
-	_check(SceneFlow.WIPE_TIME <= 0.4 and SceneFlow.WIPE_TIME > 0.0, "the wipe takes at most 0.4 s each way", str(SceneFlow.WIPE_TIME))
+	_check(_game.tuning.wipe_time <= 0.4 and _game.tuning.wipe_time > 0.0, "the wipe takes at most 0.4 s each way", str(_game.tuning.wipe_time))
 	for reduce: bool in [false, true]:
 		_game.save.reduce_motion = reduce
 		await _open_title()
@@ -5876,7 +5881,7 @@ func _test_transition_wipe_and_fade() -> void:
 				mid_edge = wipe.edge_y()
 			if not reduce and in_frames == 1:
 				first_edge = wipe.edge_y()
-		var time := SceneFlow.FADE_TIME if reduce else SceneFlow.WIPE_TIME
+		var time := _game.tuning.fade_time if reduce else _game.tuning.wipe_time
 		var label := "reduce motion: plain fade" if reduce else "the wipe"
 		var expected_frames := roundi(time / FRAME)
 		_check(in_frames >= expected_frames and in_frames <= expected_frames + 3 and out_frames >= expected_frames and out_frames <= expected_frames + 3, "%s covers in %.2f s and clears in %.2f s" % [label, time, time], "%d frames in, %d out (expected %d)" % [in_frames, out_frames, expected_frames])
@@ -6044,7 +6049,7 @@ func _test_feathers() -> void:
 	for i in 6:
 		thrown += loose.burst(Vector2(100 + i, 100), "golden")
 	_check(thrown == 6 * Feathers.FEATHERS_PER_BURST and loose.live_count() == Feathers.FEATHERS_MAX, "bursts past the cap keep at most FEATHERS_MAX feathers alive", "%d thrown, %d alive" % [thrown, loose.live_count()])
-	for i in roundi(Feathers.FEATHER_LIFE_MAX / FRAME) + 2:
+	for i in roundi(_game.tuning.feather_life_max / FRAME) + 2:
 		await process_frame
 	_check(loose.live_count() == 0, "feathers fade out within their lifetime", "%d left" % loose.live_count())
 	_game.quiet_errors = true
