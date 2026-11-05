@@ -994,7 +994,7 @@ func _test_play_hud_layout() -> void:
 	await process_frame
 
 
-## The HUD bar never overflows. A pool of up to Play.SHELL_ICONS_MAX shells shows one icon
+## The HUD bar never overflows. A pool of up to HudController.SHELL_ICONS_MAX shells shows one icon
 ## per shell; a bigger one shows one icon and the shells left ("x11"). The largest pool
 ## modes.json can produce is max_birds x the most hits a bird the mode can spawn needs x
 ## shells_per_hit (Endless: 8 x 3 (a splitter and its 2 goslings) x 3 = 72). At that pool
@@ -1011,18 +1011,18 @@ func _test_play_hud_fits_any_pool() -> void:
 		max_pool = maxi(max_pool, Ammo.pool_size(each.max_birds * most, each.shells_per_hit))
 	_check(max_pool == 72, "the largest pool modes.json can produce is 72 shells", str(max_pool))
 	var count := play.get_node("Hud/Bar/Stats/Shells/Icons/Count") as Label
-	play.set_shell_pool(Play.SHELL_ICONS_MAX)
-	_check(_shell_icons(play) == Play.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % Play.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
-	play.set_shell_pool(Play.SHELL_ICONS_MAX + 1)
-	_check(_shell_icons(play) == 1 and count.visible and count.text == "x%d" % (Play.SHELL_ICONS_MAX + 1), "a bigger pool shows one icon and its count", "%d icons, %s" % [_shell_icons(play), count.text])
+	play.set_shell_pool(HudController.SHELL_ICONS_MAX)
+	_check(_shell_icons(play) == HudController.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % HudController.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
+	play.set_shell_pool(HudController.SHELL_ICONS_MAX + 1)
+	_check(_shell_icons(play) == 1 and count.visible and count.text == "x%d" % (HudController.SHELL_ICONS_MAX + 1), "a bigger pool shows one icon and its count", "%d icons, %s" % [_shell_icons(play), count.text])
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(count.text == "x%d" % Play.SHELL_ICONS_MAX and _shell_icons(play) == 1, "the count goes down as shells are used", count.text)
+	_check(count.text == "x%d" % HudController.SHELL_ICONS_MAX and _shell_icons(play) == 1, "the count goes down as shells are used", count.text)
 	var stats := play.get_node("Hud/Bar/Stats") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
 	(play.get_node("Hud/Bar/Stats/Empty") as Control).show()
 	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
-	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
+	for pool: int in [HudController.SHELL_ICONS_MAX, max_pool]:
 		play.scoring.score = SaveStore.SAVE_SCORE_MAX
 		play.wave.index = 999
 		play.escaped = play.mode.escape_limit
@@ -1128,15 +1128,15 @@ func _test_play_empty_pool_refuses() -> void:
 	_check(play.refused == 1 and play.scoring.shots() == shells and play.scoring.misses == shells, "a shot with no shells is refused (no shot, no miss)", "refused %d, shots %d" % [play.refused, play.scoring.shots()])
 	_check_logged(from, "^\\[Play\\] Out of shells: \\d+ flying birds flee, \\d+ still to spawn will flee \\(wave 1\\)$", "running out of shells is logged")
 	_check_logged(from, "^\\[Play\\] Shot refused at \\([\\d.]+, [\\d.]+\\): no shells left \\(wave 1 at t -?[\\d.]+, 1 refused\\)$", "the refused shot is logged")
-	_check(play.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells/Icons") as Control).modulate == Play.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.is_empty_cue_shown())
+	_check(play.hud.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells/Icons") as Control).modulate == HudController.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.hud.is_empty_cue_shown())
 	var late := play.spawn_bird("goose", 4)
 	_check(late.flee_at == 0.0, "a goose spawned with no shells flees from the start", "flee_at %.2f" % late.flee_at)
 	var multiplier := play.scoring.multiplier
 	await _touch(_global(play, SKY_POINTS[1]))
 	_check(play.refused == 2 and play.scoring.multiplier == multiplier, "a refused shot leaves the combo alone", "x%d" % play.scoring.multiplier)
-	for i in roundi(Play.EMPTY_CUE_TIME * 60.0) + 2:
+	for i in roundi(HudController.EMPTY_CUE_TIME * 60.0) + 2:
 		await process_frame
-	_check(not play.is_empty_cue_shown(), "the empty cue fades", "still shown")
+	_check(not play.hud.is_empty_cue_shown(), "the empty cue fades", "still shown")
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 3000:
 		if play.wave.index == 2:
@@ -1648,7 +1648,7 @@ func _test_time_attack_start_and_hud() -> void:
 	(play.get_node("Hud/Bar/Stats/Empty") as Control).show()
 	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
-	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
+	for pool: int in [HudController.SHELL_ICONS_MAX, max_pool]:
 		play.set_shell_pool(pool)
 		play.scoring.score = SaveStore.SAVE_SCORE_MAX
 		play.wave.index = 999
@@ -1815,7 +1815,7 @@ func _test_time_attack_lost_wave_starts_next_at_once() -> void:
 			if found != null and times[k] == "":
 				times[k] = found.get_string(1)
 	_check(times[0] != "" and times[0] == times[1] and times[1] == times[2], "the wave is lost and the next starts at the same moment the pool runs out (no dead time)", "out %s, lost %s, next %s" % times)
-	_check(_text(play, "Wave") == "2" and _shell_icons(play) == mini(play.wave.shells, Play.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
+	_check(_text(play, "Wave") == "2" and _shell_icons(play) == mini(play.wave.shells, HudController.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
 	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) (#\\d+: |skipped: cooldown)", "the lost wave draws a wave_end heckle (cooldown permitting)")
 	# Past every spawn time of wave 1 (0.9 and 1.8 s), only its first goose was ever up.
 	var most_wave_1 := 0
@@ -6287,7 +6287,7 @@ func _test_reduce_motion_everywhere() -> void:
 	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
 	play.set_shell_pool(0)
 	await _touch(_global(play, Vector2(480, 200)))
-	_check(play.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
+	_check(play.hud.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
 	_game.save.set_reduce_motion(false)
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished

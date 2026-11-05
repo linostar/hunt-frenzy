@@ -1,4 +1,4 @@
-[gd_scene load_steps=16 format=3]
+[gd_scene load_steps=17 format=3]
 
 [ext_resource type="Script" path="res://scripts/play.gd" id="1_play"]
 [ext_resource type="PackedScene" path="res://scenes/backdrop.tscn" id="2_backdrop"]
@@ -13,6 +13,7 @@
 [ext_resource type="Texture2D" path="res://art/hud_time.svg" id="12_time"]
 [ext_resource type="Texture2D" path="res://art/hud_escaped.svg" id="13_escaped"]
 [ext_resource type="Script" path="res://scripts/screen_shake.gd" id="ctl_screen_shake"]
+[ext_resource type="Script" path="res://scripts/hud_controller.gd" id="ctl_hud_controller"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_empty"]
 content_margin_left = 8.0
@@ -411,3 +412,6 @@ text = "SFX: on"
 
 [node name="Shaker" type="Node" parent="."]
 script = ExtResource("ctl_screen_shake")
+
+[node name="HudController" type="Node" parent="."]
+script = ExtResource("ctl_hud_controller")

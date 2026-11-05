@@ -137,7 +137,6 @@ const POPUP_COMBO_SCALE_MAX := 1.6
 const POPUP_SHAKE := 6.0
 const POPUP_SHAKES := 4
 const POPUP_SHAKE_TIME := 0.32
-const SHELL_TEXTURE := preload("res://art/shell.svg")
 ## The rival's rect in World (the bottom-left of the bank, on the visible bottom at 16:9);
 ## his art fills it (80x120, svg scale 3).
 const RIVAL_RECT := Rect2(16, 416, 80, 120)
@@ -168,13 +167,6 @@ const PENALTY_COLOR := Color(1.0, 0.45, 0.4)
 const DAMAGE_TEXT := "Clank!"
 const POPUP_RISE := 48.0
 const POPUP_TIME := 0.8
-const EMPTY_CUE_TIME := 0.6
-const SHELL_ICON_SIZE := Vector2(12, 28)
-## The HUD shows a pool of up to this many shells as one icon per shell (hidden as used);
-## a bigger pool (Endless reaches 72) shows one icon and the shells left ("x36"), so the
-## bar never overflows whatever the pool.
-const SHELL_ICONS_MAX := 10
-const EMPTY_TINT := Color(1.0, 0.451, 0.4)
 ## A kill that raises the combo to this multiplier or more draws a heckle.
 const COMBO_HECKLE_MIN := 3
 ## Seconds a heckle stays in the rival's bubble.
@@ -241,7 +233,6 @@ var _over := false
 ## True while the rotate overlay that showed during the run (or before it, during the
 ## transition in) has not hidden yet.
 var _rotated := false
-var _empty_tween: Tween
 ## Draws the pitch of each VARIED_SOUNDS sound (seeded in _start_run).
 var _pitch_rng := RandomNumberGenerator.new()
 var _bubble_tween: Tween
@@ -272,15 +263,6 @@ var _hit_stop_left := 0.0
 @onready var _bubble: Label = $World/Bubble
 @onready var _shot_input: ShotInput = $ShotInput
 @onready var _cancel_key: CancelKey = $CancelKey
-@onready var _bar: Control = $Hud/Bar
-@onready var _score_label: Label = $Hud/Bar/Stats/Score/Row/Value
-@onready var _wave_label: Label = $Hud/Bar/Stats/Wave/Row/Value
-@onready var _shells: HBoxContainer = $Hud/Bar/Stats/Shells/Icons
-@onready var _shell_count: Label = $Hud/Bar/Stats/Shells/Icons/Count
-@onready var _empty_label: Label = $Hud/Bar/Stats/Empty
-@onready var _time_chip: Control = $Hud/Bar/Stats/Time
-@onready var _time_label: Label = $Hud/Bar/Stats/Time/Row/Value
-@onready var _escaped_label: Label = $Hud/Bar/Stats/Escaped/Row/Value
 @onready var _pause_button: Button = $Hud/Bar/PauseButton
 @onready var _pause_menu: Control = $PauseLayer/PauseMenu
 @onready var _resume_button: Button = $PauseLayer/PauseMenu/Panel/ResumeButton
@@ -292,6 +274,7 @@ var _hit_stop_left := 0.0
 @onready var _pause_layer: CanvasLayer = $PauseLayer
 @onready var _pause_panel: Control = $PauseLayer/PauseMenu/Panel
 @onready var shaker: ScreenShake = $Shaker
+@onready var hud: HudController = $HudController
 
 
 func _ready() -> void:
@@ -356,7 +339,7 @@ func _process(frame_delta: float) -> void:
 		run_clock = next
 	wave_clock += step
 	if is_timed():
-		_time_label.text = "%d" % ceili(time_left())
+		hud.show_time_left(time_left())
 		_tick_countdown(left_before, time_left())
 		if time_left() <= 0.0:
 			_game.audio.play_sfx(&"time_up")
@@ -516,10 +499,6 @@ func settings_overlay() -> Settings:
 	return _settings
 
 
-func is_empty_cue_shown() -> bool:
-	return _empty_label.visible
-
-
 ## True while the rival raises his gun (an aim cue is on a flying bird).
 func is_rival_aiming() -> bool:
 	return _rival.texture == RIVAL_AIM
@@ -591,7 +570,7 @@ func _start_run() -> void:
 		var ends := "time limit %.2f s, no escape limit" % mode.time_limit if mode.is_timed() else "escape limit %d" % mode.escape_limit
 		print("[Play] Run start: mode %s, seed %d (%s, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
 			mode.id, run_seed, ends, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
-		_time_chip.visible = mode.is_timed()
+		hud.show_timer(mode.is_timed())
 	_start_wave(1)
 	_show_crosshair(true)
 
@@ -680,19 +659,7 @@ func _finish_backdrop_fade() -> void:
 ## shell up to SHELL_ICONS_MAX, else one icon and the count (public for tests).
 func set_shell_pool(count: int) -> void:
 	ammo = Ammo.new(count)
-	for icon in _shells.get_children():
-		if icon != _shell_count:
-			icon.free()
-	for i in count if count <= SHELL_ICONS_MAX else 1:
-		var icon := TextureRect.new()
-		icon.texture = SHELL_TEXTURE
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.custom_minimum_size = SHELL_ICON_SIZE
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_shells.add_child(icon)
-		_shells.move_child(icon, _shell_count.get_index())
-	_shell_count.visible = count > SHELL_ICONS_MAX
+	hud.show_pool(count)
 	_update_hud()
 
 
@@ -704,7 +671,7 @@ func _on_shot(at: Vector2) -> void:
 		refused += 1
 		_game.audio.play_sfx(&"empty_click")
 		print("[Play] Shot refused at (%.1f, %.1f): no shells left (wave %d at t %.2f, %d refused)" % [at.x, at.y, wave.index, wave_clock, refused])
-		_show_empty_cue()
+		hud.show_empty_cue()
 		return
 	_play_sound(&"shot")
 	var target := bird_at(point)
@@ -1162,21 +1129,6 @@ func _show_audio_settings() -> void:
 	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.save.sfx_muted else "off")
 
 
-func _show_empty_cue() -> void:
-	_empty_label.show()
-	_shells.modulate = EMPTY_TINT
-	if _empty_tween != null:
-		_empty_tween.kill()
-	_empty_tween = create_tween()
-	_empty_tween.tween_interval(EMPTY_CUE_TIME)
-	_empty_tween.tween_callback(_hide_empty_cue)
-
-
-func _hide_empty_cue() -> void:
-	_empty_label.hide()
-	_shells.modulate = Color.WHITE
-
-
 ## A pop-up of `text` in `color` centred on `point` (World coordinates), kept inside the
 ## visible area at its largest: `kind` "score" and "damage" bounce in, "combo" bounces in
 ## larger by the `multiplier`, "penalty" shakes; all rise POPUP_RISE and fade over
@@ -1223,18 +1175,11 @@ func _popup(point: Vector2, text: String, color: Color, kind: String, multiplier
 	tween.chain().tween_callback(label.queue_free)
 
 
+## Shows the run's values on the HUD.
 func _update_hud() -> void:
-	_score_label.text = "%d" % scoring.score
-	_wave_label.text = "%d/%d" % [wave.index, level.waves] if level != null else "%d" % wave.index
-	if _shell_count.visible:
-		_shell_count.text = "x%d" % ammo.shells
-	else:
-		for icon in _shells.get_children():
-			if icon != _shell_count:
-				(icon as CanvasItem).visible = icon.get_index() < ammo.shells
+	hud.show_stats(scoring.score, "%d/%d" % [wave.index, level.waves] if level != null else "%d" % wave.index, ammo.shells, _escapes())
 	if is_timed():
-		_time_label.text = "%d" % ceili(time_left())
-	_escaped_label.text = _escapes()
+		hud.show_time_left(time_left())
 
 
 ## Lays the scene out in the visible area: the base playfield centred horizontally, the
@@ -1249,8 +1194,7 @@ func _fit() -> void:
 		if backdrop != null:
 			backdrop.fit(local, GRASS_Y - GRASS_TIP)
 	_weather.fit(local)
-	_bar.position = safe.position
-	_bar.size = Vector2(safe.size.x, HUD_BAR_HEIGHT)
+	hud.fit(safe, HUD_BAR_HEIGHT)
 	var top := safe.position.y + HUD_BAR_HEIGHT
 	_shot_input.position = Vector2(shown.position.x, top)
 	_shot_input.size = Vector2(shown.size.x, shown.end.y - top)
