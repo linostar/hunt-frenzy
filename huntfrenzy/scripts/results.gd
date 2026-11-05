@@ -1,6 +1,6 @@
 class_name Results
 extends Control
-## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
+## Results screen of a finished run, from Game.flow.flow_args (the stats Play passes: score,
 ## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, rival_steals,
 ## best, new_best, save_error; a mode's run adds mode, a campaign level adds level, stars,
 ## best_stars and next_level).
@@ -16,7 +16,7 @@ extends Control
 ## rival steals) and Rival (his score, from his steals), shown only in a run with rival
 ## steals. The verdict ("you vs rival"), the pigeons hit and the rival's parting line are
 ## not shown; the [Results] log lines keep them. SaveError shows when saving failed (the
-## run's save_error, or a later Game.save_failed: a web save that browser storage did not
+## run's save_error, or a later Game.save.save_failed: a web save that browser storage did not
 ## keep). Opened without run stats, the panels show dashes.
 ## Endless: Play again (focused on arrival, ring hidden until keyboard navigation) starts
 ## a new Endless run; Title goes to the title. Time Attack ("TIME UP", no Rival panel and
@@ -27,11 +27,11 @@ extends Control
 ## without Next).
 ## Laid out in the safe area: the stars and panels are centred between the heading and
 ## the save error's slot above the buttons.
-## Sound: the rival's parting line plays his blurt (silent while Game.HECKLE_BLURTS is off)
-## (Game.play_heckle, "results"; after a run ended by his steal it waits for his laugh to
+## Sound: the rival's parting line plays his blurt (silent while AudioManager.HECKLE_BLURTS is off)
+## (Game.audio.play_heckle, "results"; after a run ended by his steal it waits for his laugh to
 ## finish); a level's earned stars each play "star", STAR_SOUND_GAP seconds apart, and a
 ## new best then plays "new_best". Each earned star pops in with its sound (a scale bounce,
-## STAR_POP_TIME; with Game.reduce_motion it just appears at the same moment), and the
+## STAR_POP_TIME; with Game.save.reduce_motion it just appears at the same moment), and the
 ## New best badge bounces with its fanfare (not with reduce motion).
 
 const NO_VALUE := "—"
@@ -110,15 +110,15 @@ var _mode: ModeSpec
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_fit()
 	_play_again_button.pressed.connect(_on_play_again_pressed)
 	_title_button.pressed.connect(_on_title_pressed)
 	_next_button.pressed.connect(_on_next_pressed)
 	_retry_button.pressed.connect(_on_retry_pressed)
 	_levels_button.pressed.connect(_on_levels_pressed)
-	_game.save_failed.connect(_show_save_error)
-	_show_stats(_game.flow_args)
+	_game.save.save_failed.connect(_show_save_error)
+	_show_stats(_game.flow.flow_args)
 
 
 ## "75%" for 3 hits in 4 shots; NO_VALUE with no shots.
@@ -178,7 +178,7 @@ func _show_stats(stats: Dictionary) -> void:
 				label.text = NO_VALUE
 			for label: Label in [_shots, _escaped]:
 				label.text = ""
-			_best.text = best_text(_game.best(GameState.ENDLESS_MODE))
+			_best.text = best_text(_game.save.best(GameState.ENDLESS_MODE))
 			_new_best.hide()
 			_rival_panel.hide()
 			_show_buttons([_play_again_button, _title_button])
@@ -224,7 +224,7 @@ func _show_stats(stats: Dictionary) -> void:
 		_heading.text = ENDLESS_HEADING
 		_show_buttons([_play_again_button, _title_button])
 	# A web save can fail during the fade here, before save_failed is connected.
-	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] or _level != null else "")
+	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save.save_error if stats["new_best"] or _level != null else "")
 	if save_error != "":
 		_show_save_error(save_error)
 	print("[Results] Score %d, accuracy %s (%d of %d shots), %d birds hit, %d escaped, %d stolen, rival score %d, %d pigeons hit, best %d%s; rival: \"%s\"" % [
@@ -242,17 +242,17 @@ func _show_stats(stats: Dictionary) -> void:
 ## The results' sounds: the rival's blurt for `rival_line` at once, then `stars` star sounds
 ## and the new best's fanfare (when `new_best`), STAR_SOUND_GAP seconds apart.
 func _play_sounds(rival_line: String, stars: int, new_best: bool) -> void:
-	_game.play_heckle("results", rival_line)
+	_game.audio.play_heckle("results", rival_line)
 	if stars == 0 and not new_best:
 		return
 	var tween := create_tween()
 	for i in stars:
 		tween.tween_interval(STAR_SOUND_GAP)
-		tween.tween_callback(_game.play_sfx.bind(&"star"))
+		tween.tween_callback(_game.audio.play_sfx.bind(&"star"))
 		tween.tween_callback(_pop_star.bind(i, stars))
 	if new_best:
 		tween.tween_interval(STAR_SOUND_GAP)
-		tween.tween_callback(_game.play_sfx.bind(&"new_best"))
+		tween.tween_callback(_game.audio.play_sfx.bind(&"new_best"))
 		tween.tween_callback(_bounce_badge)
 
 
@@ -261,9 +261,9 @@ func _pop_star(index: int, earned: int) -> void:
 	var full := _star_slots()[index].get_node("Full") as Control
 	full.show()
 	stars_popped += 1
-	last_pop_style = "plain" if _game.reduce_motion else "bounce"
-	print("[Results] Star %d of %d pops in (%s)" % [index + 1, earned, "no bounce: reduce motion" if _game.reduce_motion else "bounce"])
-	if _game.reduce_motion:
+	last_pop_style = "plain" if _game.save.reduce_motion else "bounce"
+	print("[Results] Star %d of %d pops in (%s)" % [index + 1, earned, "no bounce: reduce motion" if _game.save.reduce_motion else "bounce"])
+	if _game.save.reduce_motion:
 		full.scale = Vector2.ONE
 		return
 	full.scale = Vector2.ONE * STAR_POP_FROM
@@ -272,7 +272,7 @@ func _pop_star(index: int, earned: int) -> void:
 
 ## The New best badge's bounce with its fanfare (none with reduce motion).
 func _bounce_badge() -> void:
-	if not _game.reduce_motion and _new_best.visible:
+	if not _game.save.reduce_motion and _new_best.visible:
 		_bounce(_new_best, 1.0, BADGE_POP_SCALE)
 
 
@@ -306,7 +306,7 @@ func _show_save_error(reason: String) -> void:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	_place_heading()
@@ -341,32 +341,32 @@ func _place_heading() -> void:
 
 func _on_play_again_pressed() -> void:
 	print("[Results] Play again pressed")
-	_game.start_endless()
+	_game.flow.start_endless()
 
 
 func _on_title_pressed() -> void:
 	print("[Results] Title pressed")
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 
 
 func _on_next_pressed() -> void:
 	var next := Campaign.next_level(_level)
-	if next == null or not Campaign.is_unlocked(next, _game.progress):
+	if next == null or not Campaign.is_unlocked(next, _game.save.progress):
 		_game.report_error("Next pressed after %s, but no next level is open" % _level.id)
 		return
 	print("[Results] Next pressed: starting %s" % next.id)
-	_game.start_level(next.id)
+	_game.flow.start_level(next.id)
 
 
 func _on_retry_pressed() -> void:
 	if _level == null:
 		print("[Results] Retry pressed: starting %s again" % _mode.id)
-		_game.start_mode(_mode.id)
+		_game.flow.start_mode(_mode.id)
 		return
 	print("[Results] Retry pressed: starting %s again" % _level.id)
-	_game.start_level(_level.id)
+	_game.flow.start_level(_level.id)
 
 
 func _on_levels_pressed() -> void:
 	print("[Results] Levels pressed: opening chapter %s" % _level.chapter)
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": _level.chapter, "level": _level.id})
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": _level.chapter, "level": _level.id})

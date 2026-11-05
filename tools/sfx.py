@@ -12,12 +12,12 @@ field recordings from Wikimedia Commons; none is from any game.
 
 Sounds:
     <name>.wav              every game sound effect of EFFECTS (one generator each, its own
-                            noise seed and peak level), played through Game.play_sfx(name);
-                            the list is GameState.SFX_IDS (a test checks both agree).
+                            noise seed and peak level), played through Game.audio.play_sfx(name);
+                            the list is AudioManager.SFX_IDS (a test checks both agree).
     blurt_<timbre>_<vowel>.wav
                             one gibberish syllable of the rival's voice per timbre of
                             TIMBRES and vowel of VOWELS (a voiced source through two vowel
-                            formants); Game.play_heckle strings them into a seeded blurt,
+                            formants); Game.audio.play_heckle strings them into a seeded blurt,
                             its pitch and timbre set by the heckle's category.
     rival_laugh.wav         (one of EFFECTS) the rival's laugh after a steal: a CC0
                             recording (RECORDINGS, credited in the game).

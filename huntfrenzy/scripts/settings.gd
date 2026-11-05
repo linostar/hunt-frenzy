@@ -9,8 +9,8 @@ extends Control
 ## the finger lifts, the keys are released, or the hold is cut short: the rotate overlay,
 ## the screen closing, another touch), so the final value is never lost. The toggles and
 ## Back tap as every button does. It follows the settings whoever changes them
-## (the pause menu's mutes), through Game.audio_settings_changed and reduce_motion_changed.
-## It opens two ways: as a screen from the title's Settings button (Game.goto(SETTINGS));
+## (the pause menu's mutes), through Game.audio.audio_settings_changed and Game.save.reduce_motion_changed.
+## It opens two ways: as a screen from the title's Settings button (Game.flow.goto(SETTINGS));
 ## Back or Escape returns to the title with its Settings button focused); or over the
 ## paused run (`overlay`, set by Play before adding it: a dim layer over the run, the pause
 ## menu's panel hidden under it, the run frozen and its sounds held and ducked; Back emits
@@ -29,7 +29,7 @@ const SFX_TOGGLE_TEXT := "SFX: %s"
 const REDUCE_MOTION_TEXT := "Reduce motion: %s"
 ## The overlay's dim layer over the paused run (the screen's own background is opaque).
 const OVERLAY_DIM := Color(0.067, 0.059, 0.094, 0.85)
-## Game.flow_args "focus" the title reads to focus its Settings button again.
+## Game.flow.flow_args "focus" the title reads to focus its Settings button again.
 const TITLE_FOCUS := "settings"
 
 ## True when it is opened over the paused run (set before it enters the tree).
@@ -52,17 +52,17 @@ var _game: GameState
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
-	_game.audio_settings_changed.connect(_show)
-	_game.reduce_motion_changed.connect(_show.unbind(1))
-	_music_slider.max_value = GameState.VOLUME_MAX
-	_sfx_slider.max_value = GameState.VOLUME_MAX
+	_game.screen.screen_fit_changed.connect(_fit)
+	_game.audio.audio_settings_changed.connect(_show)
+	_game.save.reduce_motion_changed.connect(_show.unbind(1))
+	_music_slider.max_value = SaveStore.VOLUME_MAX
+	_sfx_slider.max_value = SaveStore.VOLUME_MAX
 	_music_slider.value_changed.connect(_on_volume_changed.bind(_music_slider))
 	_sfx_slider.value_changed.connect(_on_volume_changed.bind(_sfx_slider))
 	_music_slider.released.connect(_on_volume_released.bind(_music_slider))
 	_sfx_slider.released.connect(_on_volume_released.bind(_sfx_slider))
 	# The rotate overlay disables GUI input: a finger or key down then never reports its end.
-	_game.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
+	_game.screen.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
 	_reduce_motion_toggle.toggled.connect(_on_reduce_motion_toggled)
@@ -77,8 +77,8 @@ func _ready() -> void:
 	_fit()
 	_music_slider.grab_focus(true)
 	print("[Settings] Opened %s: music %d%s, sfx %d%s, reduce motion %s" % [
-		"over the paused run" if overlay else "from the title", _game.music_volume, " muted" if _game.music_muted else "",
-		_game.sfx_volume, " muted" if _game.sfx_muted else "", "on" if _game.reduce_motion else "off"])
+		"over the paused run" if overlay else "from the title", _game.save.music_volume, " muted" if _game.save.music_muted else "",
+		_game.save.sfx_volume, " muted" if _game.save.sfx_muted else "", "on" if _game.save.reduce_motion else "off"])
 
 
 ## The music slider (tests and the smoke test drive it).
@@ -89,16 +89,16 @@ func music_slider() -> TouchSlider:
 ## Shows every setting as it is now (sliders, their labels, the toggles), without
 ## re-sending a change.
 func _show() -> void:
-	_music_slider.set_value_no_signal(_game.music_volume)
-	_sfx_slider.set_value_no_signal(_game.sfx_volume)
-	_music_label.text = VOLUME_TEXT % ["Music", _game.music_volume]
-	_sfx_label.text = VOLUME_TEXT % ["SFX", _game.sfx_volume]
-	_music_toggle.set_pressed_no_signal(not _game.music_muted)
-	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.music_muted else "off")
-	_sfx_toggle.set_pressed_no_signal(not _game.sfx_muted)
-	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.sfx_muted else "off")
-	_reduce_motion_toggle.set_pressed_no_signal(_game.reduce_motion)
-	_reduce_motion_toggle.text = REDUCE_MOTION_TEXT % ("on" if _game.reduce_motion else "off")
+	_music_slider.set_value_no_signal(_game.save.music_volume)
+	_sfx_slider.set_value_no_signal(_game.save.sfx_volume)
+	_music_label.text = VOLUME_TEXT % ["Music", _game.save.music_volume]
+	_sfx_label.text = VOLUME_TEXT % ["SFX", _game.save.sfx_volume]
+	_music_toggle.set_pressed_no_signal(not _game.save.music_muted)
+	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.save.music_muted else "off")
+	_sfx_toggle.set_pressed_no_signal(not _game.save.sfx_muted)
+	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.save.sfx_muted else "off")
+	_reduce_motion_toggle.set_pressed_no_signal(_game.save.reduce_motion)
+	_reduce_motion_toggle.text = REDUCE_MOTION_TEXT % ("on" if _game.save.reduce_motion else "off")
 
 
 ## A slider moved (a key step, a touch or a drag): the bus follows at once; during a hold
@@ -107,24 +107,24 @@ func _on_volume_changed(value: float, slider: TouchSlider) -> void:
 	var held := slider.is_held()
 	var volume := int(value)
 	if slider == _music_slider:
-		if volume == _game.music_volume:
+		if volume == _game.save.music_volume:
 			return
 		print("[Settings] Music slider moved to %d%s" % [volume, " (held)" if held else ""])
-		_game.set_music_volume(volume, not held)
+		_game.audio.set_music_volume(volume, not held)
 	else:
-		if volume == _game.sfx_volume:
+		if volume == _game.save.sfx_volume:
 			return
 		print("[Settings] SFX slider moved to %d%s" % [volume, " (held)" if held else ""])
-		_game.set_sfx_volume(volume, not held)
+		_game.audio.set_sfx_volume(volume, not held)
 	if not held:
-		_game.play_sfx(&"ui_tap")
+		_game.audio.play_sfx(&"ui_tap")
 
 
 ## A slider's hold ended (`cause`): its volume is saved and the UI tap plays, once per hold.
 func _on_volume_released(value: float, cause: String, slider: TouchSlider) -> void:
 	print("[Settings] %s slider released at %d (%s); saving" % ["Music" if slider == _music_slider else "SFX", int(value), cause])
-	_game.play_sfx(&"ui_tap")
-	_game.save_game()
+	_game.audio.play_sfx(&"ui_tap")
+	_game.save.save_game()
 
 
 ## The rotate overlay showed: any slider hold ends now (its end would never arrive).
@@ -135,24 +135,24 @@ func _on_rotate_overlay_changed(shown: bool) -> void:
 
 
 func _on_music_toggled(on: bool) -> void:
-	if on == not _game.music_muted:
+	if on == not _game.save.music_muted:
 		return
 	print("[Settings] Music toggle pressed: music %s" % ("on" if on else "off"))
-	_game.set_music_muted(not on)
+	_game.audio.set_music_muted(not on)
 
 
 func _on_sfx_toggled(on: bool) -> void:
-	if on == not _game.sfx_muted:
+	if on == not _game.save.sfx_muted:
 		return
 	print("[Settings] SFX toggle pressed: sound effects %s" % ("on" if on else "off"))
-	_game.set_sfx_muted(not on)
+	_game.audio.set_sfx_muted(not on)
 
 
 func _on_reduce_motion_toggled(on: bool) -> void:
-	if on == _game.reduce_motion:
+	if on == _game.save.reduce_motion:
 		return
 	print("[Settings] Reduce motion toggle pressed: %s" % ("on" if on else "off"))
-	_game.set_reduce_motion(on)
+	_game.save.set_reduce_motion(on)
 
 
 ## Back (or Escape on the screen): the overlay closes (Play takes it from there), the
@@ -163,11 +163,11 @@ func _on_back_pressed() -> void:
 		closed.emit()
 		return
 	print("[Settings] Back pressed; returning to the title")
-	_game.goto(GameState.Flow.TITLE, {"focus": TITLE_FOCUS})
+	_game.flow.goto(SceneFlow.Flow.TITLE, {"focus": TITLE_FOCUS})
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# Anchors settle at the end of the frame; log the final rects (base units) for the

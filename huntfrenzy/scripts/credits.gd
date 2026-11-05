@@ -29,7 +29,7 @@ const LINE_FONT_SIZE := 18
 const BULLET_GAP := 6
 ## A bulleted line's indent under the line that introduces the list.
 const BULLET_INDENT := 18
-## Game.flow_args "focus" the title reads to focus its Credits button again.
+## Game.flow.flow_args "focus" the title reads to focus its Credits button again.
 const TITLE_FOCUS := "credits"
 
 var _game: GameState
@@ -43,7 +43,7 @@ var _game: GameState
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_made_by.text = MADE_BY
 	for line in LINES:
 		_lines.add_child(_line_node(line))
@@ -103,7 +103,7 @@ func _line_label(text: String) -> Label:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# Anchors settle at the end of the frame; log Back's final rect for the smoke test.
@@ -117,4 +117,4 @@ func _log_layout() -> void:
 
 func _on_back_pressed() -> void:
 	print("[Credits] Back pressed; returning to the title")
-	_game.goto(GameState.Flow.TITLE, {"focus": TITLE_FOCUS})
+	_game.flow.goto(SceneFlow.Flow.TITLE, {"focus": TITLE_FOCUS})

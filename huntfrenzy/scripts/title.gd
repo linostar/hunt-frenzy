@@ -5,11 +5,11 @@ extends Control
 ## Top Scores, Settings and Credits, laid out in the safe area (Game ScreenFit) and refitted
 ## whenever it changes. Campaign is focused on arrival (without drawing the focus ring
 ## until the player navigates by keyboard), so Enter presses it; coming back from Top
-## Scores, Settings or Credits (Game.flow_args {"focus": "top_scores" | "settings" |
+## Scores, Settings or Credits (Game.flow.flow_args {"focus": "top_scores" | "settings" |
 ## "credits"}) focuses that button instead. Left/right cycle along a row, up/down move
 ## between the rows, Tab runs through all six. Campaign opens the chapter select, Endless
-## starts an Endless run (Game.start_endless), Time Attack a Time Attack run
-## (Game.start_time_attack), Top Scores the top scores screen, Settings the settings
+## starts an Endless run (Game.flow.start_endless), Time Attack a Time Attack run
+## (Game.flow.start_time_attack), Top Scores the top scores screen, Settings the settings
 ## screen, Credits the credits screen. When Content reports errors in data/*.json, the
 ## ContentErrorBanner says so and Campaign, Endless, Time Attack, Top Scores and Settings
 ## are disabled (the save is left unread then, so there are no scores to show, and saving
@@ -20,7 +20,7 @@ extends Control
 ## GOOSE_GAP_MIN..MAX seconds, at most GEESE_MAX at once), in a band from below the top bar
 ## down to just above the first row of buttons, so a goose never covers a button. A tap on
 ## a goose (its hitbox polygon, as in play) shoots it: the shot and hit sounds, a feather
-## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while Game.HECKLE_BLURTS is off)
+## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while AudioManager.HECKLE_BLURTS is off)
 ## (cooldown permitting, as in play); it scores nothing and saves nothing, and is logged
 ## ("[Title] Shot goose #n"). A tap on empty sky plays the shot only; a tap on a button only
 ## presses it (the buttons lie above the shot surface). The scenery drifts slowly from side
@@ -100,7 +100,7 @@ var _bubble_tween: Tween
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_shot_input.shot.connect(_on_shot)
 	_set_scenery()
 	_fit()
@@ -120,7 +120,7 @@ func _ready() -> void:
 		_time_attack_button.disabled = true
 		_top_scores_button.disabled = true
 		_settings_button.disabled = true
-	match str(_game.flow_args.get("focus", "")):
+	match str(_game.flow.flow_args.get("focus", "")):
 		Settings.TITLE_FOCUS:
 			_settings_button.grab_focus(true)
 		Credits.TITLE_FOCUS:
@@ -151,12 +151,12 @@ func _set_scenery() -> void:
 		return
 	print("[Title] Scenery: backdrop %s, weather %s, a %s every %.1f-%.1f s (seed %d, at most %d), %s" % [
 		TITLE_BACKDROP, weather if weather != "" else "none", TITLE_BIRD, GOOSE_GAP_MIN, GOOSE_GAP_MAX, TITLE_SEED, GEESE_MAX,
-		"still (reduce motion)" if _game.reduce_motion else "drifting %.0f either way over %.0f s" % [DRIFT_AMPLITUDE, DRIFT_PERIOD]])
+		"still (reduce motion)" if _game.save.reduce_motion else "drifting %.0f either way over %.0f s" % [DRIFT_AMPLITUDE, DRIFT_PERIOD]])
 
 
 func _process(delta: float) -> void:
 	_clock += delta
-	_scenery.position.x = 0.0 if _game.reduce_motion else DRIFT_AMPLITUDE * sin(TAU * _clock / DRIFT_PERIOD)
+	_scenery.position.x = 0.0 if _game.save.reduce_motion else DRIFT_AMPLITUDE * sin(TAU * _clock / DRIFT_PERIOD)
 	while _goose_spec != null and _clock >= _next_goose_at:
 		if flying_geese().size() < GEESE_MAX:
 			_spawn_goose()
@@ -213,17 +213,17 @@ func _spawn_goose() -> void:
 ## A tap below the top bar that no button took: a shot. A goose under it falls with a
 ## feather burst and a rival reaction; nothing is scored or saved.
 func _on_shot(at: Vector2) -> void:
-	if _game.is_transitioning():
+	if _game.flow.is_transitioning():
 		return
 	var point := _scenery.to_local(at)
-	_game.play_sfx(&"shot")
+	_game.audio.play_sfx(&"shot")
 	var goose := goose_at(point)
 	if goose == null:
 		print("[Title] Shot at (%.1f, %.1f): missed" % [at.x, at.y])
 		return
 	goose.hit()
 	geese_shot += 1
-	_game.play_sfx(&"hit")
+	_game.audio.play_sfx(&"hit")
 	_feathers.burst(point, goose.spec.sprite)
 	print("[Title] Shot goose #%d at (%.1f, %.1f): it falls; no score, nothing saved (%d shot on the title)" % [goose.number, at.x, at.y, geese_shot])
 	_sulk_until = _clock + Play.RIVAL_REACTION_TIME
@@ -250,13 +250,13 @@ func _heckle() -> void:
 	_bubble_tween = create_tween()
 	_bubble_tween.tween_interval(Play.HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
-	_game.play_heckle(HECKLE_CATEGORY, line)
+	_game.audio.play_heckle(HECKLE_CATEGORY, line)
 	print("[Title] Heckle (%s) #%d: \"%s\"" % [HECKLE_CATEGORY, heckles, line])
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
-	var shown := _game.visible_rect()
+	var safe := _game.screen.safe_rect()
+	var shown := _game.screen.visible_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# The scenery covers the visible area plus the drift on each side.
@@ -292,34 +292,34 @@ func _log_layout() -> void:
 func _on_campaign_pressed() -> void:
 	campaign_presses += 1
 	print("[Title] Campaign pressed (%d); opening the chapter select" % campaign_presses)
-	_game.goto(GameState.Flow.CHAPTER_SELECT)
+	_game.flow.goto(SceneFlow.Flow.CHAPTER_SELECT)
 
 
 func _on_endless_pressed() -> void:
 	endless_presses += 1
 	print("[Title] Endless pressed (%d); starting Endless" % endless_presses)
-	_game.start_endless()
+	_game.flow.start_endless()
 
 
 func _on_time_attack_pressed() -> void:
 	time_attack_presses += 1
 	print("[Title] Time Attack pressed (%d); starting Time Attack" % time_attack_presses)
-	_game.start_time_attack()
+	_game.flow.start_time_attack()
 
 
 func _on_settings_pressed() -> void:
 	settings_presses += 1
 	print("[Title] Settings pressed (%d); opening the settings" % settings_presses)
-	_game.goto(GameState.Flow.SETTINGS)
+	_game.flow.goto(SceneFlow.Flow.SETTINGS)
 
 
 func _on_credits_pressed() -> void:
 	credits_presses += 1
 	print("[Title] Credits pressed (%d); opening the credits" % credits_presses)
-	_game.goto(GameState.Flow.CREDITS)
+	_game.flow.goto(SceneFlow.Flow.CREDITS)
 
 
 func _on_top_scores_pressed() -> void:
 	top_scores_presses += 1
 	print("[Title] Top Scores pressed (%d); opening the top scores" % top_scores_presses)
-	_game.goto(GameState.Flow.TOP_SCORES)
+	_game.flow.goto(SceneFlow.Flow.TOP_SCORES)

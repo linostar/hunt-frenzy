@@ -417,7 +417,7 @@ static func _music(object: Dictionary, key: String) -> String:
 	return id
 
 
-## A sound effect id, one of GameState.SFX_IDS (I25: tools/sfx.py makes each one's file and
+## A sound effect id, one of AudioManager.SFX_IDS (I25: tools/sfx.py makes each one's file and
 ## the game checks they exist at start); "" when it is missing, mistyped or unknown.
 static func _sound(object: Dictionary, key: String) -> String:
 	if not object.has(key):
@@ -426,8 +426,8 @@ static func _sound(object: Dictionary, key: String) -> String:
 		_error(key, "expected String, got %s" % type_string(typeof(object[key])))
 		return ""
 	var id: String = object[key]
-	if not StringName(id) in GameState.SFX_IDS:
-		_error(key, "unknown sound effect '%s' (I25: a call must be one of GameState.SFX_IDS)" % id)
+	if not StringName(id) in AudioManager.SFX_IDS:
+		_error(key, "unknown sound effect '%s' (I25: a call must be one of AudioManager.SFX_IDS)" % id)
 		return ""
 	return id
 

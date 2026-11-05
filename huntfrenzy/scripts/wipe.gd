@@ -1,6 +1,6 @@
 class_name Wipe
 extends Control
-## The screen-change wipe (Game.goto): a wall of marsh grass that rises from below the
+## The screen-change wipe (Game.flow.goto): a wall of marsh grass that rises from below the
 ## screen until it covers it (progress 0 -> 1), then sinks away again (1 -> 2), revealing
 ## the new screen from the top down. The grass is a solid body with a row of seeded blade
 ## tips along its top edge, in two greens over a darker back row, all palette colours.

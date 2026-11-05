@@ -1,6 +1,6 @@
 class_name Play
 extends Node2D
-## The play scene: one run of a mode (Endless or Time Attack: Game.flow_args {"mode": id,
+## The play scene: one run of a mode (Endless or Time Attack: Game.flow.flow_args {"mode": id,
 ## "seed": run seed}) or of a campaign level ({"level": id}: the level's fixed seed).
 ## Waves follow one another (Wave.for_mode, Wave.campaign): each starts WAVE_LEAD seconds before its
 ## first spawn with a fresh shell pool (Ammo). Every pressed touch on the ShotInput
@@ -19,7 +19,7 @@ extends Node2D
 ## escaped: the score is recorded (a new best is saved at once) and the results screen
 ## opens. A campaign level has no escape limit: it plays all its waves (the boss level's
 ## last one is the boss flock) and then ends on the results screen, the level's stars and
-## best recorded and saved at once (Game.record_level). In a level the chapter's backdrop
+## best recorded and saved at once (Game.save.record_level). In a level the chapter's backdrop
 ## and weather show, and the rival waits linger_time x the chapter's rival_linger_scale. In
 ## a mode each wave shows its stage (ModeSpec.stage_for: Endless walks dawn, noon, sunset,
 ## night; Time Attack stays on noon); a new backdrop cross-fades in over BACKDROP_FADE_TIME
@@ -76,14 +76,14 @@ extends Node2D
 ## "E" without a limit) pushed to the right end. Only values change (_update_hud). The
 ## combo shows on the kill pop-ups ("+N xM") and the rival's score only on the results.
 ## Pause: the pause button, Escape (CancelKey), the window or app losing focus or
-## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate
+## visibility (Godot notifications, and Game.web.page_hidden for the web page), and the rotate
 ## overlay hiding after it showed during the run (or while the menu is open) open the
 ## pause menu with the tree paused; Resume (or Escape on the open menu) continues the run
 ## unchanged, Restart starts the run again (a new run of the mode, or the same level), Quit
 ## goes to the title. The grass hides
 ## what is behind it: a shot on it (at or below GRASS_Y) hits no bird. Everything is logged with enough context
 ## (the run seed, wave times, shot positions) to replay the run.
-## Sound (Game.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
+## Sound (Game.audio.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
 ## kill of an armored bird "armored_kill", a splitter "split_pop", the run's golden bird
 ## "golden_chime"; "armored_clank" for a hit short of the bird's hp, "decoy_penalty" for the
 ## decoy, "combo_up" when the combo rises; nothing more for a miss; the shot, the plain hit
@@ -95,10 +95,10 @@ extends Node2D
 ## every rising bird on its spawn frame, a gosling at its launch; fleeing makes no sound), its call (its spec's call
 ## at its call_pitch); the rival's
 ## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
-## (Game.play_heckle; silent while Game.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
+## (Game.audio.play_heckle; silent while AudioManager.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
 ## countdown runs on run_clock, so a pause stops it. The pause menu plays "pause" and
-## "resume" and holds the run's sounds and ducks the music while open (Game.sync_audio_pause);
+## "resume" and holds the run's sounds and ducks the music while open (Game.audio.sync_audio_pause);
 ## its Music and SFX toggles mute their bus at once (saved). Its Settings button opens the
 ## settings screen over the paused run (open_settings: the tree stays paused, the sounds
 ## held and the music ducked); its Back (or Escape) closes it and focuses Settings again,
@@ -311,9 +311,9 @@ var _world_origin := Vector2.ZERO
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
-	_game.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
-	_game.page_hidden.connect(open_pause.bind("page hidden"))
+	_game.screen.screen_fit_changed.connect(_fit)
+	_game.screen.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
+	_game.web.page_hidden.connect(open_pause.bind("page hidden"))
 	_shot_input.shot.connect(_on_shot)
 	_cancel_key.triggered.connect(_on_cancel)
 	_pause_button.pressed.connect(open_pause.bind("pause button"))
@@ -323,13 +323,13 @@ func _ready() -> void:
 	_settings_button.pressed.connect(open_settings)
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
-	_game.audio_settings_changed.connect(_show_audio_settings)
+	_game.audio.audio_settings_changed.connect(_show_audio_settings)
 	_show_audio_settings()
 	_fit()
 	_start_run()
 	# The overlay may have shown before this scene existed (during the fade into the run);
 	# _show_crosshair already kept the arrow then.
-	_rotated = not _over and _game.is_rotate_overlay_shown()
+	_rotated = not _over and _game.screen.is_rotate_overlay_shown()
 
 
 ## Window and app focus or visibility loss pauses the run (notifications arrive while
@@ -374,14 +374,14 @@ func _process(frame_delta: float) -> void:
 		_time_label.text = "%d" % ceili(time_left())
 		_tick_countdown(left_before, time_left())
 		if time_left() <= 0.0:
-			_game.play_sfx(&"time_up")
+			_game.audio.play_sfx(&"time_up")
 			_end_run()
 			return
 	while _next_spawn < wave.spawns.size() and wave.spawns[_next_spawn].time <= wave_clock:
 		var spawn := wave.spawns[_next_spawn]
 		_next_spawn += 1
 		if _next_spawn == 1:
-			_game.play_sfx(&"wave_start")
+			_game.audio.play_sfx(&"wave_start")
 		var bird := spawn_bird(spawn.bird_id, spawn.bird_seed)
 		print("[Play] Spawned %s #%d (wave %d, seed %d, speed x%.3f) at t %.2f%s" % [spawn.bird_id, bird.number, wave.index, spawn.bird_seed, bird.speed_scale, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
 	_update_steals()
@@ -392,7 +392,7 @@ func _process(frame_delta: float) -> void:
 		if level != null and wave.index >= level.waves:
 			_end_run()
 			return
-		_game.play_sfx(&"wave_clear")
+		_game.audio.play_sfx(&"wave_clear")
 		_heckle("wave_end")
 		_start_wave(wave.index + 1)
 
@@ -463,18 +463,18 @@ func time_left() -> float:
 func open_pause(cause: String) -> void:
 	if _over:
 		return
-	if _game.is_transitioning():
+	if _game.flow.is_transitioning():
 		print("[Play] Pause (%s) waits for the transition to finish" % cause)
-		_game.transition_finished.connect(open_pause.bind(cause).unbind(1), CONNECT_ONE_SHOT)
+		_game.flow.transition_finished.connect(open_pause.bind(cause).unbind(1), CONNECT_ONE_SHOT)
 		return
 	get_tree().paused = true
 	# The run's sounds are held before the menu's own sound starts.
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()
 	if _pause_menu.visible:
 		return
 	_pause_menu.show()
 	_show_crosshair(false, "paused")
-	_game.play_sfx(&"pause")
+	_game.audio.play_sfx(&"pause")
 	_resume_button.grab_focus(true)
 	pause_log.append(cause)
 	print("[Play] Paused (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
@@ -489,9 +489,9 @@ func resume(cause := "Resume") -> void:
 	close_settings()
 	_pause_menu.hide()
 	# On the menu voice, while the audio is still paused, so it never takes a held sound's voice.
-	_game.play_sfx(&"resume")
+	_game.audio.play_sfx(&"resume")
 	get_tree().paused = false
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()
 	_show_crosshair(true)
 	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
 
@@ -573,7 +573,7 @@ func heckle_shown() -> String:
 
 
 func _start_run() -> void:
-	var args := _game.flow_args
+	var args := _game.flow.flow_args
 	if not args.has("mode") and not args.has("level"):
 		# Opened without a goto (the project check, the editor's Run Current Scene).
 		args = {"mode": GameState.ENDLESS_MODE, "seed": randi()}
@@ -712,12 +712,12 @@ func set_shell_pool(count: int) -> void:
 
 
 func _on_shot(at: Vector2) -> void:
-	if _over or get_tree().paused or _game.is_transitioning():
+	if _over or get_tree().paused or _game.flow.is_transitioning():
 		return
 	var point := _world.to_local(at)
 	if not ammo.use():
 		refused += 1
-		_game.play_sfx(&"empty_click")
+		_game.audio.play_sfx(&"empty_click")
 		print("[Play] Shot refused at (%.1f, %.1f): no shells left (wave %d at t %.2f, %d refused)" % [at.x, at.y, wave.index, wave_clock, refused])
 		_show_empty_cue()
 		return
@@ -733,7 +733,7 @@ func _on_shot(at: Vector2) -> void:
 		if _heckle("miss"):
 			_react(RIVAL_BRAG, "brags after the miss")
 	if ammo.is_empty():
-		_game.play_sfx(&"out_of_shells")
+		_game.audio.play_sfx(&"out_of_shells")
 		var fleeing := flying_birds()
 		for bird in fleeing:
 			bird.flee()
@@ -753,7 +753,7 @@ func _lose_wave(waiting: int) -> void:
 		if Content.bird(wave.spawns[i].bird_id).escape_counts:
 			counted += 1
 	escaped += counted
-	_game.play_sfx(&"wave_lost")
+	_game.audio.play_sfx(&"wave_lost")
 	shake("lost wave")
 	print("[Play] Wave %d lost (no shells): %d birds still to spawn skipped, %d of them counted as escaped (%s escaped), %d flying flee%s" % [
 		wave.index, waiting, counted, _escapes(), _wave_birds_flying().size(), _clock_note()])
@@ -767,14 +767,14 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	var multiplier := scoring.multiplier
 	if not target.hit():
 		scoring.damage()
-		_game.play_sfx(&"armored_clank")
+		_game.audio.play_sfx(&"armored_clank")
 		_popup(point, DAMAGE_TEXT, POPUP_COLOR, "damage")
 		print("[Play] Hit %s #%d (hit %d/%d) at (%.1f, %.1f): no points, combo x%d kept, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, multiplier, scoring.score, wave.index, wave_clock, ammo.shells])
 		return
 	var awarded := scoring.hit(target.spec.points)
 	_play_sound(_kill_sound(target.spec))
 	if scoring.multiplier > multiplier:
-		_game.play_sfx(&"combo_up")
+		_game.audio.play_sfx(&"combo_up")
 	_start_hit_stop(target)
 	_feathers.burst(point, target.spec.sprite)
 	if target.spec.hp > 1:
@@ -795,7 +795,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 ## Plays sound `id`, a VARIED_SOUNDS one at its next seeded pitch within SOUND_PITCH_SPREAD.
 func _play_sound(id: StringName) -> void:
 	var pitch := _pitch_rng.randf_range(1.0 - SOUND_PITCH_SPREAD, 1.0 + SOUND_PITCH_SPREAD) if id in VARIED_SOUNDS else 1.0
-	_game.play_sfx(id, pitch)
+	_game.audio.play_sfx(id, pitch)
 
 
 ## The sound of a kill: an armored bird's (hp above 1) last hit, a splitter bursting, the
@@ -839,7 +839,7 @@ func hit_stop_left() -> float:
 ## Shakes the world for `cause` (a SHAKES key): its amplitude and time, from now. A weaker
 ## shake never cuts a stronger one short. With reduce motion on nothing shakes. Logged.
 func shake(cause: String) -> void:
-	if _game.reduce_motion:
+	if _game.save.reduce_motion:
 		print("[Play] Shake (%s) skipped: reduce motion" % cause)
 		return
 	var amplitude: float = SHAKES[cause][0]
@@ -906,7 +906,7 @@ func _split(parent: Bird, point: Vector2) -> void:
 func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	target.hit()
 	var deducted := scoring.penalty(target.spec.penalty)
-	_game.play_sfx(&"decoy_penalty")
+	_game.audio.play_sfx(&"decoy_penalty")
 	_feathers.burst(point, target.spec.sprite)
 	shake("decoy hit")
 	_popup(point, "-%d" % deducted, PENALTY_COLOR, "penalty")
@@ -948,7 +948,7 @@ func _update_steals() -> void:
 func _start_cue(bird: Bird, eligible: int) -> void:
 	bird.set_cue(true)
 	_update_rival_pose()
-	_game.play_sfx(&"rival_aim")
+	_game.audio.play_sfx(&"rival_aim")
 	var since := "no cue before" if _last_cue_end == -INF else "%.2f s since the last cue ended" % (run_clock - _last_cue_end)
 	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (the longest flown of %d eligible; %s, aim gap %.2f s) (wave %d at t %.2f, rival score %d, %d stolen)" % [
 		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, eligible, since, RIVAL_AIM_GAP, wave.index, wave_clock, rival_score, stolen])
@@ -969,8 +969,8 @@ func _steal(bird: Bird) -> void:
 	bird.steal()
 	_last_cue_end = run_clock
 	_update_rival_pose()
-	_game.play_sfx(&"rival_steal")
-	_game.play_sfx_later(&"rival_laugh", RIVAL_LAUGH_DELAY)
+	_game.audio.play_sfx(&"rival_steal")
+	_game.audio.play_sfx_later(&"rival_laugh", RIVAL_LAUGH_DELAY)
 	_feathers.burst(bird.position, bird.spec.sprite)
 	shake("steal")
 	stolen += 1
@@ -1034,7 +1034,7 @@ func _react(pose: Texture2D, what: String) -> void:
 ## rotate overlay is up it is always the arrow (the run is paused under it, whichever came
 ## first). A change is logged and kept in cursor_log, a repeat does nothing.
 func _show_crosshair(on: bool, why := "") -> void:
-	if on and _game.is_rotate_overlay_shown():
+	if on and _game.screen.is_rotate_overlay_shown():
 		on = false
 		why = "rotate overlay"
 	if on == crosshair_shown:
@@ -1076,7 +1076,7 @@ func _heckle(category: String, blurt := true) -> bool:
 	_bubble_tween.tween_interval(HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
 	if blurt:
-		_game.play_heckle(category, line)
+		_game.audio.play_heckle(category, line)
 	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)%s" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen, "" if blurt else ", no blurt"])
 	return true
 
@@ -1086,7 +1086,7 @@ func _heckle(category: String, blurt := true) -> bool:
 func _on_bird_appeared(bird: Bird) -> void:
 	if _over:
 		return
-	_game.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
+	_game.audio.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
 	print("[Play] Call of %s #%d as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, wave %d at t %.2f%s)" % [bird.spec.id, bird.number, bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave.index, wave_clock, _clock_note()])
 
 
@@ -1117,25 +1117,25 @@ func _end_run() -> void:
 	var shots := "score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d" % [
 		scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, stolen, rival_score]
 	if level != null:
-		var new_best := _game.record_level(level, scoring.score)
-		var record: Campaign.Record = _game.progress[level.id]
+		var new_best := _game.save.record_level(level, scoring.score)
+		var record: Campaign.Record = _game.save.progress[level.id]
 		var next := Campaign.next_level(level)
-		var open_next := next.id if next != null and Campaign.is_unlocked(next, _game.progress) else ""
+		var open_next := next.id if next != null and Campaign.is_unlocked(next, _game.save.progress) else ""
 		stats.merge({"level": level.id, "stars": Campaign.stars(level, scoring.score), "best": record.score, "best_stars": record.stars,
-			"new_best": new_best, "save_error": _game.save_error, "next_level": open_next})
+			"new_best": new_best, "save_error": _game.save.save_error, "next_level": open_next})
 		print("[Play] Run end: level %s, seed %d, wave %d of %d, %s, %d stars, level best %d (%d stars)%s%s" % [
 			level.id, run_seed, wave.index, level.waves, shots, stats["stars"], record.score, record.stars, " (new best)" if new_best else "",
-			", not saved: %s" % _game.save_error if _game.save_error != "" else ""])
+			", not saved: %s" % _game.save.save_error if _game.save.save_error != "" else ""])
 	else:
-		var new_best := _game.record_best(mode, scoring.score)
-		var save_error := _game.save_error if new_best else ""
-		stats.merge({"mode": mode.id, "best": _game.best(mode.id), "new_best": new_best, "save_error": save_error})
+		var new_best := _game.save.record_best(mode, scoring.score)
+		var save_error := _game.save.save_error if new_best else ""
+		stats.merge({"mode": mode.id, "best": _game.save.best(mode.id), "new_best": new_best, "save_error": save_error})
 		var best_note := ""
 		if new_best:
 			best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
 		var time_used := ", time used %.2f of %.2f s" % [run_clock, mode.time_limit] if mode.is_timed() else ""
-		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.best(mode.id), best_note])
-	_game.goto(GameState.Flow.RESULTS, stats)
+		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.save.best(mode.id), best_note])
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
 
 
 ## Ends the run here: the world freezes, the menu closes and the tree runs again (the
@@ -1147,20 +1147,20 @@ func _stop() -> void:
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	_pause_menu.hide()
 	get_tree().paused = false
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()
 
 
 func _restart() -> void:
 	_leave("Restart")
 	if level != null:
-		_game.start_level(level.id)
+		_game.flow.start_level(level.id)
 	else:
-		_game.start_mode(mode.id)
+		_game.flow.start_mode(mode.id)
 
 
 func _quit() -> void:
 	_leave("Quit to title")
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 
 
 func _leave(cause: String) -> void:
@@ -1199,32 +1199,32 @@ func _tick_countdown(before: float, now: float) -> void:
 	for second in range(COUNTDOWN_SECONDS, 0, -1):
 		if now <= second and before > second:
 			countdown_ticks += 1
-			_game.play_sfx(&"countdown_tick")
+			_game.audio.play_sfx(&"countdown_tick")
 			print("[Play] Countdown tick %d: %d s left (%.2f s, wave %d)" % [countdown_ticks, second, now, wave.index])
 
 
 ## The pause menu's Music toggle: on plays the music, off mutes the Music bus (saved).
 func _on_music_toggled(on: bool) -> void:
-	if on == not _game.music_muted:
+	if on == not _game.save.music_muted:
 		return
 	print("[Play] Music toggle pressed: music %s" % ("on" if on else "off"))
-	_game.set_music_muted(not on)
+	_game.audio.set_music_muted(not on)
 
 
 ## The pause menu's SFX toggle: on plays the sound effects, off mutes the SFX bus (saved).
 func _on_sfx_toggled(on: bool) -> void:
-	if on == not _game.sfx_muted:
+	if on == not _game.save.sfx_muted:
 		return
 	print("[Play] SFX toggle pressed: sound effects %s" % ("on" if on else "off"))
-	_game.set_sfx_muted(not on)
+	_game.audio.set_sfx_muted(not on)
 
 
 ## Shows the mutes on the pause menu's toggles (pressed = on), whoever changed them.
 func _show_audio_settings() -> void:
-	_music_toggle.set_pressed_no_signal(not _game.music_muted)
-	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.music_muted else "off")
-	_sfx_toggle.set_pressed_no_signal(not _game.sfx_muted)
-	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.sfx_muted else "off")
+	_music_toggle.set_pressed_no_signal(not _game.save.music_muted)
+	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.save.music_muted else "off")
+	_sfx_toggle.set_pressed_no_signal(not _game.save.sfx_muted)
+	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.save.sfx_muted else "off")
 
 
 func _show_empty_cue() -> void:
@@ -1257,11 +1257,11 @@ func _popup(point: Vector2, text: String, color: Color, kind: String, multiplier
 	_popups.add_child(label)
 	var size := label.get_combined_minimum_size()
 	var rest := minf(1.0 + POPUP_COMBO_GROWTH * (multiplier - 1), POPUP_COMBO_SCALE_MAX) if kind == "combo" else 1.0
-	var still := _game.reduce_motion
+	var still := _game.save.reduce_motion
 	var largest := rest * (POPUP_BOUNCE_SCALE if not still and kind != "penalty" else 1.0)
 	# Centred on the hit, moved in so its largest size (and the shake) stays on screen,
 	# the rise included.
-	var shown := Rect2(_game.visible_rect().position - _world.position, _game.visible_rect().size)
+	var shown := Rect2(_game.screen.visible_rect().position - _world.position, _game.screen.visible_rect().size)
 	var half := size * largest / 2.0 + Vector2(POPUP_SHAKE, 0.0)
 	var centre := Vector2(clampf(point.x, shown.position.x + half.x, shown.end.x - half.x), clampf(point.y, shown.position.y + half.y + POPUP_RISE, shown.end.y - half.y))
 	label.pivot_offset = size / 2.0
@@ -1306,8 +1306,8 @@ func _update_hud() -> void:
 ## backdrop (and one fading in) and the weather across the whole visible area, the grass
 ## down to the bottom, the HUD bar at the top of the safe area and the shot surface below it.
 func _fit() -> void:
-	var shown := _game.visible_rect()
-	var safe := _game.safe_rect()
+	var shown := _game.screen.visible_rect()
+	var safe := _game.screen.safe_rect()
 	_world_origin = Vector2(shown.position.x + (shown.size.x - BASE_SIZE.x) / 2.0, shown.position.y)
 	_world.position = _world_origin
 	var local := Rect2(shown.position - _world.position, shown.size).grow(SHAKE_MARGIN)
