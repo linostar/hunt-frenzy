@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=19 format=3]
 
 [ext_resource type="Script" path="res://scripts/play.gd" id="1_play"]
 [ext_resource type="PackedScene" path="res://scenes/backdrop.tscn" id="2_backdrop"]
@@ -12,6 +12,10 @@
 [ext_resource type="Texture2D" path="res://art/hud_wave.svg" id="11_wave"]
 [ext_resource type="Texture2D" path="res://art/hud_time.svg" id="12_time"]
 [ext_resource type="Texture2D" path="res://art/hud_escaped.svg" id="13_escaped"]
+[ext_resource type="Script" path="res://scripts/screen_shake.gd" id="ctl_screen_shake"]
+[ext_resource type="Script" path="res://scripts/hud_controller.gd" id="ctl_hud_controller"]
+[ext_resource type="Script" path="res://scripts/pause_menu.gd" id="ctl_pause_menu"]
+[ext_resource type="Script" path="res://scripts/rival_controller.gd" id="ctl_rival_controller"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_empty"]
 content_margin_left = 8.0
@@ -407,3 +411,15 @@ theme_override_font_sizes/font_size = 22
 toggle_mode = true
 button_pressed = true
 text = "SFX: on"
+
+[node name="Shaker" type="Node" parent="."]
+script = ExtResource("ctl_screen_shake")
+
+[node name="HudController" type="Node" parent="."]
+script = ExtResource("ctl_hud_controller")
+
+[node name="Pause" type="Node" parent="."]
+script = ExtResource("ctl_pause_menu")
+
+[node name="RivalController" type="Node" parent="."]
+script = ExtResource("ctl_rival_controller")

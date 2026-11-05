@@ -226,13 +226,13 @@ func _on_shot(at: Vector2) -> void:
 	_game.audio.play_sfx(&"hit")
 	_feathers.burst(point, goose.spec.sprite)
 	print("[Title] Shot goose #%d at (%.1f, %.1f): it falls; no score, nothing saved (%d shot on the title)" % [goose.number, at.x, at.y, geese_shot])
-	_sulk_until = _clock + Play.RIVAL_REACTION_TIME
+	_sulk_until = _clock + RivalController.RIVAL_REACTION_TIME
 	_rival.texture = RIVAL_SULK
 	print("[Title] Rival sulks at goose #%d" % goose.number)
 	_heckle()
 
 
-## The rival grumbles a HECKLE_CATEGORY line in his bubble for Play.HECKLE_TIME with its
+## The rival grumbles a HECKLE_CATEGORY line in his bubble for RivalController.HECKLE_TIME with its
 ## blurt, unless the cooldown since his last one has not passed (logged either way).
 func _heckle() -> void:
 	if _rival_lines == null:
@@ -248,7 +248,7 @@ func _heckle() -> void:
 	if _bubble_tween != null:
 		_bubble_tween.kill()
 	_bubble_tween = create_tween()
-	_bubble_tween.tween_interval(Play.HECKLE_TIME)
+	_bubble_tween.tween_interval(RivalController.HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
 	_game.audio.play_heckle(HECKLE_CATEGORY, line)
 	print("[Title] Heckle (%s) #%d: \"%s\"" % [HECKLE_CATEGORY, heckles, line])
