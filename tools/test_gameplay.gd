@@ -1964,11 +1964,11 @@ func _test_time_attack_no_steals_no_cue() -> void:
 	var goose := await _spawn_flying(play, 160, Content.bird("goose").linger_time - 0.02)
 	var ever_cued := false
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 30:
-		ever_cued = ever_cued or goose.is_cued() or play.is_rival_aiming() or (goose.get_node("Reticle") as CanvasItem).visible
+		ever_cued = ever_cued or goose.is_cued() or play.rival.is_rival_aiming() or (goose.get_node("Reticle") as CanvasItem).visible
 		await process_frame
-	_check(not ever_cued and goose.is_flying() and play.stolen == 0 and play.rival_score == 0, "no aim cue and no steal in Time Attack", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	_check(not ever_cued and goose.is_flying() and play.rival.stolen == 0 and play.rival.rival_score == 0, "no aim cue and no steal in Time Attack", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
 	await _touch(_global(play, Vector2(480, Play.GRASS_Y + 40.0)))
-	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()), "the Time Attack rival still heckles", "'%s'" % play.heckle_shown())
+	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()), "the Time Attack rival still heckles", "'%s'" % play.rival.heckle_shown())
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
 
 
@@ -2717,13 +2717,13 @@ func _test_rival_cue_and_steal() -> void:
 	for i in 2:
 		var goose := await _spawn_flying(play, 110 + i)
 		await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.multiplier == 3 and play.heckles == 1, "two kills build x3, which heckles", "x%d, %d heckles" % [play.scoring.multiplier, play.heckles])
+	_check(play.scoring.multiplier == 3 and play.rival.heckles == 1, "two kills build x3, which heckles", "x%d, %d heckles" % [play.scoring.multiplier, play.rival.heckles])
 	var from := _log.size()
 	var bird := await _cued_bird(play, 112, "goose")
 	var linger := bird.spec.linger_time
 	var reticle := bird.get_node("Reticle") as Sprite2D
 	_check(bird.is_cued() and bird.cue_age >= linger and bird.cue_age <= linger + FRAME + 0.001, "the cue starts when the goose reaches its linger_time", "cue_age %.3f, linger %.2f" % [bird.cue_age, linger])
-	_check(reticle.visible and play.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.is_rival_aiming()])
+	_check(reticle.visible and play.rival.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.rival.is_rival_aiming()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; (no cue before|[\\d.]+ s since the last cue ended), aim gap 1\\.50 s\\) \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, the choice, the aim gap, wave, time and tallies")
 	var escaped := play.escaped
 	var cued_until := 0.0
@@ -2735,11 +2735,11 @@ func _test_rival_cue_and_steal() -> void:
 	_check(bird.stolen and not bird.is_flying() and not bird.is_cued() and not reticle.visible, "once the cue has run the rival shoots the goose", "stolen %s, state %d" % [bird.stolen, bird.state])
 	_check(cued_until >= aim - FRAME - 0.001 and cued_until <= aim + FRAME + 0.001, "the cue lasts aim_time (to the frame)", "cued %.3f s of %.2f" % [cued_until, aim])
 	_check((bird.get_node("Sprite") as Sprite2D).texture.resource_path == bird.spec.texture_path("hit"), "the stolen goose falls on its hit frame", (bird.get_node("Sprite") as Sprite2D).texture.resource_path)
-	_check(play.stolen == 1 and play.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.stolen, play.rival_score, escaped, play.escaped])
+	_check(play.rival.stolen == 1 and play.rival.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.rival.stolen, play.rival.rival_score, escaped, play.escaped])
 	_check(play.scoring.multiplier == 3, "a steal leaves the player's combo alone", "x%d" % play.scoring.multiplier)
-	_check(play.rival_score == 100 and _text(play, "Escaped") == "%d/10" % play.escaped and not play.is_rival_aiming(), "the rival scores 100, the HUD shows the escape; he lowers his gun", "rival %d, %s" % [play.rival_score, _text(play, "Escaped")])
+	_check(play.rival.rival_score == 100 and _text(play, "Escaped") == "%d/10" % play.escaped and not play.rival.is_rival_aiming(), "the rival scores 100, the HUD shows the escape; he lowers his gun", "rival %d, %s" % [play.rival.rival_score, _text(play, "Escaped")])
 	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\); he laughs in 0\\.30 s, no new cue for the 1\\.50 s aim gap$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
-	_check(Content.rival_lines().lines["steal"].has(play.heckle_shown()) and play.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.heckle_shown(), play.heckles])
+	_check(Content.rival_lines().lines["steal"].has(play.rival.heckle_shown()) and play.rival.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.rival.heckle_shown(), play.rival.heckles])
 	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\), no blurt$", "the steal heckle is logged with its category and line")
 	var number := bird.number
 	for i in 120:
@@ -2758,11 +2758,11 @@ func _test_rival_kill_during_cue() -> void:
 	_check(bird.is_cued(), "the goose is cued", "no cue")
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	_check(not bird.is_flying() and not bird.stolen and play.scoring.score == 100 and play.scoring.kills == 1, "a kill during the cue scores as usual", "score %d, stolen %s" % [play.scoring.score, bird.stolen])
-	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.is_rival_aiming()])
+	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.rival.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.rival.is_rival_aiming()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\); no new cue for the 1\\.50 s aim gap$" % bird.number, "the cancelled cue is logged with its cause and the aim gap")
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		await process_frame
-	_check(play.stolen == 0 and play.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.stolen)
+	_check(play.rival.stolen == 0 and play.rival.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.rival.stolen)
 
 
 ## A damaging hit (the armored goose's first) keeps the cue running from its start; once
@@ -2779,7 +2779,7 @@ func _test_rival_damage_keeps_cue() -> void:
 		if not armored.is_flying():
 			break
 		await process_frame
-	_check(armored.stolen and play.stolen == 1 and play.rival_score == 150, "the rival steals the damaged armored goose once the cue has run", "stolen %s, rival %d" % [armored.stolen, play.rival_score])
+	_check(armored.stolen and play.rival.stolen == 1 and play.rival.rival_score == 150, "the rival steals the damaged armored goose once the cue has run", "stolen %s, rival %d" % [armored.stolen, play.rival.rival_score])
 	_check_logged(from, "^\\[Play\\] Stolen armored #%d by the rival after a 1\\.0[0-2] s cue: 150 points to the rival" % armored.number, "the armored steal is logged")
 
 
@@ -2824,7 +2824,7 @@ func _test_rival_decoy_and_fleeing() -> void:
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		ever_cued = ever_cued or pigeon.is_cued()
 		await process_frame
-	_check(not ever_cued and pigeon.is_flying() and play.stolen == 0, "the decoy is never aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	_check(not ever_cued and pigeon.is_flying() and play.rival.stolen == 0, "the decoy is never aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
 	var goose := await _cued_bird(play, 141, "goose")
 	_check(goose.is_cued(), "the goose is cued", "no cue")
 	play.ammo.shells = 1
@@ -2832,7 +2832,7 @@ func _test_rival_decoy_and_fleeing() -> void:
 	var shot_from := _log.size()
 	await _touch(_global(play, SKY_POINTS[0]))
 	await process_frame
-	_check(goose.is_fleeing() and not goose.is_cued() and not (goose.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "a cued goose that starts fleeing drops the cue", "fleeing %s, cued %s" % [goose.is_fleeing(), goose.is_cued()])
+	_check(goose.is_fleeing() and not goose.is_cued() and not (goose.get_node("Reticle") as Sprite2D).visible and not play.rival.is_rival_aiming(), "a cued goose that starts fleeing drops the cue", "fleeing %s, cued %s" % [goose.is_fleeing(), goose.is_cued()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(fled\\) after [\\d.]+ s " % goose.number, "the dropped cue is logged with its cause")
 	var number := goose.number
 	Engine.time_scale = FAST_TIME_SCALE
@@ -2841,7 +2841,7 @@ func _test_rival_decoy_and_fleeing() -> void:
 			break
 		await process_frame
 	Engine.time_scale = 1.0
-	_check(not is_instance_valid(goose) and play.stolen == 0, "the fleeing goose escapes as before, never stolen", "stolen %d" % play.stolen)
+	_check(not is_instance_valid(goose) and play.rival.stolen == 0, "the fleeing goose escapes as before, never stolen", "stolen %d" % play.rival.stolen)
 	# Counted once: from the count at the shot, every escape or steal line since (wave birds
 	# and the fleeing decoy log theirs too) logs a total one up for a counted bird and the
 	# same for an uncounted one, the goose's included, so nothing else (the cancelled cue)
@@ -2869,24 +2869,24 @@ func _test_rival_decoy_and_fleeing() -> void:
 func _test_rival_pause_freezes_cue() -> void:
 	var play := await _start_run(66)
 	await _touch(_global(play, SKY_POINTS[0]))
-	var heckle := play.heckle_shown()
+	var heckle := play.rival.heckle_shown()
 	var goose := await _cued_bird(play, 150, "goose")
 	for i in 20:
 		await process_frame
 	var age := goose.age
 	var clock := play.run_clock
 	play.pause.open_pause("test")
-	for i in roundi(Play.HECKLE_TIME * 60.0) + 30:
+	for i in roundi(RivalController.HECKLE_TIME * 60.0) + 30:
 		await process_frame
-	_check(goose.is_cued() and goose.is_flying() and goose.age == age and play.run_clock == clock and play.stolen == 0, "a pause freezes the cue and the heckle cooldown clock", "age %.3f -> %.3f, clock %.3f -> %.3f, stolen %d" % [age, goose.age, clock, play.run_clock, play.stolen])
-	_check(heckle != "" and play.heckle_shown() == heckle, "a pause keeps the heckle on screen", "'%s'" % play.heckle_shown())
+	_check(goose.is_cued() and goose.is_flying() and goose.age == age and play.run_clock == clock and play.rival.stolen == 0, "a pause freezes the cue and the heckle cooldown clock", "age %.3f -> %.3f, clock %.3f -> %.3f, stolen %d" % [age, goose.age, clock, play.run_clock, play.rival.stolen])
+	_check(heckle != "" and play.rival.heckle_shown() == heckle, "a pause keeps the heckle on screen", "'%s'" % play.rival.heckle_shown())
 	var from := _log.size()
 	play.pause.resume()
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		if not goose.is_flying():
 			break
 		await process_frame
-	_check(goose.stolen and play.stolen == 1, "after resuming the cue runs on and the rival fires", "stolen %s" % goose.stolen)
+	_check(goose.stolen and play.rival.stolen == 1, "after resuming the cue runs on and the rival fires", "stolen %s" % goose.stolen)
 	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: " % goose.number, "the paused cue still lasted aim_time of game time")
 
 
@@ -2899,11 +2899,11 @@ func _test_rival_steals_off() -> void:
 	var goose := await _spawn_flying(play, 160, Content.bird("goose").linger_time - 0.02)
 	var ever_cued := false
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 30:
-		ever_cued = ever_cued or goose.is_cued() or play.is_rival_aiming()
+		ever_cued = ever_cued or goose.is_cued() or play.rival.is_rival_aiming()
 		await process_frame
-	_check(not ever_cued and goose.is_flying() and play.stolen == 0 and play.rival_score == 0, "with steals off no bird is aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	_check(not ever_cued and goose.is_flying() and play.rival.stolen == 0 and play.rival.rival_score == 0, "with steals off no bird is aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()), "with steals off the rival still heckles", "'%s'" % play.heckle_shown())
+	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()), "with steals off the rival still heckles", "'%s'" % play.rival.heckle_shown())
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
 	play.mode.rival_steals = true
 
@@ -2923,11 +2923,11 @@ func _test_rival_heckle_cooldown() -> void:
 			break
 		await process_frame
 	Engine.time_scale = 1.0
-	_check(play.wave.index == 2 and lines.lines["wave_end"].has(play.heckle_shown()) and play.heckles == 1, "a wave's end shows a wave_end line", "wave %d, '%s'" % [play.wave.index, play.heckle_shown()])
+	_check(play.wave.index == 2 and lines.lines["wave_end"].has(play.rival.heckle_shown()) and play.rival.heckles == 1, "a wave's end shows a wave_end line", "wave %d, '%s'" % [play.wave.index, play.rival.heckle_shown()])
 	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) #1: \".+\" \\(wave 1 at t [\\d.]+, rival score 0, 0 stolen\\)$", "the wave-end heckle is logged")
 	var skipped_at := play.run_clock
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(play.heckles == 1, "a miss inside the cooldown shows nothing", "%d heckles" % play.heckles)
+	_check(play.rival.heckles == 1, "a miss inside the cooldown shows nothing", "%d heckles" % play.rival.heckles)
 	_check_logged(from, "^\\[Play\\] Heckle \\(miss\\) skipped: cooldown, [\\d.]+ of 4\\.00 s since the last \\(wave 2 at t -?[\\d.]+, rival score 0, 0 stolen\\)$", "the skipped heckle is logged")
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
@@ -2936,14 +2936,14 @@ func _test_rival_heckle_cooldown() -> void:
 		await process_frame
 	Engine.time_scale = 1.0
 	await _touch(_global(play, SKY_POINTS[1]))
-	_check(lines.lines["miss"].has(play.heckle_shown()) and play.heckles == 2, "after the cooldown a miss shows a miss line", "'%s'" % play.heckle_shown())
+	_check(lines.lines["miss"].has(play.rival.heckle_shown()) and play.rival.heckles == 2, "after the cooldown a miss shows a miss line", "'%s'" % play.rival.heckle_shown())
 	var shown_at := play.run_clock
 	for i in 600:
-		if play.heckle_shown() == "":
+		if play.rival.heckle_shown() == "":
 			break
 		await process_frame
 	var lasted := play.run_clock - shown_at
-	_check(play.heckle_shown() == "" and absf(lasted - Play.HECKLE_TIME) <= 2.0 * FRAME, "a heckle shows for HECKLE_TIME", "%.3f s" % lasted)
+	_check(play.rival.heckle_shown() == "" and absf(lasted - RivalController.HECKLE_TIME) <= 2.0 * FRAME, "a heckle shows for HECKLE_TIME", "%.3f s" % lasted)
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
 		if play.run_clock - shown_at >= lines.cooldown:
@@ -2952,10 +2952,10 @@ func _test_rival_heckle_cooldown() -> void:
 	Engine.time_scale = 1.0
 	var goose := await _spawn_flying(play, 170)
 	await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.multiplier == 2 and play.heckles == 2, "a kill raising the combo to x2 says nothing", "x%d, %d heckles" % [play.scoring.multiplier, play.heckles])
+	_check(play.scoring.multiplier == 2 and play.rival.heckles == 2, "a kill raising the combo to x2 says nothing", "x%d, %d heckles" % [play.scoring.multiplier, play.rival.heckles])
 	goose = await _spawn_flying(play, 171)
 	await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.multiplier == 3 and lines.lines["combo"].has(play.heckle_shown()) and play.heckles == 3, "a kill raising the combo to x3 shows a combo line", "x%d, '%s'" % [play.scoring.multiplier, play.heckle_shown()])
+	_check(play.scoring.multiplier == 3 and lines.lines["combo"].has(play.rival.heckle_shown()) and play.rival.heckles == 3, "a kill raising the combo to x3 shows a combo line", "x%d, '%s'" % [play.scoring.multiplier, play.rival.heckle_shown()])
 	_check_logged(from, "^\\[Play\\] Heckle \\(combo\\) #3: \".+\" ", "the combo heckle is logged")
 	play.mode.rival_steals = true
 
@@ -3004,7 +3004,7 @@ func _test_rival_layout_and_pass_through() -> void:
 
 
 
-## The rival's footprint (art polish): his rect is Play.RIVAL_RECT (80x120 at the
+## The rival's footprint (art polish): his rect is RivalController.RIVAL_RECT (80x120 at the
 ## bottom-left of the bank), its top at or below the fringe's top (GRASS_Y - GRASS_TIP:
 ## no art over the field) and inside the visible area; each pose's art has the rect's
 ## aspect (it fills it, nothing letterboxed off its feet), stands on its bottom edge and
@@ -3016,10 +3016,10 @@ func _test_rival_footprint_and_poses() -> void:
 	var rival := play.get_node("World/Rival") as TextureRect
 	var world := play.get_node("World") as Node2D
 	var rect := Rect2(world.to_local(rival.get_global_rect().position), rival.size)
-	_check(rect.is_equal_approx(Play.RIVAL_RECT) and Play.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
+	_check(rect.is_equal_approx(RivalController.RIVAL_RECT) and RivalController.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
 	_check(rect.position.y >= Play.GRASS_Y - Play.GRASS_TIP and rect.position.x >= 0.0 and rect.end.y <= 540.0, "none of the rival's rect is above the fringe's top (y 416) or off the screen", str(rect))
 	var tops: Dictionary[String, Vector2i] = {}
-	for pose: Texture2D in [Play.RIVAL_IDLE, Play.RIVAL_AIM, Play.RIVAL_SULK, Play.RIVAL_BRAG]:
+	for pose: Texture2D in [RivalController.RIVAL_IDLE, RivalController.RIVAL_AIM, RivalController.RIVAL_SULK, RivalController.RIVAL_BRAG]:
 		var image := pose.get_image()
 		var size := image.get_size()
 		var file := pose.resource_path.get_file()
@@ -3036,7 +3036,7 @@ func _test_rival_footprint_and_poses() -> void:
 				break
 		tops[file] = top
 	var aim := tops["rival_aim.svg"]
-	var width := Play.RIVAL_AIM.get_width()
+	var width := RivalController.RIVAL_AIM.get_width()
 	_check(aim.x * 3 >= width * 2, "the aim pose's highest art is the gun's muzzle, in the right third", "%s of %d" % [aim, width])
 	for file: String in ["rival_idle.svg", "rival_sulk.svg", "rival_brag.svg"]:
 		_check(tops[file].x * 3 < width * 2, "%s's highest art is his hat, not a raised gun" % file, str(tops[file]))
@@ -3071,34 +3071,34 @@ func _test_rival_lit_per_backdrop() -> void:
 func _test_rival_poses() -> void:
 	var play := await _start_run(70)
 	play.mode.rival_steals = false
-	_check(play.rival_pose() == "idle", "the rival stands idle at the start", play.rival_pose())
+	_check(play.rival.rival_pose() == "idle", "the rival stands idle at the start", play.rival.rival_pose())
 	var from := _log.size()
 	var goose := await _spawn_flying(play, 180)
 	await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.kills == 1 and play.rival_pose() == "sulk", "a scored kill makes the rival sulk", "%d kills, %s" % [play.scoring.kills, play.rival_pose()])
+	_check(play.scoring.kills == 1 and play.rival.rival_pose() == "sulk", "a scored kill makes the rival sulk", "%d kills, %s" % [play.scoring.kills, play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival sulks at the 100 points on goose #%d \\(wave 1 at t -?[\\d.]+\\)$" % goose.number, "the sulk is logged with the points and the bird")
 	var since := play.run_clock
-	for i in roundi(Play.RIVAL_REACTION_TIME * 60.0) + 10:
-		if play.rival_pose() != "sulk":
+	for i in roundi(RivalController.RIVAL_REACTION_TIME * 60.0) + 10:
+		if play.rival.rival_pose() != "sulk":
 			break
 		await process_frame
 	var lasted := play.run_clock - since
-	_check(play.rival_pose() == "idle" and absf(lasted - Play.RIVAL_REACTION_TIME) <= 2.0 * FRAME, "the sulk lasts RIVAL_REACTION_TIME, then he stands idle", "%s after %.3f s" % [play.rival_pose(), lasted])
+	_check(play.rival.rival_pose() == "idle" and absf(lasted - RivalController.RIVAL_REACTION_TIME) <= 2.0 * FRAME, "the sulk lasts RIVAL_REACTION_TIME, then he stands idle", "%s after %.3f s" % [play.rival.rival_pose(), lasted])
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()) and play.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.heckle_shown(), play.rival_pose()])
+	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()) and play.rival.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.rival.heckle_shown(), play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival brags after the miss \\(wave 1 at t -?[\\d.]+\\)$", "the brag is logged")
-	for i in roundi(Play.RIVAL_REACTION_TIME * 60.0) + 10:
-		if play.rival_pose() == "idle":
+	for i in roundi(RivalController.RIVAL_REACTION_TIME * 60.0) + 10:
+		if play.rival.rival_pose() == "idle":
 			break
 		await process_frame
-	var heckles := play.heckles
+	var heckles := play.rival.heckles
 	await _touch(_global(play, SKY_POINTS[1]))
-	_check(play.heckles == heckles and play.rival_pose() == "idle", "a miss inside the heckle cooldown (no line) draws no brag", "%d heckles, %s" % [play.heckles, play.rival_pose()])
+	_check(play.rival.heckles == heckles and play.rival.rival_pose() == "idle", "a miss inside the heckle cooldown (no line) draws no brag", "%d heckles, %s" % [play.rival.heckles, play.rival.rival_pose()])
 	play.mode.rival_steals = true
 	var cued := await _cued_bird(play, 181, "goose")
 	var other := await _spawn_flying(play, 182)
 	await _touch(_global(play, other.transform * LOCAL_BODY))
-	_check(cued.is_cued() and not other.is_flying() and play.rival_pose() == "aim", "an aim cue raises his gun over the sulk", "cued %s, %s" % [cued.is_cued(), play.rival_pose()])
+	_check(cued.is_cued() and not other.is_flying() and play.rival.rival_pose() == "aim", "an aim cue raises his gun over the sulk", "cued %s, %s" % [cued.is_cued(), play.rival.rival_pose()])
 
 
 ## The weather is visual only (AC 6): the same seeded run gives the same bird positions,
@@ -4700,9 +4700,9 @@ func _test_audio_music_per_screen() -> void:
 ## buttons, the results.
 func _test_audio_every_event_sound() -> void:
 	var play := await _start_run(85)
-	var cooldown := play.rival_lines.cooldown
+	var cooldown := play.rival.rival_lines.cooldown
 	# Only the first heckle shows, so each shot's sounds are exact.
-	play.rival_lines.cooldown = 1000.0
+	play.rival.rival_lines.cooldown = 1000.0
 	var heard: Array[StringName] = []
 	for i in 120:
 		_game.audio.sfx_log.clear()
@@ -4746,7 +4746,7 @@ func _test_audio_every_event_sound() -> void:
 		if cued.stolen:
 			break
 		await process_frame
-	var line := play.heckle_shown()
+	var line := play.rival.heckle_shown()
 	# The stolen bird falls off the screen and frees itself while the laugh is awaited.
 	var was_stolen := cued.stolen
 	var waited := 0
@@ -4754,7 +4754,7 @@ func _test_audio_every_event_sound() -> void:
 		await process_frame
 		waited += 1
 	_check(was_stolen and _game.audio.sfx_log.count(&"rival_steal") == 1 and _game.audio.sfx_log.count(&"rival_laugh") == 1 and _game.audio.sfx_log.find(&"rival_steal") < _game.audio.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.audio.sfx_log))
-	_check(absi(waited - roundi(Play.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
+	_check(absi(waited - roundi(RivalController.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
 	_check(line != "" and not &"heckle_steal" in _game.audio.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.audio.sfx_log])
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
@@ -4766,7 +4766,7 @@ func _test_audio_every_event_sound() -> void:
 	_game.audio.sfx_log.clear()
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Control)
 	_check(_game.audio.sfx_log.count(&"resume") == 1 and not &"ui_tap" in _game.audio.sfx_log, "Resume plays resume (no tap)", str(_game.audio.sfx_log))
-	play.rival_lines.cooldown = cooldown
+	play.rival.rival_lines.cooldown = cooldown
 	# A wave cleared: wave 1 of a new run, both geese shot as soon as they rise.
 	play = await _start_run(86)
 	var cleared := false
@@ -4847,7 +4847,7 @@ func _test_audio_heckle_blurts() -> void:
 	var muted_from := _log.size()
 	_game.audio.sfx_log.clear()
 	(muted.get_node("ShotInput") as ShotInput).shot.emit(_global(muted, SKY_POINTS[0]))
-	var muted_line := muted.heckle_shown()
+	var muted_line := muted.rival.heckle_shown()
 	_check(muted_line != "" and _game.audio.sfx_log == [&"shot"] and _game.audio.blurt_syllables_waiting() == 0, "with blurts off a miss heckle shows its line and plays no blurt", "%s, %d waiting for \"%s\"" % [_game.audio.sfx_log, _game.audio.blurt_syllables_waiting(), muted_line])
 	_check_logged(muted_from, "^\\[Audio\\] Heckle blurt muted \\(HECKLE_BLURTS off\\) for heckle_miss: \".+\"$", "the muted blurt is logged")
 	_check(not Array(_log.since(muted_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_")), "no heckle sound is logged with blurts off", "")
@@ -4857,7 +4857,7 @@ func _test_audio_heckle_blurts() -> void:
 	var from := _log.size()
 	_game.audio.sfx_log.clear()
 	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, SKY_POINTS[0]))
-	var shown := play.heckle_shown()
+	var shown := play.rival.heckle_shown()
 	var words := mini(shown.split(" ", false).size(), AudioManager.BLURT_SYLLABLES_MAX)
 	_check(shown != "" and &"heckle_miss" in _game.audio.sfx_log and _game.audio.blurt_syllables_waiting() == words, "a miss heckle plays its blurt, one syllable per word", "%s, %d waiting for \"%s\"" % [_game.audio.sfx_log, _game.audio.blurt_syllables_waiting(), shown])
 	var blurt_lines := Array(_log.since(from)).filter(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_miss: %d syllables (nasal_" % words) and entry.ends_with(" for \"%s\"" % shown))
@@ -6284,7 +6284,7 @@ func _test_reduce_motion_everywhere() -> void:
 	_check(world.position == origin, "no shake at all, whatever the cause", str(world.position - origin))
 	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\) skipped: reduce motion$", "a skipped shake is logged")
 	var cued := await _cued_bird(play, 26, "goose")
-	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
+	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.rival.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
 	play.set_shell_pool(0)
 	await _touch(_global(play, Vector2(480, 200)))
 	_check(play.hud.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
@@ -6479,7 +6479,7 @@ func _test_rival_one_cue_at_a_time() -> void:
 			break
 	_check(older.stolen and most_cues == 1 and not younger_cued, "with two geese eligible the rival aims only at the one flown longest, and steals it", "stolen %s, at most %d cues at once, the younger cued %s" % [older.stolen, most_cues, younger_cued])
 	var steal_clock := play.run_clock
-	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < Play.RIVAL_AIM_GAP - 2.0 * FRAME:
+	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < RivalController.RIVAL_AIM_GAP - 2.0 * FRAME:
 		younger_cued = younger_cued or younger.is_cued()
 		await process_frame
 	_check(not younger_cued, "after a steal no new cue starts during the aim gap", "the younger goose was cued %.2f s after the steal" % (play.run_clock - steal_clock))
@@ -6518,11 +6518,11 @@ func _test_rival_aim_gap() -> void:
 			play.pause.resume()
 		await process_frame
 		frames += 1
-		if waiting.is_cued() and play.run_clock - cancel_clock < Play.RIVAL_AIM_GAP:
+		if waiting.is_cued() and play.run_clock - cancel_clock < RivalController.RIVAL_AIM_GAP:
 			early = true
 	var waited := play.run_clock - cancel_clock
-	_check(waiting.is_cued() and not early and waited < Play.RIVAL_AIM_GAP + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % Play.RIVAL_AIM_GAP, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
-	_check(frames + paused_frames > roundi(Play.RIVAL_AIM_GAP / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
+	_check(waiting.is_cued() and not early and waited < RivalController.RIVAL_AIM_GAP + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % RivalController.RIVAL_AIM_GAP, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
+	_check(frames + paused_frames > roundi(RivalController.RIVAL_AIM_GAP / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; 1\\.5\\d s since the last cue ended, aim gap 1\\.50 s\\) " % waiting.number, "the cue after the gap logs the time since the last cue and the gap")
 	await _open_title()
 
@@ -6550,7 +6550,7 @@ func _test_crosshair_cursor() -> void:
 	_check(not play.crosshair_shown and play.cursor_calls.back() == arrow_call, "Escape's pause resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	await _key(KEY_ESCAPE)
 	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "Escape's resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
-	play._end_run()
+	play.end_run()
 	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)" and play.cursor_calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	_check(play.cursor_calls.size() == 6, "every change made exactly one Input call", str(play.cursor_calls))
 	await _game.flow.transition_finished
@@ -6668,7 +6668,7 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 	while not &"rival_laugh" in _game.audio.sfx_log and after < 120:
 		await process_frame
 		after += 1
-	var rest := roundi(Play.RIVAL_LAUGH_DELAY / FRAME) - before
+	var rest := roundi(RivalController.RIVAL_LAUGH_DELAY / FRAME) - before
 	_check(absi(after - rest) <= 2 and _game.audio.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
 	await _open_title()
 

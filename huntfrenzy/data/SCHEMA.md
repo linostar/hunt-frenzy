@@ -50,7 +50,7 @@ them so they match. Do not leave the code working around the difference.
   rival's tally, and it counts as an escape (toward `escape_limit`); a stolen splitter launches no children, and the
   player's combo is untouched. Killing it during the cue saves it (a damaging hit does not); a bird that starts fleeing
   drops its cue. He aims at one bird at a time: while a cue runs no other starts, and after a cue ends (a steal or a
-  cancel) the next waits `Play.RIVAL_AIM_GAP` (1.5 s of run time; a pause does not count). He only starts a cue on a
+  cancel) the next waits `RivalController.RIVAL_AIM_GAP` (1.5 s of run time; a pause does not count). He only starts a cue on a
   bird with at least `aim_time` left before it flees (`min(flee_time, the age its shells ran out)` minus its age), so
   a cue he starts always finishes unless the wave's shells run out. Among the birds he may aim at, the cue goes to the
   one that has flown longest (the lower bird number on a tie). With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
@@ -82,7 +82,7 @@ them so they match. Do not leave the code working around the difference.
   bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
   `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds: a layered meadow
   tile, static, lit per chapter, I27). The rival (`rival_<idle|aim|brag|sulk>.svg`, 80x120, svg scale 3) stands on
-  the bank at `Play.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
+  the bank at `RivalController.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
   the art comes from `art/palette.hex` (`tools/check_palette.gd`).
 
 ---
@@ -262,7 +262,7 @@ against a fallback value.
   `flee_time`: `linger_time x 1` in each mode with `rival_steals`, and `linger_time x rival_linger_scale` in each chapter
   (the campaign always steals); so a bird the rival is free to aim at once it lingers can be cued and stolen before it
   flees on its own. A cue he starts always finishes (he never starts one with less than `aim_time` left), but with one
-  cue at a time and `Play.RIVAL_AIM_GAP` after each, a bird waiting behind another cue or the gap may run out of time
+  cue at a time and `RivalController.RIVAL_AIM_GAP` after each, a bird waiting behind another cue or the gap may run out of time
   and escape un-cued. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
   `data/birds.json [<id>] linger_time: <linger> x <scale> (<modes and chapters>) + aim_time <aim> is not under flee_time
   <flee> (I13: ...)`.
