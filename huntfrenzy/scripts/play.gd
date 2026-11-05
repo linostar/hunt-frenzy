@@ -56,7 +56,7 @@ extends Node2D
 ##   pause.open_pause);
 ## - shaker (ScreenShake, Play/Shaker): the world's screen shake.
 ## The grass hides
-## what is behind it: a shot on it (at or below GRASS_Y) hits no bird. Everything is logged with enough context
+## what is behind it: a shot on it (at or below Layout.GRASS_Y) hits no bird. Everything is logged with enough context
 ## (the run seed, wave times, shot positions) to replay the run.
 ## Sound (Game.audio.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
 ## kill of an armored bird "armored_kill", a splitter "split_pop", the run's golden bird
@@ -107,17 +107,6 @@ const POPUP_SHAKES := 4
 const POPUP_SHAKE_TIME := 0.32
 ## The mouse pointer while the run is live (64x64 at most; its hotspot is its centre).
 const CROSSHAIR := preload("res://art/crosshair.svg")
-## The 960x540 base the playfield is laid out in.
-const BASE_SIZE := Vector2(960, 540)
-const HUD_BAR_HEIGHT := 56.0
-## The grass line: the backdrop's grass is solid from here down (_fit places it so), birds rise from
-## behind it, and a shot at or below it hits no bird (bird_at).
-const GRASS_Y := 440.0
-## How far the grass tile's blade tips reach above the grass line (the tile's solid part starts
-## this far below its top).
-const GRASS_TIP := 24.0
-## Where birds fly (World coordinates): below the HUD bar, above the grass line.
-const FIELD := Rect2(0, HUD_BAR_HEIGHT, 960, GRASS_Y - HUD_BAR_HEIGHT)
 ## Seconds between a wave's start and its first spawn.
 const WAVE_LEAD := 1.0
 ## Seconds a new backdrop takes to fade in over the old one (within a wave's lead-in).
@@ -303,7 +292,7 @@ func spawn_bird(bird_id: String, bird_seed: int, from := Flight.NOT_LAUNCHED, he
 	_spawned += 1
 	var bird := BIRD_SCENE.instantiate() as Bird
 	var speed_scale := wave.speed_scale * Flight.speed_factor(bird_seed, wave.speed_scale)
-	bird.setup(Content.bird(bird_id), _spawned, bird_seed, speed_scale, FIELD, ammo.is_empty(), from, heading)
+	bird.setup(Content.bird(bird_id), _spawned, bird_seed, speed_scale, Layout.FIELD, ammo.is_empty(), from, heading)
 	bird.wave_index = wave.index
 	bird.escaped.connect(_on_bird_escaped)
 	bird.appeared.connect(_on_bird_appeared)
@@ -334,10 +323,10 @@ func _wave_birds_flying() -> Array[Bird]:
 
 
 ## The frontmost (latest spawned, drawn on top) flying bird whose hitbox holds `point`
-## (World coordinates), or null. A point on the grass (at or below GRASS_Y) hits nothing:
+## (World coordinates), or null. A point on the grass (at or below Layout.GRASS_Y) hits nothing:
 ## the grass is drawn over the birds behind it.
 func bird_at(point: Vector2) -> Bird:
-	if point.y >= GRASS_Y:
+	if point.y >= Layout.GRASS_Y:
 		return null
 	var flying := flying_birds()
 	for i in range(flying.size() - 1, -1, -1):
@@ -864,13 +853,13 @@ func update_hud() -> void:
 func _fit() -> void:
 	var shown := _game.screen.visible_rect()
 	var safe := _game.screen.safe_rect()
-	shaker.set_origin(Vector2(shown.position.x + (shown.size.x - BASE_SIZE.x) / 2.0, shown.position.y))
+	shaker.set_origin(Vector2(shown.position.x + (shown.size.x - Layout.BASE_SIZE.x) / 2.0, shown.position.y))
 	var local := Rect2(shown.position - _world.position, shown.size).grow(ScreenShake.SHAKE_MARGIN)
 	for backdrop: Backdrop in [_backdrop, _next_backdrop]:
 		if backdrop != null:
-			backdrop.fit(local, GRASS_Y - GRASS_TIP)
+			backdrop.fit(local, Layout.GRASS_Y - Layout.GRASS_TIP)
 	_weather.fit(local)
-	hud.fit(safe, HUD_BAR_HEIGHT)
-	var top := safe.position.y + HUD_BAR_HEIGHT
+	hud.fit(safe, Layout.HUD_BAR_HEIGHT)
+	var top := safe.position.y + Layout.HUD_BAR_HEIGHT
 	_shot_input.position = Vector2(shown.position.x, top)
 	_shot_input.size = Vector2(shown.size.x, shown.end.y - top)

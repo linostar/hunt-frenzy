@@ -1,8 +1,8 @@
 class_name RivalController
 extends Node
-## Play/RivalController: the rival hunter (World/Rival, data/rival_lines.json; RIVAL_RECT) and
+## Play/RivalController: the rival hunter (World/Rival, data/rival_lines.json; Layout.RIVAL_RECT) and
 ## his speech bubble (World/Bubble). He stands on the bank in the grass band (at or below the
-## fringe's top, Play.GRASS_Y - Play.GRASS_TIP, so he never covers the field; he and his bubble
+## fringe's top, Layout.GRASS_Y - Layout.GRASS_TIP, so he never covers the field; he and his bubble
 ## ignore touches, so a shot anywhere hits as before), lit by the backdrop's tint
 ## (Backdrop.rival_tint, cross-fading with it: light, fade_light). In a run with steals
 ## (Play.steals_on), every frame update_steals asks Rival.steal_state about each flying bird:
@@ -23,9 +23,6 @@ extends Node
 ## brags for as long after a miss heckle that showed, else he stands idle. Cues, poses and the
 ## cooldown run on Play.run_clock, so a pause freezes them.
 
-## The rival's rect in World (the bottom-left of the bank, on the visible bottom at 16:9);
-## his art fills it (80x120, svg scale 3).
-const RIVAL_RECT := Rect2(16, 416, 80, 120)
 const RIVAL_IDLE := preload("res://art/rival_idle.svg")
 const RIVAL_AIM := preload("res://art/rival_aim.svg")
 const RIVAL_SULK := preload("res://art/rival_sulk.svg")

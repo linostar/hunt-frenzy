@@ -51,8 +51,11 @@ const DRIFT_AMPLITUDE := 10.0
 const DRIFT_PERIOD := 24.0
 ## The rival's lines for a goose shot on the title (a grumble at the player's luck).
 const HECKLE_CATEGORY := "combo"
-## The rival stands this far in from the safe area's left and above its bottom.
-const RIVAL_INSET := Vector2(16, 124)
+## The rival stands this far in from the safe area's left and above its bottom: where he
+## stands in a run (Layout.RIVAL_RECT) on the 16:9 base.
+const RIVAL_INSET := Vector2(Layout.RIVAL_RECT.position.x, Layout.BASE_SIZE.y - Layout.RIVAL_RECT.position.y)
+## His bubble's bottom sits this far above the safe area's bottom.
+const BUBBLE_MARGIN := 10.0
 
 ## Times Campaign, Endless and Time Attack have been pressed on this screen (tests and the
 ## smoke test read the log).
@@ -260,16 +263,16 @@ func _fit() -> void:
 	_safe.size = safe.size
 	# The scenery covers the visible area plus the drift on each side.
 	var local := shown.grow_individual(DRIFT_AMPLITUDE, 0.0, DRIFT_AMPLITUDE, 0.0)
-	_backdrop.fit(local, Play.GRASS_Y - Play.GRASS_TIP)
+	_backdrop.fit(local, Layout.GRASS_Y - Layout.GRASS_TIP)
 	_weather.fit(local)
 	_rival.position = Vector2(safe.position.x + RIVAL_INSET.x, safe.end.y - RIVAL_INSET.y)
-	_bubble.position = Vector2(_rival.position.x + _rival.size.x + 8.0, safe.end.y - _bubble.size.y - 10.0)
-	_shot_input.position = Vector2(shown.position.x, safe.position.y + Play.HUD_BAR_HEIGHT)
+	_bubble.position = Vector2(_rival.position.x + _rival.size.x + Layout.BUBBLE_GAP, safe.end.y - _bubble.size.y - BUBBLE_MARGIN)
+	_shot_input.position = Vector2(shown.position.x, safe.position.y + Layout.HUD_BAR_HEIGHT)
 	_shot_input.size = Vector2(shown.size.x, shown.end.y - _shot_input.position.y)
 	# From below the top bar to BAND_MARGIN above the first row of buttons (their anchored
 	# top, known before the containers settle), across the visible width plus the drift.
 	var buttons_top := safe.position.y + _campaign_button.anchor_top * safe.size.y + _campaign_button.offset_top
-	var top := safe.position.y + Play.HUD_BAR_HEIGHT
+	var top := safe.position.y + Layout.HUD_BAR_HEIGHT
 	_band = Rect2(local.position.x, top, local.size.x, maxf(buttons_top - BAND_MARGIN - top, 0.0))
 	# Geese already up move to the new band (a refit follows a resize or a rotation).
 	for goose in flying_geese():

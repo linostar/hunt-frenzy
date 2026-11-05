@@ -26,7 +26,7 @@ them so they match. Do not leave the code working around the difference.
 
 ## Game rules the data relies on
 - **Flight** (`scripts/logic/flight.gd`): a bird rises from fully below the grass line at a seeded x and heading (30-60
-  degrees above the horizontal) into the field (`Play.FIELD`, x 0-960, y 56-440: below the HUD bar, above the grass),
+  degrees above the horizontal) into the field (`Layout.FIELD`, x 0-960, y 56-440: below the HUD bar, above the grass),
   then flies straight segments inside it at constant velocity, without wobble: it bounces off the field's edges
   (reflecting the matching velocity component) and turns to a new seeded heading (30-60 degrees from the
   horizontal, up or down, left or right) at seeded intervals: a `rise` bird every `Flight.TURN_INTERVAL_MIN`..`MAX`
@@ -82,7 +82,7 @@ them so they match. Do not leave the code working around the difference.
   bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
   `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds: a layered meadow
   tile, static, lit per chapter, I27). The rival (`rival_<idle|aim|brag|sulk>.svg`, 80x120, svg scale 3) stands on
-  the bank at `RivalController.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
+  the bank at `Layout.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
   the art comes from `art/palette.hex` (`tools/check_palette.gd`).
 
 ---
@@ -252,7 +252,7 @@ against a fallback value.
 - **I10** The roster has every kind of bird, each able to appear: a plain bird (not golden), an armored one
   (`hp >= 2`), a splitter, a `zigzag` flier, a golden bird and a decoy. Each chapter introduces at least one bird
   that can appear, and every bird can appear (in a mode's or level's mix, as a `golden_bird` or as a split child).
-- **I11** Every bird fits the field (`Play.FIELD`, 960x384): `size.x < 960` and `size.y < 384`. A run's flight has
+- **I11** Every bird fits the field (`Layout.FIELD`, 960x384): `size.x < 960` and `size.y < 384`. A run's flight has
   no wobble, so its cruise band needs only the bird's size. `wobble` takes no part: the title's crossing (the only path
   that wobbles) cuts the wobble to the room its band leaves above and below the sprite (`Flight._crossing`) and keeps
   a band too short for the sprite centred, so no wobble can carry a goose out of the title's band.
@@ -315,7 +315,7 @@ against a fallback value.
   `Backdrop.RIVAL_TINTS` (palette colours: neutral at noon, warm at dawn and sunset, cool and moonlit at night), which
   Play and the title set as the rival's modulate over it: `backdrop '<id>' has no rival tint (I26: ...)`.
 - **I27** Every backdrop's grass tile (`<id>_grass.svg`, 240x360) keeps the grass line and tiles: its imported texture
-  is opaque from `Play.GRASS_TIP` (24) down, so only the fringe of blade tips lies above the line, and its seam (its
+  is opaque from `Layout.GRASS_TIP` (24) down, so only the fringe of blade tips lies above the line, and its seam (its
   last column to its first) steps no more than any two neighbouring columns inside it.
 
 ## Current content

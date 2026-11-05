@@ -314,8 +314,8 @@ func _run() -> void:
 ## Compatibility renderer, the mouse arriving as touch, the title as the main scene.
 func _test_project_display_and_input() -> void:
 	var settings := {
-		"display/window/size/viewport_width": 960,
-		"display/window/size/viewport_height": 540,
+		"display/window/size/viewport_width": int(Layout.BASE_SIZE.x),
+		"display/window/size/viewport_height": int(Layout.BASE_SIZE.y),
 		"display/window/stretch/mode": "canvas_items",
 		"display/window/stretch/aspect": "expand",
 		"display/window/handheld/orientation": DisplayServer.SCREEN_SENSOR_LANDSCAPE,
@@ -408,7 +408,7 @@ func _test_screen_fit_landscape() -> void:
 		var label := "%dx%d" % [window.x, window.y]
 		var visible := _game.screen.visible_rect()
 		_check(visible.size.is_equal_approx(expected[window]), label + " visible size", str(visible))
-		_check(visible.encloses(Rect2(Vector2.ZERO, ScreenFit.BASE_SIZE)), label + " base playfield is never cropped", str(visible))
+		_check(visible.encloses(Rect2(Vector2.ZERO, Layout.BASE_SIZE)), label + " base playfield is never cropped", str(visible))
 		_check(_game.screen.safe_rect() == visible, label + " safe rect is the visible rect", str(_game.screen.safe_rect()))
 		_check(not _game.screen.is_rotate_overlay_shown() and not paused, label + " no rotate overlay, not paused", "overlay %s, paused %s" % [_game.screen.is_rotate_overlay_shown(), paused])
 	root.size = BASE_WINDOW
@@ -654,13 +654,13 @@ func _test_flight_determinism() -> void:
 	var goose := Content.bird("goose")
 	var same := true
 	for age: float in [0.0, 0.7, 2.5, 5.9, 7.3]:
-		same = same and Flight.position(goose, 1234, age, Play.FIELD, 1.2) == Flight.position(goose, 1234, age, Play.FIELD, 1.2)
+		same = same and Flight.position(goose, 1234, age, Layout.FIELD, 1.2) == Flight.position(goose, 1234, age, Layout.FIELD, 1.2)
 	_check(same, "same spec, seed and age give the same position", "differs")
-	var a := Flight.position(goose, 1, 2.0, Play.FIELD)
-	var b := Flight.position(goose, 2, 2.0, Play.FIELD)
+	var a := Flight.position(goose, 1, 2.0, Layout.FIELD)
+	var b := Flight.position(goose, 2, 2.0, Layout.FIELD)
 	_check(a.distance_to(b) > 1.0, "different seeds give different paths", "%s vs %s" % [a, b])
-	var start := Flight.position(goose, 1, 0.0, Play.FIELD)
-	_check(start.y - goose.size.y / 2.0 >= Play.FIELD.end.y and start.y - goose.size.y / 2.0 >= Play.GRASS_Y, "the goose starts below the grass line", str(start))
+	var start := Flight.position(goose, 1, 0.0, Layout.FIELD)
+	_check(start.y - goose.size.y / 2.0 >= Layout.FIELD.end.y and start.y - goose.size.y / 2.0 >= Layout.GRASS_Y, "the goose starts below the grass line", str(start))
 
 
 ## Once a goose is inside the field it stays inside until it flees (20 seeds, every frame),
@@ -673,11 +673,11 @@ func _test_flight_stays_in_field_and_turns() -> void:
 		var entered := -1.0
 		var age := 0.0
 		while age <= goose.flee_time:
-			var at := Flight.position(goose, bird_seed, age, Play.FIELD, 1.4)
+			var at := Flight.position(goose, bird_seed, age, Layout.FIELD, 1.4)
 			var bounds := Rect2(at - half, goose.size)
-			if entered < 0.0 and Play.FIELD.grow(0.01).encloses(bounds):
+			if entered < 0.0 and Layout.FIELD.grow(0.01).encloses(bounds):
 				entered = age
-			elif entered >= 0.0 and not Play.FIELD.grow(0.01).encloses(bounds):
+			elif entered >= 0.0 and not Layout.FIELD.grow(0.01).encloses(bounds):
 				problems.append("seed %d leaves the field at age %.2f: %s" % [bird_seed, age, bounds])
 				break
 			age += 1.0 / 60.0
@@ -690,15 +690,15 @@ func _test_flight_stays_in_field_and_turns() -> void:
 	var turns := 0
 	var last_sign := 0.0
 	for step in roundi(goose.flee_time * 60.0):
-		var moving := Flight.velocity(goose, 5, step / 60.0, Play.FIELD, 3.0)
+		var moving := Flight.velocity(goose, 5, step / 60.0, Layout.FIELD, 3.0)
 		if absf(moving.x) < 1.0:
 			continue
 		if last_sign != 0.0 and signf(moving.x) == -last_sign:
 			turns += 1
 		last_sign = signf(moving.x)
 	_check(turns >= 1, "the goose turns back at the side edges (its velocity reverses)", "%d turns" % turns)
-	var placed := Flight.transform_at(goose, 5, 1.0, Play.FIELD, 3.0)
-	var moving_x := Flight.velocity(goose, 5, 1.0, Play.FIELD, 3.0).x
+	var placed := Flight.transform_at(goose, 5, 1.0, Layout.FIELD, 3.0)
+	var moving_x := Flight.velocity(goose, 5, 1.0, Layout.FIELD, 3.0).x
 	_check(signf(placed.x.x) == signf(moving_x), "the goose faces the way it flies", "x axis %s, vx %.1f" % [placed.x, moving_x])
 
 
@@ -706,21 +706,21 @@ func _test_flight_stays_in_field_and_turns() -> void:
 ## goose told to flee early (no shells) escapes earlier.
 func _test_flight_escapes_after_flee_time() -> void:
 	var goose := Content.bird("goose")
-	_check(not Flight.has_escaped(goose, 3, goose.flee_time, Play.FIELD), "no escape before flee_time", "escaped")
+	_check(not Flight.has_escaped(goose, 3, goose.flee_time, Layout.FIELD), "no escape before flee_time", "escaped")
 	var escaped_at := -1.0
 	var age := goose.flee_time
 	while age < goose.flee_time + 10.0:
-		if Flight.has_escaped(goose, 3, age, Play.FIELD):
+		if Flight.has_escaped(goose, 3, age, Layout.FIELD):
 			escaped_at = age
 			break
 		age += 1.0 / 60.0
 	_check(escaped_at > goose.flee_time, "the goose escapes after flee_time", "escaped at %.2f" % escaped_at)
-	var top := Flight.position(goose, 3, escaped_at, Play.FIELD)
+	var top := Flight.position(goose, 3, escaped_at, Layout.FIELD)
 	_check(top.y + goose.size.y / 2.0 < Flight.ESCAPE_Y, "it has escaped once fully above the top", str(top))
 	var early := -1.0
 	age = 1.0
 	while age < goose.flee_time:
-		if Flight.has_escaped(goose, 3, age, Play.FIELD, 1.0, 1.0):
+		if Flight.has_escaped(goose, 3, age, Layout.FIELD, 1.0, 1.0):
 			early = age
 			break
 		age += 1.0 / 60.0
@@ -980,9 +980,9 @@ func _test_play_hud_layout() -> void:
 		var rect := pause_button.get_global_rect()
 		var safe := _game.screen.safe_rect()
 		_check(rect.size.is_equal_approx(PAUSE_BUTTON_SIZE) and safe.encloses(rect), label + " pause button 48x48 inside the safe area", str(rect))
-		_check(bar.get_global_rect().is_equal_approx(Rect2(safe.position, Vector2(safe.size.x, Play.HUD_BAR_HEIGHT))) and rect.end.y <= safe.position.y + Play.HUD_BAR_HEIGHT, label + " bar at the top of the safe area", str(bar.get_global_rect()))
+		_check(bar.get_global_rect().is_equal_approx(Rect2(safe.position, Vector2(safe.size.x, Layout.HUD_BAR_HEIGHT))) and rect.end.y <= safe.position.y + Layout.HUD_BAR_HEIGHT, label + " bar at the top of the safe area", str(bar.get_global_rect()))
 		var surface := shot_input.get_global_rect()
-		_check(is_equal_approx(surface.position.y, safe.position.y + Play.HUD_BAR_HEIGHT) and is_equal_approx(surface.end.y, _game.screen.visible_rect().end.y) and is_equal_approx(surface.size.x, _game.screen.visible_rect().size.x), label + " shot surface fills the screen below the bar", str(surface))
+		_check(is_equal_approx(surface.position.y, safe.position.y + Layout.HUD_BAR_HEIGHT) and is_equal_approx(surface.end.y, _game.screen.visible_rect().end.y) and is_equal_approx(surface.size.x, _game.screen.visible_rect().size.x), label + " shot surface fills the screen below the bar", str(surface))
 	_game.screen.safe_area_override = NOTCHED_SAFE_RECT
 	root.size = LANDSCAPE_19_5_9
 	await process_frame
@@ -1037,7 +1037,7 @@ func _test_play_hud_fits_any_pool() -> void:
 			for child in stats.get_children():
 				var shown := child as Control
 				var rect := shown.get_global_rect()
-				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Play.HUD_BAR_HEIGHT + 0.5):
+				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Layout.HUD_BAR_HEIGHT + 0.5):
 					stray.append("%s %s" % [shown.name, rect])
 			stray.append_array(_overlapping_chips(stats))
 			_check(stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest HUD stays inside the safe bar, no chip overlapping another, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
@@ -1484,15 +1484,15 @@ func _test_play_hit_frame_keeps_facing() -> void:
 	var goose := Content.bird("goose")
 	var seeds: Dictionary[float, int] = {}
 	for bird_seed in 64:
-		var vx := Flight.velocity(goose, bird_seed, IN_FIELD_AGE, Play.FIELD).x
-		var later := Flight.velocity(goose, bird_seed, IN_FIELD_AGE + 0.2, Play.FIELD).x
+		var vx := Flight.velocity(goose, bird_seed, IN_FIELD_AGE, Layout.FIELD).x
+		var later := Flight.velocity(goose, bird_seed, IN_FIELD_AGE + 0.2, Layout.FIELD).x
 		if signf(vx) == signf(later) and not seeds.has(signf(vx)):
 			seeds[signf(vx)] = bird_seed
 	_check(seeds.size() == 2, "seeds for both facings", str(seeds))
 	for facing: float in seeds:
 		var label := "facing %s" % ("right" if facing > 0.0 else "left")
 		var bird := await _spawn_flying(play, seeds[facing])
-		var flying_x := Flight.velocity(goose, bird.bird_seed, bird.age, Play.FIELD).x
+		var flying_x := Flight.velocity(goose, bird.bird_seed, bird.age, Layout.FIELD).x
 		await _touch(_global(play, bird.transform * LOCAL_BODY))
 		_check(bird.state == Bird.State.HIT and signf(flying_x) == facing, label + ": the goose is hit", "state %d, vx %.1f" % [bird.state, flying_x])
 		var hit_y := bird.position.y
@@ -1517,22 +1517,22 @@ func _test_play_hit_frame_keeps_facing() -> void:
 func _test_play_grass_hides_geese() -> void:
 	var play := await _start_run(27)
 	var grass := play.get_node("World/Backdrop/Grass") as Control
-	_check(is_equal_approx(grass.position.y + Play.GRASS_TIP, Play.GRASS_Y), "the grass is drawn solid from the grass line the hit rule uses", "grass top %.1f" % grass.position.y)
+	_check(is_equal_approx(grass.position.y + Layout.GRASS_TIP, Layout.GRASS_Y), "the grass is drawn solid from the grass line the hit rule uses", "grass top %.1f" % grass.position.y)
 	var bird := play.spawn_bird("goose", 3)
 	await process_frame
 	var under := bird.transform * LOCAL_BODY
-	_check(under.y > Play.GRASS_Y and bird.contains(under), "a just-spawned goose's body is behind the grass", str(under))
+	_check(under.y > Layout.GRASS_Y and bird.contains(under), "a just-spawned goose's body is behind the grass", str(under))
 	await _touch(_global(play, under))
 	_check(bird.is_flying() and play.scoring.hits == 0 and play.scoring.misses == 1, "a shot on the grass hits no goose behind it", "hits %d, misses %d" % [play.scoring.hits, play.scoring.misses])
 	if not bird.is_flying():
 		return
 	for i in 120:
-		if (bird.transform * LOCAL_HEAD).y < Play.GRASS_Y - 4.0:
+		if (bird.transform * LOCAL_HEAD).y < Layout.GRASS_Y - 4.0:
 			break
 		await process_frame
 	var head := bird.transform * LOCAL_HEAD
 	var body := bird.transform * LOCAL_BODY
-	_check(head.y < Play.GRASS_Y and body.y > Play.GRASS_Y, "a rising goose shows its head above the grass, its body still behind it", "head %s, body %s" % [head, body])
+	_check(head.y < Layout.GRASS_Y and body.y > Layout.GRASS_Y, "a rising goose shows its head above the grass, its body still behind it", "head %s, body %s" % [head, body])
 	await _touch(_global(play, head))
 	_check(not bird.is_flying() and play.scoring.hits == 1, "a shot on the part of a rising goose above the grass hits it", "hits %d" % play.scoring.hits)
 
@@ -1664,7 +1664,7 @@ func _test_time_attack_start_and_hud() -> void:
 			for child in stats.get_children():
 				var shown := child as Control
 				var rect := shown.get_global_rect()
-				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Play.HUD_BAR_HEIGHT + 0.5):
+				if shown.visible and (rect.position.x < safe.position.x - 0.5 or rect.end.x > limit + 0.5 or rect.position.y < safe.position.y - 0.5 or rect.end.y > safe.position.y + Layout.HUD_BAR_HEIGHT + 0.5):
 					stray.append("%s %s" % [shown.name, rect])
 			stray.append_array(_overlapping_chips(stats))
 			_check(time.visible and stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest Time Attack HUD (with the time) stays inside the safe bar, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
@@ -1774,7 +1774,7 @@ func _test_time_attack_waves_on_clear() -> void:
 			break
 		await process_frame
 	var fled := play.flying_birds()
-	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
 	# The bird of wave 2 that was up flees; its escape is past any escape limit.
@@ -1800,7 +1800,7 @@ func _test_time_attack_lost_wave_starts_next_at_once() -> void:
 		await process_frame
 	_check(play.wave.index == 1 and play.flying_birds().size() == 1 and play.wave.spawns.size() == 3, "wave 1's first goose is up, two still to spawn", "%d flying" % play.flying_birds().size())
 	var from := _log.size()
-	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
 	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.wave.shells > 0 and play.wave_clock <= -Play.WAVE_LEAD + 2.0 * FRAME + 0.0001, "the next wave starts with a full pool as soon as the pool runs out", "wave %d, %d of %d shells, wave clock %.4f" % [play.wave.index, play.ammo.shells, play.wave.shells, play.wave_clock])
@@ -1836,7 +1836,7 @@ func _test_time_attack_lost_wave_counts_skipped_as_escaped() -> void:
 			break
 		await process_frame
 	var leftover := play.flying_birds()[0]
-	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
 	_check(play.wave.index == 2 and play.escaped == 2, "wave 1's two skipped geese count as escaped at once", "wave %d, %d escaped" % [play.wave.index, play.escaped])
@@ -1871,7 +1871,7 @@ func _test_time_attack_leftover_overlaps_next_wave() -> void:
 			break
 		await process_frame
 	var leftover := play.flying_birds()[0]
-	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
 	_check(play.wave.index == 2 and leftover.is_flying() and leftover.wave_index == 1, "a lost wave's goose is still in the air during the next wave", "wave %d" % play.wave.index)
@@ -1935,7 +1935,7 @@ func _test_endless_empty_pool_waits_for_the_wave() -> void:
 			break
 		await process_frame
 	var from := _log.size()
-	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
 	_check(play.wave.index == 1 and play.escaped == 0, "Endless: an empty pool does not end the wave or count the birds still to spawn", "wave %d, %d escaped" % [play.wave.index, play.escaped])
@@ -1966,7 +1966,7 @@ func _test_time_attack_no_steals_no_cue() -> void:
 		ever_cued = ever_cued or goose.is_cued() or play.rival.is_rival_aiming() or (goose.get_node("Reticle") as CanvasItem).visible
 		await process_frame
 	_check(not ever_cued and goose.is_flying() and play.rival.stolen == 0 and play.rival.rival_score == 0, "no aim cue and no steal in Time Attack", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
-	await _touch(_global(play, Vector2(480, Play.GRASS_Y + 40.0)))
+	await _touch(_global(play, Vector2(480, Layout.GRASS_Y + 40.0)))
 	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()), "the Time Attack rival still heckles", "'%s'" % play.rival.heckle_shown())
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
 
@@ -2090,10 +2090,10 @@ func _test_flight_every_type_deterministic_and_in_field() -> void:
 	for spec in Content.birds():
 		var same := true
 		for age: float in [0.0, 0.9, 2.5, 5.0, 7.3]:
-			same = same and Flight.position(spec, 77, age, Play.FIELD, 1.3) == Flight.position(spec, 77, age, Play.FIELD, 1.3)
+			same = same and Flight.position(spec, 77, age, Layout.FIELD, 1.3) == Flight.position(spec, 77, age, Layout.FIELD, 1.3)
 		_check(same, "%s: the same seed and age give the same position" % spec.id, "differs")
-		var a := Flight.position(spec, 1, 2.0, Play.FIELD)
-		var b := Flight.position(spec, 2, 2.0, Play.FIELD)
+		var a := Flight.position(spec, 1, 2.0, Layout.FIELD)
+		var b := Flight.position(spec, 2, 2.0, Layout.FIELD)
 		_check(a.distance_to(b) > 1.0, "%s: different seeds give different paths" % spec.id, "%s vs %s" % [a, b])
 		var problems: Array[String] = []
 		for scale: float in [1.0, 1.6]:
@@ -2110,12 +2110,12 @@ func _test_flight_zigzag_reverses() -> void:
 	var step := 1.0 / 120.0
 	var problems: Array[String] = []
 	for bird_seed in 20:
-		var entry := Flight.entry_age(zigzag, bird_seed, Play.FIELD)
+		var entry := Flight.entry_age(zigzag, bird_seed, Layout.FIELD)
 		var last_turn := entry
 		var last_sign := 0.0
 		var age := entry
 		while age <= zigzag.flee_time:
-			var vx := Flight.velocity(zigzag, bird_seed, age, Play.FIELD).x
+			var vx := Flight.velocity(zigzag, bird_seed, age, Layout.FIELD).x
 			if absf(vx) > 1.0:
 				if last_sign != 0.0 and signf(vx) == -last_sign:
 					last_turn = age
@@ -2133,15 +2133,15 @@ func _test_flight_zigzag_reverses() -> void:
 	var unturned: Array[String] = []
 	var first_intervals: Dictionary[int, bool] = {}
 	for bird_seed in 20:
-		var entry := Flight.entry_age(zigzag, bird_seed, Play.FIELD)
+		var entry := Flight.entry_age(zigzag, bird_seed, Layout.FIELD)
 		var turns := Flight.turn_ages(zigzag, bird_seed, entry, zigzag.flee_time)
 		var previous := entry
 		for turn in turns:
 			intervals.append(turn - previous)
 			previous = turn
-			var before := Flight._offset(zigzag, bird_seed, turn - 0.01, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
-			var at := Flight._offset(zigzag, bird_seed, turn, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
-			var after := Flight._offset(zigzag, bird_seed, turn + 0.01, entry, Flight._first_heading(zigzag, bird_seed, Play.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var before := Flight._offset(zigzag, bird_seed, turn - 0.01, entry, Flight._first_heading(zigzag, bird_seed, Layout.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var at := Flight._offset(zigzag, bird_seed, turn, entry, Flight._first_heading(zigzag, bird_seed, Layout.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
+			var after := Flight._offset(zigzag, bird_seed, turn + 0.01, entry, Flight._first_heading(zigzag, bird_seed, Layout.FIELD, Flight.NOT_LAUNCHED, Vector2.ZERO))
 			if signf(at.x - before.x) != -signf(after.x - at.x):
 				unturned.append("seed %d at %.2f" % [bird_seed, turn])
 		if not turns.is_empty():
@@ -2150,20 +2150,20 @@ func _test_flight_zigzag_reverses() -> void:
 	_check(intervals.size() >= 20 * 6 and outside.is_empty(), "every zigzag interval lies in %.2f..%.2f s" % [Flight.ZIGZAG_INTERVAL_MIN, Flight.ZIGZAG_INTERVAL_MAX], "%d intervals, outside: %s" % [intervals.size(), outside])
 	_check(unturned.is_empty(), "every zigzag turn reverses its horizontal travel", str(unturned))
 	_check(first_intervals.size() >= 10, "the zigzag intervals vary between seeds", "%d distinct first intervals over 20 seeds: %s" % [first_intervals.size(), first_intervals.keys()])
-	var entry_3 := Flight.entry_age(zigzag, 3, Play.FIELD)
+	var entry_3 := Flight.entry_age(zigzag, 3, Layout.FIELD)
 	var first_turn := Flight.turn_ages(zigzag, 3, entry_3, zigzag.flee_time)[0]
-	var start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
-	var entered := Flight.position(zigzag, 3, entry_3, Play.FIELD)
-	var later := Flight.position(zigzag, 3, first_turn + 0.5, Play.FIELD)
+	var start := Flight.position(zigzag, 3, 0.0, Layout.FIELD)
+	var entered := Flight.position(zigzag, 3, entry_3, Layout.FIELD)
+	var later := Flight.position(zigzag, 3, first_turn + 0.5, Layout.FIELD)
 	# The same spec flying the rise pattern (restored below).
 	zigzag.pattern = "rise"
-	var rise_start := Flight.position(zigzag, 3, 0.0, Play.FIELD)
-	var rise_entered := Flight.position(zigzag, 3, entry_3, Play.FIELD)
-	var rise_later := Flight.position(zigzag, 3, first_turn + 0.5, Play.FIELD)
+	var rise_start := Flight.position(zigzag, 3, 0.0, Layout.FIELD)
+	var rise_entered := Flight.position(zigzag, 3, entry_3, Layout.FIELD)
+	var rise_later := Flight.position(zigzag, 3, first_turn + 0.5, Layout.FIELD)
 	var held := true
-	var first_sign := signf(Flight.velocity(zigzag, 3, 0.1, Play.FIELD).x)
+	var first_sign := signf(Flight.velocity(zigzag, 3, 0.1, Layout.FIELD).x)
 	for i in roundi(Flight.ZIGZAG_INTERVAL_MAX * 120.0):
-		held = held and signf(Flight.velocity(zigzag, 3, 0.1 + i * step, Play.FIELD).x) == first_sign
+		held = held and signf(Flight.velocity(zigzag, 3, 0.1 + i * step, Layout.FIELD).x) == first_sign
 	zigzag.pattern = "zigzag"
 	_check(start.is_equal_approx(rise_start) and entered.is_equal_approx(rise_entered) and not later.is_equal_approx(rise_later), "the zigzag climbs in like a rise and departs from it after its first turn", "%s %s %s vs %s %s %s" % [start, entered, later, rise_start, rise_entered, rise_later])
 	_check(held, "the rise pattern holds its heading through the same window", "turned")
@@ -2186,7 +2186,7 @@ func _test_flight_straight_segments_and_turns() -> void:
 		var from := Vector2(480, 250) if launched else Flight.NOT_LAUNCHED
 		var heading := Flight.split_headings(2)[0] if launched else Vector2.ZERO
 		for bird_seed in 20:
-			var entry := Flight.entry_age(spec, bird_seed, Play.FIELD, 1.0, from, heading)
+			var entry := Flight.entry_age(spec, bird_seed, Layout.FIELD, 1.0, from, heading)
 			var bounds := PackedFloat64Array([entry])
 			bounds.append_array(Flight.turn_ages(spec, bird_seed, entry, spec.flee_time))
 			for i in bounds.size() - 1:
@@ -2197,10 +2197,10 @@ func _test_flight_straight_segments_and_turns() -> void:
 					var tilts := {}
 					for k in 11:
 						var age := t + 0.025 * k
-						points.append(Flight.position(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading))
-						var moving := Flight.velocity(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading)
+						points.append(Flight.position(spec, bird_seed, age, Layout.FIELD, 1.0, INF, from, heading))
+						var moving := Flight.velocity(spec, bird_seed, age, Layout.FIELD, 1.0, INF, from, heading)
 						signs[Vector2(signf(moving.x), signf(moving.y))] = true
-						tilts[snappedf(Flight.transform_at(spec, bird_seed, age, Play.FIELD, 1.0, INF, from, heading).get_rotation(), 0.001)] = true
+						tilts[snappedf(Flight.transform_at(spec, bird_seed, age, Layout.FIELD, 1.0, INF, from, heading).get_rotation(), 0.001)] = true
 					t += 0.25
 					if signs.size() != 1:
 						continue
@@ -2224,7 +2224,7 @@ func _test_flight_straight_segments_and_turns() -> void:
 	var changed := 0
 	var first_turns: Dictionary[int, bool] = {}
 	for bird_seed in 20:
-		var entry := Flight.entry_age(goose, bird_seed, Play.FIELD)
+		var entry := Flight.entry_age(goose, bird_seed, Layout.FIELD)
 		var turns := Flight.turn_ages(goose, bird_seed, entry, 60.0)
 		var previous := entry
 		for turn in turns:
@@ -2232,8 +2232,8 @@ func _test_flight_straight_segments_and_turns() -> void:
 			previous = turn
 		var turn := turns[0]
 		first_turns[roundi((turn - entry) * 100.0)] = true
-		var before := Flight.velocity(goose, bird_seed, turn - 0.05, Play.FIELD)
-		var after := Flight.velocity(goose, bird_seed, turn + 0.05, Play.FIELD)
+		var before := Flight.velocity(goose, bird_seed, turn - 0.05, Layout.FIELD)
+		var after := Flight.velocity(goose, bird_seed, turn + 0.05, Layout.FIELD)
 		if not before.is_equal_approx(after):
 			changed += 1
 		var angle := rad_to_deg(atan2(absf(after.y), absf(after.x)))
@@ -2244,9 +2244,9 @@ func _test_flight_straight_segments_and_turns() -> void:
 	_check(first_turns.size() >= 10 and changed >= 18, "the first turn's time varies by seed and changes the heading", "%d distinct first turns, %d of 20 changed" % [first_turns.size(), changed])
 	_check(angles.is_empty(), "a new heading is %.0f-%.0f degrees from the horizontal" % [rad_to_deg(Flight.FLIGHT_ANGLE_MIN), rad_to_deg(Flight.FLIGHT_ANGLE_MAX)], str(angles))
 	# Seed 7's first turn: before it the climb holds its heading since the cruise started.
-	var entry_7 := Flight.entry_age(goose, 7, Play.FIELD)
+	var entry_7 := Flight.entry_age(goose, 7, Layout.FIELD)
 	var turn_7 := Flight.turn_ages(goose, 7, entry_7, 60.0)[0]
-	_check(Flight.turn_ages(goose, 7, entry_7, 60.0) == Flight.turn_ages(goose, 7, entry_7, 60.0) and Flight.position(goose, 7, turn_7 + 0.3, Play.FIELD, 1.3) == Flight.position(goose, 7, turn_7 + 0.3, Play.FIELD, 1.3), "turns and positions are the same for the same inputs", "differ")
+	_check(Flight.turn_ages(goose, 7, entry_7, 60.0) == Flight.turn_ages(goose, 7, entry_7, 60.0) and Flight.position(goose, 7, turn_7 + 0.3, Layout.FIELD, 1.3) == Flight.position(goose, 7, turn_7 + 0.3, Layout.FIELD, 1.3), "turns and positions are the same for the same inputs", "differ")
 
 
 ## AC 2: a bird reflects off the cruise band's edges. A goose at 3x speed over 20 seeds:
@@ -2262,9 +2262,9 @@ func _test_flight_reflects_at_band_edges() -> void:
 	var step := 1.0 / 240.0
 	# One-sided velocities over a short window: away from a bounce each is its segment's.
 	var moving := func(bird_seed: int, age: float) -> Vector2:
-		return (Flight.position(goose, bird_seed, age + 0.001, Play.FIELD, 3.0) - Flight.position(goose, bird_seed, age, Play.FIELD, 3.0)) / 0.001
+		return (Flight.position(goose, bird_seed, age + 0.001, Layout.FIELD, 3.0) - Flight.position(goose, bird_seed, age, Layout.FIELD, 3.0)) / 0.001
 	for bird_seed in 20:
-		var entry := Flight.entry_age(goose, bird_seed, Play.FIELD, 3.0)
+		var entry := Flight.entry_age(goose, bird_seed, Layout.FIELD, 3.0)
 		var turns := Flight.turn_ages(goose, bird_seed, entry, goose.flee_time)
 		var age := entry + 0.05
 		while age + 3.0 * step < goose.flee_time - 0.05:
@@ -2278,19 +2278,19 @@ func _test_flight_reflects_at_band_edges() -> void:
 			# before and after it, and look at the position across it.
 			var before: Vector2 = moving.call(bird_seed, age - step)
 			var after: Vector2 = moving.call(bird_seed, age + 2.0 * step)
-			var at := Flight.position(goose, bird_seed, age + step / 2.0, Play.FIELD, 3.0)
+			var at := Flight.position(goose, bird_seed, age + step / 2.0, Layout.FIELD, 3.0)
 			if absf(before.length() - goose.speed * 3.0) > 1.0 or absf(after.length() - goose.speed * 3.0) > 1.0:
 				# A corner: a second bounce falls inside the window; the clean ones are counted.
 				age += 3.0 * step
 				continue
 			if signf(a.x) == -signf(b.x):
 				side += 1
-				var edge := minf(absf(at.x - Flight.path_x_low(goose, Play.FIELD)), absf(at.x - Flight.path_x_high(goose, Play.FIELD)))
+				var edge := minf(absf(at.x - Flight.path_x_low(goose, Layout.FIELD)), absf(at.x - Flight.path_x_high(goose, Layout.FIELD)))
 				if edge > 4.0 or absf(after.x + before.x) > 1.0 or absf(after.y - before.y) > 1.0:
 					problems.append("seed %d side bounce at %.3f: %.1f from the edge, v %s -> %s" % [bird_seed, age, edge, before, after])
 			else:
 				top_bottom += 1
-				var edge := minf(absf(at.y - Flight.path_y_low(goose, Play.FIELD)), absf(at.y - Flight.path_y_high(goose, Play.FIELD)))
+				var edge := minf(absf(at.y - Flight.path_y_low(goose, Layout.FIELD)), absf(at.y - Flight.path_y_high(goose, Layout.FIELD)))
 				if edge > 4.0 or absf(after.y + before.y) > 1.0 or absf(after.x - before.x) > 1.0:
 					problems.append("seed %d top/bottom bounce at %.3f: %.1f from the edge, v %s -> %s" % [bird_seed, age, edge, before, after])
 			age += 3.0 * step
@@ -2363,21 +2363,21 @@ func _test_flight_launch_and_split_headings() -> void:
 	var starts: Array[Vector2] = []
 	var apart: Array[float] = []
 	for t: float in [0.0, 0.25, 0.5]:
-		var first := Flight.position(gosling, 11, t, Play.FIELD, 1.0, INF, point, headings[0])
-		var second := Flight.position(gosling, 12, t, Play.FIELD, 1.0, INF, point, headings[1])
+		var first := Flight.position(gosling, 11, t, Layout.FIELD, 1.0, INF, point, headings[0])
+		var second := Flight.position(gosling, 12, t, Layout.FIELD, 1.0, INF, point, headings[1])
 		if t == 0.0:
 			starts = [first, second]
 		apart.append(first.distance_to(second))
 	_check(starts[0].is_equal_approx(point) and starts[1].is_equal_approx(point), "the goslings start at the hit point", str(starts))
 	_check(apart[1] > apart[0] + 40.0 and apart[2] > apart[1] + 40.0, "the goslings diverge", str(apart))
-	_check(Flight.position(gosling, 11, 0.7, Play.FIELD, 1.0, INF, point, headings[0]) == Flight.position(gosling, 11, 0.7, Play.FIELD, 1.0, INF, point, headings[0]), "a launched flight is deterministic", "differs")
-	var corner := Flight.position(gosling, 11, 0.0, Play.FIELD, 1.0, INF, Vector2(2, 60), headings[0])
-	_check(Play.FIELD.grow(0.01).encloses(Rect2(corner - gosling.size / 2.0, gosling.size)), "a launch point at the field's edge starts the bird inside the field", str(corner))
+	_check(Flight.position(gosling, 11, 0.7, Layout.FIELD, 1.0, INF, point, headings[0]) == Flight.position(gosling, 11, 0.7, Layout.FIELD, 1.0, INF, point, headings[0]), "a launched flight is deterministic", "differs")
+	var corner := Flight.position(gosling, 11, 0.0, Layout.FIELD, 1.0, INF, Vector2(2, 60), headings[0])
+	_check(Layout.FIELD.grow(0.01).encloses(Rect2(corner - gosling.size / 2.0, gosling.size)), "a launch point at the field's edge starts the bird inside the field", str(corner))
 	var problems: Array[String] = []
 	for heading in headings:
 		for i in roundi(gosling.flee_time * 60.0):
-			var at := Flight.position(gosling, 11, i / 60.0, Play.FIELD, 1.6, INF, point, heading)
-			if not Play.FIELD.grow(0.01).encloses(Rect2(at - gosling.size / 2.0, gosling.size)):
+			var at := Flight.position(gosling, 11, i / 60.0, Layout.FIELD, 1.6, INF, point, heading)
+			if not Layout.FIELD.grow(0.01).encloses(Rect2(at - gosling.size / 2.0, gosling.size)):
 				problems.append("heading %s leaves the field at %.2f: %s" % [heading, i / 60.0, at])
 				break
 	_check(problems.is_empty(), "launched goslings stay inside the field until they flee", str(problems))
@@ -2987,7 +2987,7 @@ func _test_rival_layout_and_pass_through() -> void:
 		for part: Control in [rival, bubble]:
 			var rect := part.get_global_rect()
 			# The rival's hat may reach the fringe's top; the bubble stays below the grass line.
-			var top := Play.GRASS_Y - Play.GRASS_TIP if part == rival else Play.GRASS_Y
+			var top := Layout.GRASS_Y - Layout.GRASS_TIP if part == rival else Layout.GRASS_Y
 			if world.to_local(rect.position).y < top - 0.01 or not shown.encloses(rect):
 				stray.append("%s %s" % [part.name, rect])
 		_check(stray.is_empty(), "%dx%d: the rival and his bubble sit in the grass band, on screen" % [window.x, window.y], str(stray))
@@ -3003,7 +3003,7 @@ func _test_rival_layout_and_pass_through() -> void:
 
 
 
-## The rival's footprint (art polish): his rect is RivalController.RIVAL_RECT (80x120 at the
+## The rival's footprint (art polish): his rect is Layout.RIVAL_RECT (80x120 at the
 ## bottom-left of the bank), its top at or below the fringe's top (GRASS_Y - GRASS_TIP:
 ## no art over the field) and inside the visible area; each pose's art has the rect's
 ## aspect (it fills it, nothing letterboxed off its feet), stands on its bottom edge and
@@ -3015,8 +3015,10 @@ func _test_rival_footprint_and_poses() -> void:
 	var rival := play.get_node("World/Rival") as TextureRect
 	var world := play.get_node("World") as Node2D
 	var rect := Rect2(world.to_local(rival.get_global_rect().position), rival.size)
-	_check(rect.is_equal_approx(RivalController.RIVAL_RECT) and RivalController.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
-	_check(rect.position.y >= Play.GRASS_Y - Play.GRASS_TIP and rect.position.x >= 0.0 and rect.end.y <= 540.0, "none of the rival's rect is above the fringe's top (y 416) or off the screen", str(rect))
+	_check(rect.is_equal_approx(Layout.RIVAL_RECT) and Layout.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
+	var bubble := play.get_node("World/Bubble") as Label
+	_check(is_equal_approx(world.to_local(bubble.get_global_rect().position).x, Layout.RIVAL_RECT.end.x + Layout.BUBBLE_GAP), "the rival's bubble starts Layout.BUBBLE_GAP right of him", str(bubble.get_global_rect()))
+	_check(rect.position.y >= Layout.GRASS_Y - Layout.GRASS_TIP and rect.position.x >= 0.0 and rect.end.y <= 540.0, "none of the rival's rect is above the fringe's top (y 416) or off the screen", str(rect))
 	var tops: Dictionary[String, Vector2i] = {}
 	for pose: Texture2D in [RivalController.RIVAL_IDLE, RivalController.RIVAL_AIM, RivalController.RIVAL_SULK, RivalController.RIVAL_BRAG]:
 		var image := pose.get_image()
@@ -4295,7 +4297,7 @@ func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
 		var problems: Array[String] = []
 		for control in controls:
 			var rect := control.get_global_rect()
-			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Play.HUD_BAR_HEIGHT:
+			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Layout.HUD_BAR_HEIGHT:
 				problems.append("%s %s" % [control.name, rect])
 			for other in controls:
 				if other != control and rect.intersection(other.get_global_rect()).get_area() > 0.25:
@@ -4326,7 +4328,7 @@ func _check_screen_layout(screen: Control, controls: Array[Control], labels: Arr
 		var problems: Array[String] = []
 		for control in controls:
 			var rect := control.get_global_rect()
-			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Play.HUD_BAR_HEIGHT:
+			if rect.size.x < MIN_TARGET or rect.size.y < MIN_TARGET or not safe.grow(0.5).encloses(rect) or rect.position.y < safe.position.y + Layout.HUD_BAR_HEIGHT:
 				problems.append("%s %s" % [control.name, rect])
 			for other in controls:
 				if other != control and rect.intersection(other.get_global_rect()).get_area() > 0.25:
@@ -4363,8 +4365,8 @@ func _field_problems(spec: BirdSpec, speed_scale: float) -> Array[String]:
 		var entered := -1.0
 		var age := 0.0
 		while age <= spec.flee_time:
-			var bounds := Rect2(Flight.position(spec, bird_seed, age, Play.FIELD, speed_scale) - spec.size / 2.0, spec.size)
-			var inside := Play.FIELD.grow(0.01).encloses(bounds)
+			var bounds := Rect2(Flight.position(spec, bird_seed, age, Layout.FIELD, speed_scale) - spec.size / 2.0, spec.size)
+			var inside := Layout.FIELD.grow(0.01).encloses(bounds)
 			if entered < 0.0 and inside:
 				entered = age
 			elif entered >= 0.0 and not inside:
@@ -5097,7 +5099,7 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 
 
 ## Every bird type gives its call (spec.call_sound at spec.call_pitch) exactly once, the
-## first frame any of its drawn art shows above the grass line (Play.GRASS_Y). Today a
+## first frame any of its drawn art shows above the grass line (Layout.GRASS_Y). Today a
 ## rising bird's climb tilt already lifts its art above the line on its spawn frame, so it
 ## calls as it spawns, with shells and spawned into an empty pool (already fleeing) alike;
 ## the art is checked with _drawn_art_top, a scan of every opaque pixel the bird's Sprite
@@ -5130,7 +5132,7 @@ func _test_bird_calls_on_appearing() -> void:
 			var top := _drawn_art_top(play, bird)
 			_check(heard == [call_id] and pitches.size() == 1 and is_equal_approx(pitches[0], spec.call_pitch),
 				"%s calls %s x%.2f once as it spawns (%s)" % [spec.id, call_id, spec.call_pitch, way], "%s at %s" % [heard, pitches])
-			_check(top < Play.GRASS_Y, "%s's art shows above the grass line on its spawn frame (%s)" % [spec.id, way], "art top %.2f, grass line %.0f" % [top, Play.GRASS_Y])
+			_check(top < Layout.GRASS_Y, "%s's art shows above the grass line on its spawn frame (%s)" % [spec.id, way], "art top %.2f, grass line %.0f" % [top, Layout.GRASS_Y])
 			_check_logged(from, "^\\[Play\\] Call of %s #%d as it appears above the grass: %s x%.2f \\(art top \\d+\\.\\d, age 0\\.00, wave \\d+ at t -?\\d+\\.\\d{2}\\)$" % [spec.id, bird.number, call_id, spec.call_pitch],
 				"%s's call is logged (%s)" % [spec.id, way])
 			var again: Array[int] = [0]
@@ -5154,7 +5156,7 @@ func _test_bird_calls_on_appearing() -> void:
 			_check(not is_instance_valid(bird) and again[0] == 0, "%s never calls again, fleeing and flying on until it escapes (%s)" % [spec.id, way], "%d more calls" % again[0])
 		# The rule on a stand-in placed lower: wholly under the grass, then rising out of it.
 		var stand_in := Play.BIRD_SCENE.instantiate() as Bird
-		stand_in.setup(spec, 900, bird_seed, 1.0, Play.FIELD, false)
+		stand_in.setup(spec, 900, bird_seed, 1.0, Layout.FIELD, false)
 		stand_in.age = STAND_IN_AGE
 		# [times emitted, the drawn art top then]
 		var emitted: Array = [0, INF]
@@ -5163,7 +5165,7 @@ func _test_bird_calls_on_appearing() -> void:
 			emitted[1] = _drawn_art_top(play, caller))
 		(play.get_node("World/Birds") as Node2D).add_child(stand_in)
 		var hidden := _drawn_art_top(play, stand_in)
-		_check(emitted[0] == 0 and hidden >= Play.GRASS_Y, "a %s stand-in wholly under the grass does not appear" % spec.id, "%d emitted, art top %.2f" % [emitted[0], hidden])
+		_check(emitted[0] == 0 and hidden >= Layout.GRASS_Y, "a %s stand-in wholly under the grass does not appear" % spec.id, "%d emitted, art top %.2f" % [emitted[0], hidden])
 		var before := hidden
 		var shown_early := -1
 		for i in 120:
@@ -5171,13 +5173,13 @@ func _test_bird_calls_on_appearing() -> void:
 			if emitted[0] > 0:
 				break
 			before = _drawn_art_top(play, stand_in)
-			if before < Play.GRASS_Y and shown_early < 0:
+			if before < Layout.GRASS_Y and shown_early < 0:
 				shown_early = i
 		for i in 10:
 			await process_frame
-		_check(emitted[0] == 1 and shown_early < 0 and before >= Play.GRASS_Y and emitted[1] < Play.GRASS_Y,
+		_check(emitted[0] == 1 and shown_early < 0 and before >= Layout.GRASS_Y and emitted[1] < Layout.GRASS_Y,
 			"a %s stand-in appears once, on the first frame its art shows above the grass line" % spec.id,
-			"%d emitted, art top %.2f the frame before and %.2f then (grass line %.0f), shown without appearing at frame %d" % [emitted[0], before, emitted[1], Play.GRASS_Y, shown_early])
+			"%d emitted, art top %.2f the frame before and %.2f then (grass line %.0f), shown without appearing at frame %d" % [emitted[0], before, emitted[1], Layout.GRASS_Y, shown_early])
 		stand_in.queue_free()
 	# A splitter's goslings appear mid-air at the split: each calls on its launch frame.
 	play.escaped = 0
@@ -5193,7 +5195,7 @@ func _test_bird_calls_on_appearing() -> void:
 	_check(goslings.size() == 2 and split_heard.count(StringName(gosling_spec.call_sound)) == 2 and _pitches_of(StringName(gosling_spec.call_sound)).all(func(pitch: float) -> bool: return is_equal_approx(pitch, gosling_spec.call_pitch)),
 		"the split's two goslings each call %s x%.2f on their launch frame" % [gosling_spec.call_sound, gosling_spec.call_pitch], "%d goslings, %s" % [goslings.size(), split_heard])
 	for gosling in goslings:
-		_check(_drawn_art_top(play, gosling) < Play.GRASS_Y, "gosling #%d shows above the grass as it calls" % gosling.number, "art top %.2f" % _drawn_art_top(play, gosling))
+		_check(_drawn_art_top(play, gosling) < Layout.GRASS_Y, "gosling #%d shows above the grass as it calls" % gosling.number, "art top %.2f" % _drawn_art_top(play, gosling))
 		_check_logged(split_from, "^\\[Play\\] Call of gosling #%d as it appears above the grass: " % gosling.number, "gosling #%d's call is logged" % gosling.number)
 	var later: Array[int] = [0]
 	for gosling in goslings:
@@ -5273,7 +5275,7 @@ func _test_title_geese_never_call() -> void:
 	title.add_child(crossing)
 	for i in 30:
 		await process_frame
-	_check(calls.is_empty() and crossing.art_top() < Play.GRASS_Y, "a crossing goose shown above the grass from its first frame never emits appeared", str(calls))
+	_check(calls.is_empty() and crossing.art_top() < Layout.GRASS_Y, "a crossing goose shown above the grass from its first frame never emits appeared", str(calls))
 	crossing.queue_free()
 
 
@@ -5659,7 +5661,7 @@ func _test_title_scenery_and_geese() -> void:
 		var band := scenery.get_global_transform() * title.goose_band()
 		var lowest_reach := band.end.y
 		var clear := buttons.all(func(button: Control) -> bool: return button.get_global_rect().position.y >= lowest_reach + Title.BAND_MARGIN - 0.5)
-		_check(clear and band.size.y >= Content.bird(Title.TITLE_BIRD).size.y and band.position.y >= _game.screen.safe_rect().position.y + Play.HUD_BAR_HEIGHT - 0.5, "%dx%d: the geese's band lies below the top bar and above every button" % [windows[i].x, windows[i].y], "band %s" % band)
+		_check(clear and band.size.y >= Content.bird(Title.TITLE_BIRD).size.y and band.position.y >= _game.screen.safe_rect().position.y + Layout.HUD_BAR_HEIGHT - 0.5, "%dx%d: the geese's band lies below the top bar and above every button" % [windows[i].x, windows[i].y], "band %s" % band)
 	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
@@ -6082,7 +6084,7 @@ func _test_screen_shake() -> void:
 	_check_logged(from, "^\\[Play\\] Shake \\(steal\\): 7 units over 0\\.30 s$", "a steal shakes")
 	play = await _start_run(65, GameState.TIME_ATTACK_MODE)
 	from = _log.size()
-	var grass := _global(play, Vector2(480, Play.GRASS_Y + 40.0))
+	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in 120:
 		if play.wave_clock > 0.2:
 			break
@@ -6136,7 +6138,7 @@ func _test_popup_motion() -> void:
 	high.set_process(false)
 	# Its body just below the top bar and its tail at the left edge: unclamped, the pop-up
 	# would leave the screen on both sides as it bounces and rises.
-	high.position = Vector2(12.0, Play.FIELD.position.y + 2.0)
+	high.position = Vector2(12.0, Layout.FIELD.position.y + 2.0)
 	high.transform = Transform2D(0.0, high.position)
 	await _touch(_global(play, high.transform * LOCAL_BODY))
 	_check(not high.is_flying(), "the goose at the top left edge is hit", "still flying")
