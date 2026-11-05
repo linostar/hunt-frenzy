@@ -5,7 +5,7 @@ extends Node
 ## - flow (SceneFlow, Game/Flow): the flow state machine and goto()'s screen transitions;
 ## - save (SaveStore, Game/Save): the versioned save, its migrations and backups, and the
 ##   bests, campaign progress and settings it holds;
-## - audio (AudioManager, Game/Audio): sound effects, the rival's blurts, the music loops,
+## - audio (AudioManager, Game/Audio): sound effects, the music loops,
 ##   pause ducking and the bus volumes;
 ## - screen (ScreenFit, Game/Screen): the visible and safe rects, the window fit and the
 ##   rotate overlay;

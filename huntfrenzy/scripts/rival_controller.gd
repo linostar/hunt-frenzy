@@ -12,8 +12,7 @@ extends Node
 ## fleeing drops it, and once it has run the rival fires and never misses: the bird falls as
 ## stolen, its points (no combo) go to his tally, it counts as an escape (stolen birds can end
 ## the run), the player's combo is untouched, a stolen splitter launches no goslings, and he
-## laughs ("rival_laugh", RIVAL_LAUGH_DELAY after his shot; his steal line shows without its
-## blurt). He aims at one bird at a time (Rival.may_aim): when several have flown their
+## laughs ("rival_laugh", RIVAL_LAUGH_DELAY after his shot). He aims at one bird at a time (Rival.may_aim): when several have flown their
 ## linger_time, the cue goes to the one that has flown longest (the lower number on a tie:
 ## Rival.aim_target), and after a steal or a cancelled cue he waits RIVAL_AIM_GAP seconds of
 ## run_clock (a pause does not count) before the next cue. With steals off he only heckles. He
@@ -166,8 +165,7 @@ func _steal(bird: Bird) -> void:
 	_play.escaped += 1
 	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %s escaped, combo x%d kept (wave %d at t %.2f); he laughs in %.2f s, no new cue for the %.2f s aim gap" % [
 		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, _play.escapes(), _play.scoring.multiplier, _play.wave.index, _play.wave_clock, RIVAL_LAUGH_DELAY, RIVAL_AIM_GAP])
-	# He laughs instead of blurting his steal line.
-	heckle(Rival.STEAL, false)
+	heckle(Rival.STEAL)
 	_play.update_hud()
 	if _play.escape_limit_reached():
 		_play.end_run()
@@ -197,9 +195,8 @@ func react(pose: Texture2D, what: String) -> void:
 
 ## Shows a `category` line (Rival.pick_line) in the rival's bubble for HECKLE_TIME, unless
 ## the cooldown since the last heckle has not passed yet (Rival.may_heckle; steal lines
-## always show), with his gibberish blurt unless `blurt` is false (a steal: he laughs).
-## Both are logged. Returns whether the line showed.
-func heckle(category: String, blurt := true) -> bool:
+## always show). Both are logged. Returns whether the line showed.
+func heckle(category: String) -> bool:
 	if not Rival.may_heckle(category, _play.run_clock, _last_heckle, rival_lines.cooldown):
 		print("[Play] Heckle (%s) skipped: cooldown, %.2f of %.2f s since the last (wave %d at t %.2f, rival score %d, %d stolen)" % [
 			category, _play.run_clock - _last_heckle, rival_lines.cooldown, _play.wave.index, _play.wave_clock, rival_score, stolen])
@@ -214,9 +211,7 @@ func heckle(category: String, blurt := true) -> bool:
 	_bubble_tween = create_tween()
 	_bubble_tween.tween_interval(HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
-	if blurt:
-		_game.audio.play_heckle(category, line)
-	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)%s" % [category, heckles, line, _play.wave.index, _play.wave_clock, rival_score, stolen, "" if blurt else ", no blurt"])
+	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [category, heckles, line, _play.wave.index, _play.wave_clock, rival_score, stolen])
 	return true
 
 
