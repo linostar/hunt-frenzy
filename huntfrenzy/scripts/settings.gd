@@ -9,7 +9,7 @@ extends Control
 ## the finger lifts, the keys are released, or the hold is cut short: the rotate overlay,
 ## the screen closing, another touch), so the final value is never lost. The toggles and
 ## Back tap as every button does. It follows the settings whoever changes them
-## (the pause menu's mutes), through Game.audio.audio_settings_changed and reduce_motion_changed.
+## (the pause menu's mutes), through Game.audio.audio_settings_changed and Game.save.reduce_motion_changed.
 ## It opens two ways: as a screen from the title's Settings button (Game.flow.goto(SETTINGS));
 ## Back or Escape returns to the title with its Settings button focused); or over the
 ## paused run (`overlay`, set by Play before adding it: a dim layer over the run, the pause

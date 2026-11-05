@@ -132,7 +132,7 @@ const FIRST_SPAWN = /^\[Play\] Spawned goose #1 \(.*\) at t ([\d.-]+)/;
 const FIRST_WAVE = /^\[Play\] Wave 1 start: \d+ birds \(.*\), (\d+) shells/;
 // Shot outcomes the play scene logs for a shot, with the wave time it was handled at.
 const SHOT_RESULT = /^\[Play\] (Hit \w+ #\d+|Miss|Shot refused).* at t ([\d.-]+)/;
-// The title loop, asked for when the title (the main scene) arrives (Game.play_music).
+// The title loop, asked for when the title (the main scene) arrives (Game.audio.play_music).
 const TITLE_MUSIC = /^\[Audio\] Music title /;
 // Console lines about audio that are not a failure: Chrome's note that an AudioContext waits
 // for a user gesture (the autoplay policy), the behaviour the test checks.
@@ -210,7 +210,7 @@ const BACKDROP_TOUR = [
   { shot: 'time_attack', mode: 'Time Attack', backdrop: 'noon', weather: 'wind' },
 ];
 const BACKDROP_SHOT_DELAY_MS = 2500;
-// A version 4 save (GameState.SAVE_VERSION) with every level of the first three chapters
+// A version 4 save (SaveStore.SAVE_VERSION) with every level of the first three chapters
 // finished, so each chapter's level 1 is open; Godot's web user:// is Emscripten IDBFS in
 // IndexedDB database /userfs, store FILE_DATA, key = the file's path, which the game logs
 // (SAVE_FILE) along with its directories, each stored as an entry of its own.
