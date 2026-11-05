@@ -2,96 +2,29 @@ class_name Play
 extends Node2D
 ## The play scene: one run of a mode (Endless or Time Attack: Game.flow.flow_args {"mode": id,
 ## "seed": run seed}) or of a campaign level ({"level": id}: the level's fixed seed).
-## Waves follow one another (Wave.for_mode, Wave.campaign): each starts TUNING.wave_lead seconds before its
-## first spawn with a fresh shell pool (Ammo). Every pressed touch on the ShotInput
-## (below the HUD bar) is a shot: it uses a shell and hits the frontmost flying bird
-## whose hitbox polygon holds the point, else it is a miss (combo reset); with no shells
-## left it is refused (no hit test, no miss) with the empty cue on the HUD shells.
-## A hit by bird type (BirdSpec): a hit short of the bird's hp (an armored bird's first)
-## damages it (no points, combo kept, a "Clank!" pop-up); a kill scores points x combo;
-## killing a splitter also launches split_count goslings from the hit point on diverging
-## headings (the splitter falls; it can no longer escape); a hit on the decoy (penalty > 0)
-## deducts its penalty (never below 0), resets the combo and shows a negative pop-up.
-## When the shells run out, the wave's flying birds (and any still to spawn, goslings
-## included) flee at once; the next wave starts when every bird of the wave has spawned
-## and none is flying (a timed mode loses the wave at once instead: below). An escape counts toward escape_limit unless the bird's
-## escape_counts is false (the decoy). An Endless run ends once escape_limit birds have
-## escaped: the score is recorded (a new best is saved at once) and the results screen
-## opens. A campaign level has no escape limit: it plays all its waves (the boss level's
-## last one is the boss flock) and then ends on the results screen, the level's stars and
-## best recorded and saved at once (Game.save.record_level). In a level the chapter's backdrop
-## and weather show, and the rival waits linger_time x the chapter's rival_linger_scale. In
-## a mode each wave shows its stage (ModeSpec.stage_for: Endless walks dawn, noon, sunset,
-## night; Time Attack stays on noon); a new backdrop cross-fades in over TUNING.backdrop_fade_time
-## during the wave's lead-in, without pausing or delaying anything. The weather (Weather)
-## is drawn behind the birds and never touches their flight.
-## A timed mode (Time Attack: ModeSpec.is_timed) has no escape limit (an escape only loses
-## the bird's points) and ends after time_limit seconds of run_clock: game time from the
-## run's start, frozen while the tree is paused (the pause menu, the rotate overlay), each
-## wave's TUNING.wave_lead lead-in included. The HUD's Time chip shows the seconds left ("42", rounded
-## up); the frame that reaches time_limit stops the clock exactly there and ends the run
-## (the score recorded, a new best saved at once, then the results screen). Its next wave
-## starts as soon as the current one is cleared (every bird of it spawned and none of them
-## flying) or lost: the moment its pool runs out, the wave is lost (logged) and the next
-## starts at once (its TUNING.wave_lead lead-in, a full pool of its own shells). The lost wave's
-## birds still to spawn never spawn; each of them that counts as an escape (escape_counts)
-## is counted as escaped, as it would have fled and escaped in Endless. The loss draws a
-## wave_end heckle (cooldown permitting, as any wave's end) and the HUD shows the new
-## wave's number and pool at once. The lost wave's birds already in the air flee as usual
-## and are counted when they escape; until then they are still targets (a hit with the new
-## wave's shells scores as any hit; a leftover splitter's goslings belong to the lost wave
-## and flee at once), and they never hold up a later wave's end (a wave ends on its own
-## birds: Bird.wave_index). Its rival never steals
-## (rival_steals false); he still heckles.
-## World holds the 960x540 base playfield, centred horizontally in the visible area;
-## the sky and the grass stretch over the whole visible area. Play orchestrates the run and
-## hands four concerns to child nodes:
-## - rival (RivalController, Play/RivalController): the rival hunter's steals, aim cues, pose,
-##   heckles and light;
-## - hud (HudController, Play/HudController): the HUD bar's chips; Play pushes its values
-##   (update_hud). The combo shows on the kill pop-ups ("+N xM") and the rival's score only on
-##   the results;
-## - pause (PauseMenu, Play/Pause): the pause menu, the settings over it, its mute toggles,
-##   Escape and the page-hidden and rotate-overlay pauses (Play's focus notifications call
-##   pause.open_pause);
-## - shaker (ScreenShake, Play/Shaker): the world's screen shake.
-## The grass hides
-## what is behind it: a shot on it (at or below Layout.GRASS_Y) hits no bird. Everything is logged with enough context
-## (the run seed, wave times, shot positions) to replay the run.
-## Sound (Game.audio.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
-## kill of an armored bird "armored_kill", a splitter "split_pop", the run's golden bird
-## "golden_chime"; "armored_clank" for a hit short of the bird's hp, "decoy_penalty" for the
-## decoy, "combo_up" when the combo rises; nothing more for a miss; the shot, the plain hit
-## and the escape each at a pitch varied by up to TUNING.sound_pitch_spread, seeded by the run), and the shot that uses
-## the last shell then "out_of_shells" (the pool is dry: the birds flee); a shot with no
-## shells plays only "empty_click". A wave's first spawn plays "wave_start", a cleared wave
-## "wave_clear", a lost Time Attack wave "wave_lost"; a counted escape "escape"; each bird,
-## the first frame its art shows above the grass line (Bird.appeared, once per bird: today
-## every rising bird on its spawn frame, a gosling at its launch; fleeing makes no sound), its call (its spec's call
-## at its call_pitch); the rival's
-## aim cue "rival_aim" and his steal "rival_steal". A timed run ticks ("countdown_tick") once at each of the last
-## TUNING.countdown_seconds whole seconds left and sounds "time_up" when the time runs out; the
-## countdown runs on run_clock, so a pause stops it. The pause menu's sounds: PauseMenu.
-## Juice: a kill stops the world for a moment (hit stop: TUNING.hit_stop_time, TUNING.hit_stop_heavy_time
-## for an armored bird or the golden bird): the birds, the rival, run_clock, wave_clock and
-## a timed run's clock all stand still and each loses exactly the stop's time, so the stop
-## shifts every later event by the same amount and never changes what happens; the HUD,
-## the pop-ups, the feathers and input keep running, and a kill during a stop starts no
-## second one (a salvo stops once). Every kill (the decoy and the rival's steals too)
-## bursts feathers in the bird's colours (Feathers). An armored or golden kill, a decoy hit,
-## a steal and a lost wave shake the world (TUNING.shakes: amplitude and time per event,
-## decaying to exactly no offset; the HUD stays put). Pop-ups bounce in (score and damage), grow with
-## the multiplier (combo) and shake (penalty), then rise and fade. With reduce motion on,
-## there is no shake and the pop-ups only rise and fade (the combo ones still larger); the
-## hit stop and the feathers stay.
-## Each bird flies at the wave's speed scale x its own seeded factor (Flight.speed_factor,
-## also for goslings), so a flock never moves in lockstep.
-## Cursor: while the run is live (started, not paused, not over) the mouse pointer is the
-## crosshair (CROSSHAIR, its hotspot at its centre); pausing, the run's end (the results)
-## and leaving Play put the default arrow back (logged "[Play] Cursor: ...").
+## Waves follow one another (Wave.for_mode, Wave.campaign), each with a fresh shell pool
+## (Ammo) after a TUNING.wave_lead lead-in. Every pressed touch on the ShotInput is a shot: it
+## hits the frontmost flying bird whose hitbox holds the point (never through the grass, at or
+## below Layout.GRASS_Y), else misses; with no shells left it is refused. A hit damages a bird
+## short of its hp, else kills it (points x combo; a splitter launches its goslings); the decoy
+## costs its penalty. Once the shells run out the wave's birds flee. An Endless run ends at
+## escape_limit counted escapes, a level after its last wave, a timed mode (Time Attack) when
+## run_clock (frozen while paused) reaches time_limit; a timed wave whose pool runs out is lost
+## at once (_lose_wave). Each bird flies at the wave's speed x its own seeded factor.
+## Play runs the waves, the shot hit test, scoring, sounds, the hit stop and the crosshair, and
+## hands the rest to child nodes and helpers:
+## - rival (RivalController): the rival hunter's steals, aim cues, pose, heckles and light;
+## - hud (HudController): the HUD bar's chips; Play pushes its values (update_hud);
+## - pause (PauseMenu): the pause menu, the settings over it, Escape and the focus, page and
+##   rotate-overlay pauses;
+## - shaker (ScreenShake): the world's screen shake;
+## - stage (StageFader): the backdrop, its cross-fades and the weather;
+## - HitPopup: the score, damage, combo and penalty pop-ups;
+## - RunRecord: the run's end: its record, save and results stats.
+## Everything is logged with enough context (the run seed, wave times, shot positions) to
+## replay the run.
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
-const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
 ## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning). One shared object for
 ## the whole process (every reader and both test scripts): a test that changes a value puts
 ## it back, as _test_tuning_values (run first and last) checks.
@@ -140,16 +73,11 @@ var _spawned := 0
 var _over := false
 ## Draws the pitch of each VARIED_SOUNDS sound (seeded in _start_run).
 var _pitch_rng := RandomNumberGenerator.new()
-## The backdrop fading in over _backdrop (null when none is), and its tween.
-var _next_backdrop: Backdrop
-var _backdrop_tween: Tween
 ## Seconds of hit stop still to run (0: none), and the stops so far (tests read them).
 var hit_stops := 0
 var _hit_stop_left := 0.0
 
 @onready var _world: Node2D = $World
-@onready var _backdrop: Backdrop = $World/Backdrop
-@onready var _weather: Weather = $World/Weather
 @onready var _birds: Node2D = $World/Birds
 @onready var _feathers: Feathers = $World/Feathers
 @onready var _popups: Node2D = $World/Popups
@@ -158,6 +86,7 @@ var _hit_stop_left := 0.0
 @onready var hud: HudController = $HudController
 @onready var pause: PauseMenu = $Pause
 @onready var rival: RivalController = $RivalController
+@onready var stage: StageFader = $Stage
 
 
 func _ready() -> void:
@@ -331,17 +260,17 @@ func time_left() -> float:
 
 ## The backdrop shown, or fading in ("" before the run starts).
 func backdrop_id() -> String:
-	return _next_backdrop.id if _next_backdrop != null else _backdrop.id
+	return stage.backdrop_id()
 
 
 ## True while a new backdrop fades in over the old one.
 func is_backdrop_fading() -> bool:
-	return _next_backdrop != null
+	return stage.is_fading()
 
 
 ## The weather emitting ("" for none); tests turn it off with weather().set_weather("").
 func weather() -> Weather:
-	return _weather
+	return stage.weather()
 
 
 func _start_run() -> void:
@@ -360,7 +289,7 @@ func _start_run() -> void:
 		linger_scale = chapter.rival_linger_scale
 		run_seed = level.level_seed
 		scoring = Scoring.new(level.combo_cap)
-		_show_stage(chapter.backdrop, chapter.weather, 1)
+		stage.show_stage(chapter.backdrop, chapter.weather, 1)
 	else:
 		mode = Content.mode(str(args["mode"]))
 		if mode == null or problems > 0 or not args.get("seed") is int:
@@ -402,60 +331,8 @@ func _start_wave(index: int) -> void:
 	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f%s" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale, of_level])
 	set_shell_pool(wave.shells)
 	if mode != null:
-		var stage := mode.stage_for(index)
-		_show_stage(stage.backdrop, stage.weather, index)
-
-
-## Shows backdrop `to_backdrop` with weather `to_weather` from wave `wave_index` on: at once
-## for the run's first wave, else (a new backdrop) cross-fading in over TUNING.backdrop_fade_time
-## while the wave runs on. The weather switches at once (the old one's particles drift
-## out). Nothing changes when both are already showing. Logged.
-func _show_stage(to_backdrop: String, to_weather: String, wave_index: int) -> void:
-	var from := backdrop_id()
-	if to_backdrop == from and to_weather == _weather.id:
-		return
-	if _weather.id != to_weather:
-		_weather.set_weather(to_weather)
-	if to_backdrop == from:
-		print("[Play] Weather %s on backdrop %s from wave %d" % [to_weather, to_backdrop, wave_index])
-		return
-	if from == "":
-		if not _backdrop.show_backdrop(to_backdrop):
-			print("[Play] Backdrop %s could not be shown (reported); weather %s from wave %d" % [to_backdrop, to_weather, wave_index])
-			return
-		_fit()
-		print("[Play] Backdrop %s, weather %s from wave %d" % [to_backdrop, to_weather, wave_index])
-		rival.light(to_backdrop)
-		return
-	if _next_backdrop != null:
-		_finish_backdrop_fade()
-	var next := BACKDROP_SCENE.instantiate() as Backdrop
-	_world.add_child(next)
-	_world.move_child(next, _backdrop.get_index() + 1)
-	if not next.show_backdrop(to_backdrop):
-		next.free()
-		return
-	_next_backdrop = next
-	next.modulate.a = 0.0
-	_fit()
-	_backdrop_tween = next.create_tween()
-	_backdrop_tween.tween_property(next, "modulate:a", 1.0, TUNING.backdrop_fade_time)
-	# The rival's light follows the backdrop fading in.
-	rival.fade_light(_backdrop_tween, to_backdrop, TUNING.backdrop_fade_time)
-	_backdrop_tween.tween_callback(_finish_backdrop_fade)
-	print("[Play] Backdrop %s -> %s, weather %s, cross-fading over %.2f s from wave %d" % [from, to_backdrop, to_weather, TUNING.backdrop_fade_time, wave_index])
-
-
-## The faded-in backdrop replaces the old one.
-func _finish_backdrop_fade() -> void:
-	if _backdrop_tween != null:
-		_backdrop_tween.kill()
-		_backdrop_tween = null
-	_next_backdrop.modulate.a = 1.0
-	rival.light(_next_backdrop.id)
-	_backdrop.queue_free()
-	_backdrop = _next_backdrop
-	_next_backdrop = null
+		var stage_now := mode.stage_for(index)
+		stage.show_stage(stage_now.backdrop, stage_now.weather, index)
 
 
 ## Gives the wave a fresh pool of `count` shells and shows it on the HUD (hud.show_pool: one
@@ -467,6 +344,10 @@ func set_shell_pool(count: int) -> void:
 	update_hud()
 
 
+## A shot at `at` (canvas): ignored once the run is over, while paused or during a transition.
+## Sounds: with a shell "shot", then what it hit (_kill_sound for a kill, "armored_clank" for
+## damage, "decoy_penalty", "combo_up" when the combo rose; nothing more for a miss), and
+## "out_of_shells" after the last shell; with none, only "empty_click".
 func _on_shot(at: Vector2) -> void:
 	if _over or get_tree().paused or _game.flow.is_transitioning():
 		return
@@ -524,7 +405,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	if not target.hit():
 		scoring.damage()
 		_game.audio.play_sfx(&"armored_clank")
-		_popup(point, DAMAGE_TEXT, "damage")
+		_popup(point, DAMAGE_TEXT, HitPopup.Kind.DAMAGE)
 		print("[Play] Hit %s #%d (hit %d/%d) at (%.1f, %.1f): no points, combo x%d kept, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, multiplier, scoring.score, wave.index, wave_clock, ammo.shells])
 		return
 	var awarded := scoring.hit(target.spec.points)
@@ -537,7 +418,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 		shaker.shake("armored kill")
 	elif _is_golden(target.spec):
 		shaker.shake("golden kill")
-	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier], "score" if multiplier == 1 else "combo", multiplier)
+	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier], HitPopup.Kind.SCORE if multiplier == 1 else HitPopup.Kind.COMBO, multiplier)
 	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): %d points x%d = %d, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.points, multiplier, awarded, scoring.score, wave.index, wave_clock, ammo.shells])
 	rival.react(RivalController.RIVAL_SULK, "sulks at the %d points on %s #%d" % [awarded, target.spec.id, target.number])
 	if target.is_cued():
@@ -573,7 +454,10 @@ func _is_golden(spec: BirdSpec) -> bool:
 
 ## Stops the world for TUNING.hit_stop_time (TUNING.hit_stop_heavy_time for an armored or the golden
 ## bird) after `target`'s kill: every bird holds still that long (Bird.hold) and _process
-## stops the clocks; while a stop runs, another kill starts none. Logged.
+## stops the clocks; while a stop runs, another kill starts none. The birds, the rival and
+## every clock lose exactly the stop's time, so it shifts every later event by the same amount
+## and never changes what happens; the HUD, the pop-ups, the feathers and input keep running.
+## Logged.
 func _start_hit_stop(target: Bird) -> void:
 	var heavy := target.spec.hp > 1 or _is_golden(target.spec)
 	var time := TUNING.hit_stop_heavy_time if heavy else TUNING.hit_stop_time
@@ -615,7 +499,7 @@ func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	_game.audio.play_sfx(&"decoy_penalty")
 	_feathers.burst(point, target.spec.sprite)
 	shaker.shake("decoy hit")
-	_popup(point, "-%d" % deducted, "penalty")
+	_popup(point, "-%d" % deducted, HitPopup.Kind.PENALTY)
 	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): penalty %d, -%d, combo reset, score %d (%d pigeons hit, wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.penalty, deducted, scoring.score, scoring.penalties, wave.index, wave_clock, ammo.shells])
 
 
@@ -696,36 +580,10 @@ func _on_bird_escaped(bird: Bird) -> void:
 		end_run()
 
 
+## Ends the run: records it (RunRecord) and opens the results.
 func end_run() -> void:
 	_stop()
-	var rival_line := rival.results_line()
-	var stats := {
-		"seed": run_seed, "score": scoring.score, "shots": scoring.shots(), "hits": scoring.hits, "kills": scoring.kills,
-		"pigeons": scoring.penalties, "escaped": escaped, "stolen": rival.stolen, "rival_score": rival.rival_score, "rival_line": rival_line,
-		"rival_steals": steals_on(),
-	}
-	var shots := "score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d" % [
-		scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, rival.stolen, rival.rival_score]
-	if level != null:
-		var new_best := _game.save.record_level(level, scoring.score)
-		var record: Campaign.Record = _game.save.progress[level.id]
-		var next := Campaign.next_level(level)
-		var open_next := next.id if next != null and Campaign.is_unlocked(next, _game.save.progress) else ""
-		stats.merge({"level": level.id, "stars": Campaign.stars(level, scoring.score), "best": record.score, "best_stars": record.stars,
-			"new_best": new_best, "save_error": _game.save.save_error, "next_level": open_next})
-		print("[Play] Run end: level %s, seed %d, wave %d of %d, %s, %d stars, level best %d (%d stars)%s%s" % [
-			level.id, run_seed, wave.index, level.waves, shots, stats["stars"], record.score, record.stars, " (new best)" if new_best else "",
-			", not saved: %s" % _game.save.save_error if _game.save.save_error != "" else ""])
-	else:
-		var new_best := _game.save.record_best(mode, scoring.score)
-		var save_error := _game.save.save_error if new_best else ""
-		stats.merge({"mode": mode.id, "best": _game.save.best(mode.id), "new_best": new_best, "save_error": save_error})
-		var best_note := ""
-		if new_best:
-			best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
-		var time_used := ", time used %.2f of %.2f s" % [run_clock, mode.time_limit] if mode.is_timed() else ""
-		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.save.best(mode.id), best_note])
-	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
+	_game.flow.goto(SceneFlow.Flow.RESULTS, RunRecord.record(self, _game.save))
 
 
 ## Ends the run here: the world freezes, the menu closes and the tree runs again (the
@@ -773,47 +631,11 @@ func _tick_countdown(before: float, now: float) -> void:
 			print("[Play] Countdown tick %d: %d s left (%.2f s, wave %d)" % [countdown_ticks, second, now, wave.index])
 
 
-## A pop-up of `text` (theme PopupLabel, PenaltyPopupLabel for a penalty) centred on `point` (World coordinates), kept inside the
-## visible area at its largest: `kind` "score" and "damage" bounce in, "combo" bounces in
-## larger by the `multiplier`, "penalty" shakes; all rise TUNING.popup_rise and fade over
-## TUNING.popup_time. With reduce motion they only rise and fade (a combo one keeps its size).
-## Each label carries its kind and its resting scale as metadata (tests read them).
-func _popup(point: Vector2, text: String, kind: String, multiplier := 1) -> void:
-	var label := Label.new()
-	label.text = text
-	label.theme_type_variation = &"PenaltyPopupLabel" if kind == "penalty" else &"PopupLabel"
-	_popups.add_child(label)
-	var size := label.get_combined_minimum_size()
-	var rest := minf(1.0 + TUNING.popup_combo_growth * (multiplier - 1), TUNING.popup_combo_scale_max) if kind == "combo" else 1.0
-	var still := _game.save.reduce_motion
-	var largest := rest * (TUNING.popup_bounce_scale if not still and kind != "penalty" else 1.0)
-	# Centred on the hit, moved in so its largest size (and the shake) stays on screen,
-	# the rise included.
+## A pop-up of `text` of `kind` (HitPopup) centred on `point` (World coordinates), kept
+## inside the visible area.
+func _popup(point: Vector2, text: String, kind: HitPopup.Kind, multiplier := 1) -> void:
 	var shown := Rect2(_game.screen.visible_rect().position - _world.position, _game.screen.visible_rect().size)
-	var half := size * largest / 2.0 + Vector2(TUNING.popup_shake, 0.0)
-	var centre := Vector2(clampf(point.x, shown.position.x + half.x, shown.end.x - half.x), clampf(point.y, shown.position.y + half.y + TUNING.popup_rise, shown.end.y - half.y))
-	label.pivot_offset = size / 2.0
-	label.position = centre - size / 2.0
-	label.scale = Vector2.ONE * rest
-	label.set_meta(&"kind", kind)
-	label.set_meta(&"rest_scale", rest)
-	var tween := label.create_tween()
-	tween.set_parallel()
-	tween.tween_property(label, "position:y", label.position.y - TUNING.popup_rise, TUNING.popup_time)
-	tween.tween_property(label, "modulate:a", 0.0, TUNING.popup_time)
-	if not still:
-		if kind == "penalty":
-			var wiggle := label.create_tween()
-			var x := label.position.x
-			for i in TUNING.popup_shakes:
-				wiggle.tween_property(label, "position:x", x + (TUNING.popup_shake if i % 2 == 0 else -TUNING.popup_shake), TUNING.popup_shake_time / (TUNING.popup_shakes + 1))
-			wiggle.tween_property(label, "position:x", x, TUNING.popup_shake_time / (TUNING.popup_shakes + 1))
-		else:
-			label.scale = Vector2.ONE * rest * 0.5
-			var bounce := label.create_tween()
-			bounce.tween_property(label, "scale", Vector2.ONE * rest * TUNING.popup_bounce_scale, TUNING.popup_bounce_time / 2.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-			bounce.tween_property(label, "scale", Vector2.ONE * rest, TUNING.popup_bounce_time / 2.0).set_trans(Tween.TRANS_SINE)
-	tween.chain().tween_callback(label.queue_free)
+	HitPopup.spawn(_popups, point, text, kind, multiplier, shown, _game.save.reduce_motion)
 
 
 ## Shows the run's values on the HUD.
@@ -830,11 +652,7 @@ func _fit() -> void:
 	var shown := _game.screen.visible_rect()
 	var safe := _game.screen.safe_rect()
 	shaker.set_origin(Vector2(shown.position.x + (shown.size.x - Layout.BASE_SIZE.x) / 2.0, shown.position.y))
-	var local := Rect2(shown.position - _world.position, shown.size).grow(ScreenShake.SHAKE_MARGIN)
-	for backdrop: Backdrop in [_backdrop, _next_backdrop]:
-		if backdrop != null:
-			backdrop.fit(local, Layout.GRASS_Y - Layout.GRASS_TIP)
-	_weather.fit(local)
+	stage.fit(Rect2(shown.position - _world.position, shown.size).grow(ScreenShake.SHAKE_MARGIN))
 	hud.fit(safe, Layout.HUD_BAR_HEIGHT)
 	var top := safe.position.y + Layout.HUD_BAR_HEIGHT
 	_shot_input.position = Vector2(shown.position.x, top)

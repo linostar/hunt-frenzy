@@ -6150,7 +6150,7 @@ func _test_popup_motion() -> void:
 			var box := label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
 			outside = outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
 			await process_frame
-		var rest: float = label.get_meta(&"rest_scale")
+		var rest: float = (label as HitPopup).rest_scale
 		scales.append(rest)
 		var color := label.get_theme_color(&"font_color")
 		_check(largest > rest * 1.2 and is_equal_approx(label.scale.x, rest) and color == POPUP_COLOR, "pop-up %d '%s' bounces in past its size and settles, in the pop-up colour" % [n + 1, label.text], "largest %.2f, now %.2f, rest %.2f" % [largest, label.scale.x, rest])
@@ -6219,7 +6219,7 @@ func _test_reduce_motion_everywhere() -> void:
 	var label := play.get_node("World/Popups").get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
 	for i in 30:
 		still = still and world.position == origin
-		bounced = bounced or not is_equal_approx(label.scale.x, label.get_meta(&"rest_scale"))
+		bounced = bounced or not is_equal_approx(label.scale.x, (label as HitPopup).rest_scale)
 		await process_frame
 	_check(still, "an armored kill does not shake the world", str(world.position - origin))
 	_check(not bounced, "the score pop-up does not bounce", "scaled")
