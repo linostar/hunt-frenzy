@@ -80,6 +80,8 @@ func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
 	_game.screen.screen_fit_changed.connect(_fit)
 	_shot_input.shot.connect(shots.resolve)
+	rival.stole.connect(_on_rival_stole)
+	rival.steal_done.connect(_on_rival_steal_done)
 	_fit()
 	_start_run()
 	pause.note_rotation_at_start()
@@ -365,11 +367,6 @@ static func bird_name(bird: Bird) -> String:
 	return "%s #%d" % [bird.spec.id, bird.number]
 
 
-## Counts one more bird lost (the rival's steal; Play counts its own escapes).
-func count_escape() -> void:
-	escaped += 1
-
-
 ## "wave 3 at t 4.20" in the log lines of the run and its controllers.
 func wave_note() -> String:
 	return "wave %d at t %.2f" % [wave.index, wave_clock]
@@ -399,6 +396,18 @@ func _on_bird_escaped(bird: Bird) -> void:
 	shots.play_sound(AudioManager.SFX_ESCAPE)
 	print("[Play] Escaped %s (%s, %s)" % [bird_name(bird), escapes(), wave_note()])
 	update_hud()
+	if escape_limit_reached():
+		end_run()
+
+
+## The rival stole `bird`: it counts as an escape (stolen birds can end the run: _on_rival_steal_done).
+func _on_rival_stole(_bird: Bird) -> void:
+	escaped += 1
+	update_hud()
+
+
+## The rival's steal is over: one that reached the escape limit ends the run.
+func _on_rival_steal_done(_bird: Bird) -> void:
 	if escape_limit_reached():
 		end_run()
 

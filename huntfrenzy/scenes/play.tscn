@@ -425,8 +425,13 @@ script = ExtResource("ctl_hud_controller")
 [node name="Pause" type="Node" parent="."]
 script = ExtResource("ctl_pause_menu")
 
-[node name="RivalController" type="Node" parent="."]
+[node name="RivalController" type="Node" parent="." node_paths=PackedStringArray("play", "shaker", "feathers", "rival_sprite", "bubble")]
 script = ExtResource("ctl_rival_controller")
+play = NodePath("..")
+shaker = NodePath("../Shaker")
+feathers = NodePath("../World/Feathers")
+rival_sprite = NodePath("../World/Rival")
+bubble = NodePath("../World/Bubble")
 
 [node name="Stage" type="Node" parent="."]
 script = ExtResource("ctl_stage_fader")
