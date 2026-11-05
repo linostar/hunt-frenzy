@@ -31,8 +31,6 @@ const DATA_DIR := "res://data/"
 ## checked once rival_lines.json is loaded.
 const FILES: Array[String] = ["chapters.json", "birds.json", "modes.json", "levels.json", "rival_lines.json"]
 const NAME_MAX := 26
-## Flight patterns (Flight).
-const PATTERNS: Array[String] = ["rise", "zigzag"]
 ## The campaign: exactly CHAPTER_COUNT chapters (dawn, noon, sunset, night) of exactly
 ## LEVELS_PER_CHAPTER levels each, the last one the chapter's boss level.
 const CHAPTER_COUNT := 4
@@ -46,53 +44,6 @@ const BACKDROP_LAYERS: Array[String] = ["sky", "far", "near", "grass"]
 ## A music track: MUSIC_DIR<id>.mp3 (tools/music.py makes them); a chapter's levels and a
 ## mode's runs each play the one their entry names.
 const MUSIC_DIR := "res://audio/music/"
-## A level's star thresholds: STAR_COUNT final scores, each 1..STAR_SCORE_MAX.
-const STAR_COUNT := 3
-const STAR_SCORE_MAX := 10000000
-## A level's fixed seed lies in 0..SEED_MAX, its waves in 1..LEVEL_WAVES_MAX, its speed
-## scales in LEVEL_SPEED_MIN..SPEED_CAP_MAX.
-const SEED_MAX := 2147483647
-const LEVEL_WAVES_MAX := 20
-const LEVEL_SPEED_MIN := 0.5
-const HP_MAX := 5
-const SPLIT_COUNT_MAX := 4
-const SPEED_MAX := 1000.0
-const WOBBLE_MAX := 100.0
-const WOBBLE_HZ_MAX := 5.0
-const FLEE_TIME_MAX := 60.0
-## A bird's linger_time lies in LINGER_TIME_MIN..FLEE_TIME_MAX seconds (always > 0).
-const LINGER_TIME_MIN := 0.1
-## A bird's call (I25) plays at a pitch of CALL_PITCH_MIN..CALL_PITCH_MAX.
-const CALL_PITCH_MIN := 0.5
-const CALL_PITCH_MAX := 2.0
-## The rival aims for AIM_TIME_MIN..AIM_TIME_MAX seconds (main plan AC 17: a visible cue of
-## at least 0.5 s), and waits 0..COOLDOWN_MAX seconds between heckles.
-const AIM_TIME_MIN := 0.5
-const AIM_TIME_MAX := 10.0
-const COOLDOWN_MAX := 60.0
-## The longest rival line: two lines of Play's speech bubble.
-const RIVAL_LINE_MAX := 40
-const POINTS_MAX := 100000
-## A bird's drawn size lies in SIZE_MIN..SIZE_MAX base units on each axis.
-const SIZE_MIN := 8.0
-const SIZE_MAX := 400.0
-const HITBOX_MIN_POINTS := 3
-const WAVE_BIRDS_MAX := 30
-const BIRD_GROWTH_MAX := 10
-const SPEED_GROWTH_MAX := 1.0
-const SPEED_CAP_MAX := 5.0
-const SPAWN_INTERVAL_MIN := 0.1
-const SPAWN_INTERVAL_MAX := 10.0
-const SHELLS_PER_HIT_MAX := 10
-const COMBO_CAP_MAX := 20
-const ESCAPE_LIMIT_MAX := 100
-## A timed mode's run lasts TIME_LIMIT_MIN..TIME_LIMIT_MAX seconds.
-const TIME_LIMIT_MIN := 10.0
-const TIME_LIMIT_MAX := 600.0
-## The latest wave a mode's bird or golden bird can unlock in, and the largest mix weight.
-const WAVE_MAX := 1000
-const WEIGHT_MAX := 100
-
 ## Tests set quiet_errors to assert on expected errors (load errors and unknown-id lookups)
 ## without failing the log check.
 static var quiet_errors := false
@@ -303,16 +254,16 @@ static func _load_levels(entries: Array[Dictionary]) -> void:
 		item.id = _begin_entry(entry, ["id", "chapter", "index", "seed", "waves", "wave_birds", "mix", "golden_bird", "golden_chance", "speed_scale", "spawn_interval", "shells_per_hit", "combo_cap", "stars"], _levels, ["boss"])
 		item.chapter = _reference(entry, "chapter", _chapters, "chapter")
 		item.index = _int(entry, "index", 1, LEVELS_PER_CHAPTER)
-		item.level_seed = _int(entry, "seed", 0, SEED_MAX)
-		item.waves = _int(entry, "waves", 1, LEVEL_WAVES_MAX)
-		item.wave_birds = _int(entry, "wave_birds", 1, WAVE_BIRDS_MAX)
+		item.level_seed = _int(entry, "seed", 0, LevelSpec.SEED_MAX)
+		item.waves = _int(entry, "waves", 1, LevelSpec.WAVES_MAX)
+		item.wave_birds = _int(entry, "wave_birds", 1, ModeSpec.WAVE_BIRDS_MAX)
 		item.mix = _mix(entry, "mix", false)
 		item.golden_bird = _reference(entry, "golden_bird", _birds, "bird")
 		item.golden_chance = _float(entry, "golden_chance", 0.0, 1.0)
-		item.speed_scale = _float(entry, "speed_scale", LEVEL_SPEED_MIN, SPEED_CAP_MAX)
-		item.spawn_interval = _float(entry, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
-		item.shells_per_hit = _int(entry, "shells_per_hit", 1, SHELLS_PER_HIT_MAX)
-		item.combo_cap = _int(entry, "combo_cap", 1, COMBO_CAP_MAX)
+		item.speed_scale = _float(entry, "speed_scale", LevelSpec.SPEED_MIN, ModeSpec.SPEED_CAP_MAX)
+		item.spawn_interval = _float(entry, "spawn_interval", ModeSpec.SPAWN_INTERVAL_MIN, ModeSpec.SPAWN_INTERVAL_MAX)
+		item.shells_per_hit = _int(entry, "shells_per_hit", 1, ModeSpec.SHELLS_PER_HIT_MAX)
+		item.combo_cap = _int(entry, "combo_cap", 1, ModeSpec.COMBO_CAP_MAX)
 		item.stars = _stars(entry, "stars")
 		if entry.has("boss"):
 			item.boss = _boss(entry["boss"])
@@ -352,24 +303,24 @@ static func _boss(value: Variant) -> LevelSpec.Boss:
 	for name: Variant in part:
 		if not str(name) in keys:
 			_error("boss.%s" % name, "unknown key")
-	boss.birds = _int(part, "birds", 1, WAVE_BIRDS_MAX, "boss.")
-	boss.spawn_interval = _float(part, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX, "boss.")
-	boss.speed_scale = _float(part, "speed_scale", LEVEL_SPEED_MIN, SPEED_CAP_MAX, "boss.")
+	boss.birds = _int(part, "birds", 1, ModeSpec.WAVE_BIRDS_MAX, "boss.")
+	boss.spawn_interval = _float(part, "spawn_interval", ModeSpec.SPAWN_INTERVAL_MIN, ModeSpec.SPAWN_INTERVAL_MAX, "boss.")
+	boss.speed_scale = _float(part, "speed_scale", LevelSpec.SPEED_MIN, ModeSpec.SPEED_CAP_MAX, "boss.")
 	boss.mix = _mix(part, "mix", false, "boss.")
 	return boss
 
 
-## A level's star thresholds: STAR_COUNT whole scores of 1..STAR_SCORE_MAX, each above the one before.
+## A level's star thresholds: LevelSpec.STAR_COUNT whole scores of 1..LevelSpec.STAR_SCORE_MAX, each above the one before.
 static func _stars(object: Dictionary, key: String) -> Array[int]:
 	var result: Array[int] = []
 	if not object.has(key):
 		return result
-	if typeof(object[key]) != TYPE_ARRAY or (object[key] as Array).size() != STAR_COUNT:
-		_error(key, "expected an array of %d scores (1, 2 and 3 stars), got %s" % [STAR_COUNT, object[key]])
+	if typeof(object[key]) != TYPE_ARRAY or (object[key] as Array).size() != LevelSpec.STAR_COUNT:
+		_error(key, "expected an array of %d scores (1, 2 and 3 stars), got %s" % [LevelSpec.STAR_COUNT, object[key]])
 		return result
 	var list: Array = object[key]
 	for i in list.size():
-		result.append(_int({key: list[i]}, key, 1, STAR_SCORE_MAX, "", "%s[%d]" % [key, i]))
+		result.append(_int({key: list[i]}, key, 1, LevelSpec.STAR_SCORE_MAX, "", "%s[%d]" % [key, i]))
 	if _failed.has(key):
 		return result
 	for i in range(1, result.size()):
@@ -487,22 +438,22 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 			["splits_into", "split_count", "penalty", "escape_counts"])
 		item.name = _string(entry, "name", NAME_MAX)
 		item.chapter = _reference(entry, "chapter", _chapters, "chapter")
-		item.pattern = _enum(entry, "pattern", PATTERNS)
-		item.speed = _float(entry, "speed", 1.0, SPEED_MAX)
-		item.wobble = _float(entry, "wobble", 0.0, WOBBLE_MAX)
-		item.wobble_hz = _float(entry, "wobble_hz", 0.0, WOBBLE_HZ_MAX)
-		item.flee_time = _float(entry, "flee_time", 0.1, FLEE_TIME_MAX)
-		item.linger_time = _float(entry, "linger_time", LINGER_TIME_MIN, FLEE_TIME_MAX)
+		item.pattern = _enum(entry, "pattern", BirdSpec.PATTERNS)
+		item.speed = _float(entry, "speed", 1.0, BirdSpec.SPEED_MAX)
+		item.wobble = _float(entry, "wobble", 0.0, BirdSpec.WOBBLE_MAX)
+		item.wobble_hz = _float(entry, "wobble_hz", 0.0, BirdSpec.WOBBLE_HZ_MAX)
+		item.flee_time = _float(entry, "flee_time", 0.1, BirdSpec.FLEE_TIME_MAX)
+		item.linger_time = _float(entry, "linger_time", BirdSpec.LINGER_TIME_MIN, BirdSpec.FLEE_TIME_MAX)
 		item.call_sound = _sound(entry, "call")
-		item.call_pitch = _float(entry, "call_pitch", CALL_PITCH_MIN, CALL_PITCH_MAX)
-		item.points = _int(entry, "points", 0, POINTS_MAX)
-		item.hp = _int(entry, "hp", 1, HP_MAX)
+		item.call_pitch = _float(entry, "call_pitch", BirdSpec.CALL_PITCH_MIN, BirdSpec.CALL_PITCH_MAX)
+		item.points = _int(entry, "points", 0, BirdSpec.POINTS_MAX)
+		item.hp = _int(entry, "hp", 1, BirdSpec.HP_MAX)
 		item.sprite = _string(entry, "sprite", NAME_MAX)
 		if item.sprite != "":
 			for frame in item.frames():
 				if not ResourceLoader.exists(item.texture_path(frame)):
 					_error("sprite", "unknown sprite '%s' (no %s)" % [item.sprite, item.texture_path(frame)])
-		item.size = _vector(entry, "size", SIZE_MIN, SIZE_MAX)
+		item.size = _vector(entry, "size", BirdSpec.SIZE_MIN, BirdSpec.SIZE_MAX)
 		item.hitbox = _hitbox(entry, item.size)
 		# splits_into and split_count come together (the splitter); the reference is
 		# checked once every bird is loaded.
@@ -511,9 +462,9 @@ static func _load_birds(entries: Array[Dictionary]) -> void:
 			_error(missing, "missing key (required with %s)" % ("splits_into" if missing == "split_count" else "split_count"))
 		item.splits_into = _string(entry, "splits_into", NAME_MAX)
 		if entry.has("split_count"):
-			item.split_count = _int(entry, "split_count", 1, SPLIT_COUNT_MAX)
+			item.split_count = _int(entry, "split_count", 1, BirdSpec.SPLIT_COUNT_MAX)
 		if entry.has("penalty"):
-			item.penalty = _int(entry, "penalty", 1, POINTS_MAX)
+			item.penalty = _int(entry, "penalty", 1, BirdSpec.POINTS_MAX)
 		if entry.has("escape_counts"):
 			item.escape_counts = _bool(entry, "escape_counts")
 		if item.splits_into != "":
@@ -536,16 +487,16 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 		item.name = _string(entry, "name", NAME_MAX)
 		item.birds = _mix(entry, "birds")
 		item.golden_bird = _reference(entry, "golden_bird", _birds, "bird")
-		item.golden_from_wave = _int(entry, "golden_from_wave", 1, WAVE_MAX)
+		item.golden_from_wave = _int(entry, "golden_from_wave", 1, ModeSpec.WAVE_MAX)
 		item.golden_chance = _float(entry, "golden_chance", 0.0, 1.0)
-		item.start_birds = _int(entry, "start_birds", 1, WAVE_BIRDS_MAX)
-		item.bird_growth = _int(entry, "bird_growth", 0, BIRD_GROWTH_MAX)
-		item.max_birds = _int(entry, "max_birds", item.start_birds, WAVE_BIRDS_MAX)
-		item.speed_growth = _float(entry, "speed_growth", 0.0, SPEED_GROWTH_MAX)
-		item.speed_cap = _float(entry, "speed_cap", 1.0, SPEED_CAP_MAX)
-		item.spawn_interval = _float(entry, "spawn_interval", SPAWN_INTERVAL_MIN, SPAWN_INTERVAL_MAX)
-		item.shells_per_hit = _int(entry, "shells_per_hit", 1, SHELLS_PER_HIT_MAX)
-		item.combo_cap = _int(entry, "combo_cap", 1, COMBO_CAP_MAX)
+		item.start_birds = _int(entry, "start_birds", 1, ModeSpec.WAVE_BIRDS_MAX)
+		item.bird_growth = _int(entry, "bird_growth", 0, ModeSpec.BIRD_GROWTH_MAX)
+		item.max_birds = _int(entry, "max_birds", item.start_birds, ModeSpec.WAVE_BIRDS_MAX)
+		item.speed_growth = _float(entry, "speed_growth", 0.0, ModeSpec.SPEED_GROWTH_MAX)
+		item.speed_cap = _float(entry, "speed_cap", 1.0, ModeSpec.SPEED_CAP_MAX)
+		item.spawn_interval = _float(entry, "spawn_interval", ModeSpec.SPAWN_INTERVAL_MIN, ModeSpec.SPAWN_INTERVAL_MAX)
+		item.shells_per_hit = _int(entry, "shells_per_hit", 1, ModeSpec.SHELLS_PER_HIT_MAX)
+		item.combo_cap = _int(entry, "combo_cap", 1, ModeSpec.COMBO_CAP_MAX)
 		# How a run ends: exactly one of escape_limit (Endless: at that many lost birds) and
 		# time_limit (Time Attack: after that many seconds); the other does not apply.
 		if entry.has("escape_limit") and entry.has("time_limit"):
@@ -553,20 +504,20 @@ static func _load_modes(entries: Array[Dictionary]) -> void:
 		elif not entry.has("escape_limit") and not entry.has("time_limit"):
 			_error("escape_limit", "missing key (a mode needs escape_limit or time_limit: how its run ends)")
 		if entry.has("escape_limit"):
-			item.escape_limit = _int(entry, "escape_limit", 1, ESCAPE_LIMIT_MAX)
+			item.escape_limit = _int(entry, "escape_limit", 1, ModeSpec.ESCAPE_LIMIT_MAX)
 		if entry.has("time_limit"):
-			item.time_limit = _float(entry, "time_limit", TIME_LIMIT_MIN, TIME_LIMIT_MAX)
+			item.time_limit = _float(entry, "time_limit", ModeSpec.TIME_LIMIT_MIN, ModeSpec.TIME_LIMIT_MAX)
 		if entry.has("rival_steals"):
 			item.rival_steals = _bool(entry, "rival_steals")
 		item.stages = _stages(entry, "backdrops")
-		item.backdrop_waves = _int(entry, "backdrop_waves", 1, WAVE_MAX)
+		item.backdrop_waves = _int(entry, "backdrop_waves", 1, ModeSpec.WAVE_MAX)
 		item.music = _music(entry, "music")
 		if item.id != "":
 			_modes[item.id] = item
 
 
 ## rival_lines.json: {"aim_time", "cooldown", "lines": {<category>: [line, ...]}}, every
-## category of RivalLines.CATEGORIES with a non-empty list of 1..RIVAL_LINE_MAX character
+## category of RivalLines.CATEGORIES with a non-empty list of 1..RivalLines.LINE_MAX character
 ## strings. Errors name the category as the entry ("-" for the top-level fields). Then I13:
 ## every bird but the decoy (never stolen) ends the rival's cue before it flees.
 static func _load_rival_lines(object: Dictionary) -> void:
@@ -579,9 +530,9 @@ static func _load_rival_lines(object: Dictionary) -> void:
 	for key: Variant in object:
 		if not str(key) in keys:
 			_error(str(key), "unknown key")
-	_rival_lines.aim_time = _float(object, "aim_time", AIM_TIME_MIN, AIM_TIME_MAX)
+	_rival_lines.aim_time = _float(object, "aim_time", RivalLines.AIM_TIME_MIN, RivalLines.AIM_TIME_MAX)
 	var aim_ok := not _failed.has("aim_time")
-	_rival_lines.cooldown = _float(object, "cooldown", 0.0, COOLDOWN_MAX)
+	_rival_lines.cooldown = _float(object, "cooldown", 0.0, RivalLines.COOLDOWN_MAX)
 	if object.has("lines"):
 		if typeof(object["lines"]) != TYPE_DICTIONARY:
 			_error("lines", "expected Dictionary, got %s" % type_string(typeof(object["lines"])))
@@ -601,7 +552,7 @@ static func _load_rival_lines(object: Dictionary) -> void:
 		_check_linger(_rival_lines.aim_time)
 
 
-## A category's lines: a non-empty array of strings of 1..RIVAL_LINE_MAX characters.
+## A category's lines: a non-empty array of strings of 1..RivalLines.LINE_MAX characters.
 static func _lines(value: Variant) -> PackedStringArray:
 	var result := PackedStringArray()
 	if typeof(value) != TYPE_ARRAY:
@@ -616,8 +567,8 @@ static func _lines(value: Variant) -> PackedStringArray:
 			_error(field, "expected String, got %s" % type_string(typeof(list[i])))
 			continue
 		var line: String = list[i]
-		if line.is_empty() or line.length() > RIVAL_LINE_MAX:
-			_error(field, "length %d is outside 1..%d (the speech bubble's two lines)" % [line.length(), RIVAL_LINE_MAX])
+		if line.is_empty() or line.length() > RivalLines.LINE_MAX:
+			_error(field, "length %d is outside 1..%d (the speech bubble's two lines)" % [line.length(), RivalLines.LINE_MAX])
 		result.append(line)
 	return result
 
@@ -688,13 +639,13 @@ static func _mix(object: Dictionary, key: String, with_from_wave := true, prefix
 		var entry := ModeSpec.Entry.new()
 		entry.bird = _reference(part, "bird", _birds, "bird", field + ".")
 		if with_from_wave:
-			entry.from_wave = _int(part, "from_wave", 1, WAVE_MAX, field + ".")
+			entry.from_wave = _int(part, "from_wave", 1, ModeSpec.WAVE_MAX, field + ".")
 			if part.has("guaranteed_wave"):
-				entry.guaranteed_wave = _int(part, "guaranteed_wave", 1, WAVE_MAX, field + ".")
+				entry.guaranteed_wave = _int(part, "guaranteed_wave", 1, ModeSpec.WAVE_MAX, field + ".")
 				# Compared only when both read cleanly, so a fallback value is never blamed.
-				if _int_ok(part, "guaranteed_wave", 1, WAVE_MAX) and _int_ok(part, "from_wave", 1, WAVE_MAX) and entry.guaranteed_wave < entry.from_wave:
+				if _int_ok(part, "guaranteed_wave", 1, ModeSpec.WAVE_MAX) and _int_ok(part, "from_wave", 1, ModeSpec.WAVE_MAX) and entry.guaranteed_wave < entry.from_wave:
 					_error(field + ".guaranteed_wave", "%d is before from_wave %d (the bird is not in the mix yet)" % [entry.guaranteed_wave, entry.from_wave])
-		entry.weight = _int(part, "weight", 1, WEIGHT_MAX, field + ".")
+		entry.weight = _int(part, "weight", 1, ModeSpec.WEIGHT_MAX, field + ".")
 		if entry.bird != "":
 			if seen.has(entry.bird):
 				_error(field + ".bird", "'%s' is already in the mix (%s%s[%d])" % [entry.bird, prefix, key, seen[entry.bird]])
@@ -880,7 +831,7 @@ static func _pair(value: Variant, field: String, low: float, high: float) -> Vec
 	return Vector2(_float_value(list[0], field + "[0]", low, high), _float_value(list[1], field + "[1]", low, high))
 
 
-## The hitbox polygon: at least HITBOX_MIN_POINTS [x, y] points, each inside the sprite
+## The hitbox polygon: at least BirdSpec.HITBOX_MIN_POINTS [x, y] points, each inside the sprite
 ## (within half of `size` of the centre on each axis; not checked when `size` failed).
 static func _hitbox(object: Dictionary, size: Vector2) -> PackedVector2Array:
 	var polygon := PackedVector2Array()
@@ -890,12 +841,12 @@ static func _hitbox(object: Dictionary, size: Vector2) -> PackedVector2Array:
 		_error("hitbox", "expected Array, got %s" % type_string(typeof(object["hitbox"])))
 		return polygon
 	var list: Array = object["hitbox"]
-	if list.size() < HITBOX_MIN_POINTS:
-		_error("hitbox", "has %d points, needs at least %d" % [list.size(), HITBOX_MIN_POINTS])
+	if list.size() < BirdSpec.HITBOX_MIN_POINTS:
+		_error("hitbox", "has %d points, needs at least %d" % [list.size(), BirdSpec.HITBOX_MIN_POINTS])
 	var half := size / 2.0
 	for i in list.size():
 		var field := "hitbox[%d]" % i
-		var point := _pair(list[i], field, -SIZE_MAX, SIZE_MAX)
+		var point := _pair(list[i], field, -BirdSpec.SIZE_MAX, BirdSpec.SIZE_MAX)
 		# A failed size has no real bounds to check against.
 		if not _failed.has("size") and (absf(point.x) > half.x or absf(point.y) > half.y):
 			_error(field, "%s is outside the sprite (±%s)" % [point, half])

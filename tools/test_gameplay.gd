@@ -3999,7 +3999,7 @@ func _test_campaign_rival_linger_scale() -> void:
 				break
 			cued = bird.age - bird.cue_age
 			await process_frame
-		_check(bird.stolen and cued >= aim - FRAME - 0.001 and aim >= Content.AIM_TIME_MIN, "%s: the cue still runs aim_time before the steal" % level_id, "cued %.3f" % cued)
+		_check(bird.stolen and cued >= aim - FRAME - 0.001 and aim >= RivalLines.AIM_TIME_MIN, "%s: the cue still runs aim_time before the steal" % level_id, "cued %.3f" % cued)
 
 
 ## The verdict (logged, no longer shown): a win when the score beats the rival's, a loss

@@ -2,6 +2,26 @@ class_name BirdSpec
 extends Resource
 ## One bird type from data/birds.json. Built by Content (data/SCHEMA.md documents every field).
 
+## Flight patterns (Flight).
+const PATTERNS: Array[String] = ["rise", "zigzag"]
+## Field limits birds.json is checked against (Content reports a value outside them).
+const SPEED_MAX := 1000.0
+const WOBBLE_MAX := 100.0
+const WOBBLE_HZ_MAX := 5.0
+const FLEE_TIME_MAX := 60.0
+## A bird's linger_time lies in LINGER_TIME_MIN..FLEE_TIME_MAX seconds (always > 0).
+const LINGER_TIME_MIN := 0.1
+## A bird's call (I25) plays at a pitch of CALL_PITCH_MIN..CALL_PITCH_MAX.
+const CALL_PITCH_MIN := 0.5
+const CALL_PITCH_MAX := 2.0
+## The most points a kill scores or a hit deducts (penalty).
+const POINTS_MAX := 100000
+const HP_MAX := 5
+const SPLIT_COUNT_MAX := 4
+## A bird's drawn size lies in SIZE_MIN..SIZE_MAX base units on each axis.
+const SIZE_MIN := 8.0
+const SIZE_MAX := 400.0
+const HITBOX_MIN_POINTS := 3
 ## The flap frames a bird with hp > 1 shows once it has taken a hit.
 const DAMAGED_FRAMES: Array[String] = ["damaged_fly_1", "damaged_fly_2"]
 

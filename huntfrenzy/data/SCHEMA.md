@@ -204,7 +204,7 @@ A single object (not an array):
 |---|---|---|---|
 | `aim_time` | float | 0.5..10 | Seconds the rival aims (the cue on the bird and on him) before he fires. |
 | `cooldown` | float | 0..60 | Seconds after a heckle before a miss, combo or wave-end line can show; steal lines skip it. |
-| `lines` | object | keys exactly `miss`, `combo`, `wave_end`, `steal`, `results` (`RivalLines.CATEGORIES`) | Each a non-empty array of strings of 1..40 characters (`Content.RIVAL_LINE_MAX`: two lines of the speech bubble). An error names the category: `data/rival_lines.json [steal] lines: missing category`, `[miss] lines[2]: length 45 is outside 1..40 ...`. |
+| `lines` | object | keys exactly `miss`, `combo`, `wave_end`, `steal`, `results` (`RivalLines.CATEGORIES`) | Each a non-empty array of strings of 1..40 characters (`RivalLines.LINE_MAX`: two lines of the speech bubble). An error names the category: `data/rival_lines.json [steal] lines: missing category`, `[miss] lines[2]: length 45 is outside 1..40 ...`. |
 
 ---
 
@@ -310,7 +310,7 @@ against a fallback value.
   loops are the game's own (`AudioManager.TITLE_TRACK`, `RESULTS_TRACK`), checked when the game starts.
 - **I25** Every bird's `call` is one of the game's sound effects, `AudioManager.SFX_IDS` (each made by `tools/sfx.py`
   as `res://audio/sfx/<id>.wav`; the game checks every file exists when it starts): `unknown sound effect '<id>' (I25: a
-  call must be one of AudioManager.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`Content.CALL_PITCH_MIN`..`MAX`, I2).
+  call must be one of AudioManager.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`BirdSpec.CALL_PITCH_MIN`..`MAX`, I2).
 - **I26** Every backdrop the data shows (a chapter's `backdrop`, a mode's `backdrops[].backdrop`) has a rival tint in
   `Backdrop.RIVAL_TINTS` (palette colours: neutral at noon, warm at dawn and sunset, cool and moonlit at night), which
   Play and the title set as the rival's modulate over it: `backdrop '<id>' has no rival tint (I26: ...)`.
