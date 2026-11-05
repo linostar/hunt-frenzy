@@ -27,9 +27,7 @@ extends Control
 ## without Next).
 ## Laid out in the safe area: the stars and panels are centred between the heading and
 ## the save error's slot above the buttons.
-## Sound: the rival's parting line plays his blurt (silent while AudioManager.HECKLE_BLURTS is off)
-## (Game.audio.play_heckle, "results"; after a run ended by his steal it waits for his laugh to
-## finish); a level's earned stars each play "star", STAR_SOUND_GAP seconds apart, and a
+## Sound: a level's earned stars each play "star", STAR_SOUND_GAP seconds apart, and a
 ## new best then plays "new_best". Each earned star pops in with its sound (a scale bounce,
 ## STAR_POP_TIME; with Game.save.reduce_motion it just appears at the same moment), and the
 ## New best badge bounces with its fanfare (not with reduce motion).
@@ -236,13 +234,12 @@ func _show_stats(stats: Dictionary) -> void:
 	if _level != null:
 		print("[Results] Level %s: %s, %d stars, best %d (%d stars), next %s" % [_level.id, _outcome.text, stats["stars"], stats["best"], stats["best_stars"], stats["next_level"] if stats["next_level"] != "" else "none open"])
 	_place_heading()
-	_play_sounds(stats["rival_line"], stats["stars"] if _level != null else 0, stats["new_best"])
+	_play_sounds(stats["stars"] if _level != null else 0, stats["new_best"])
 
 
-## The results' sounds: the rival's blurt for `rival_line` at once, then `stars` star sounds
-## and the new best's fanfare (when `new_best`), STAR_SOUND_GAP seconds apart.
-func _play_sounds(rival_line: String, stars: int, new_best: bool) -> void:
-	_game.audio.play_heckle("results", rival_line)
+## The results' sounds: `stars` star sounds and the new best's fanfare (when `new_best`),
+## STAR_SOUND_GAP seconds apart.
+func _play_sounds(stars: int, new_best: bool) -> void:
 	if stars == 0 and not new_best:
 		return
 	var tween := create_tween()

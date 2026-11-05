@@ -20,7 +20,7 @@ extends Control
 ## GOOSE_GAP_MIN..MAX seconds, at most GEESE_MAX at once), in a band from below the top bar
 ## down to just above the first row of buttons, so a goose never covers a button. A tap on
 ## a goose (its hitbox polygon, as in play) shoots it: the shot and hit sounds, a feather
-## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while AudioManager.HECKLE_BLURTS is off)
+## burst, the goose falls, and the rival sulks and grumbles a heckle line
 ## (cooldown permitting, as in play); it scores nothing and saves nothing, and is logged
 ## ("[Title] Shot goose #n"). A tap on empty sky plays the shot only; a tap on a button only
 ## presses it (the buttons lie above the shot surface). The scenery drifts slowly from side
@@ -232,8 +232,8 @@ func _on_shot(at: Vector2) -> void:
 	_heckle()
 
 
-## The rival grumbles a HECKLE_CATEGORY line in his bubble for RivalController.HECKLE_TIME with its
-## blurt, unless the cooldown since his last one has not passed (logged either way).
+## The rival grumbles a HECKLE_CATEGORY line in his bubble for RivalController.HECKLE_TIME,
+## unless the cooldown since his last one has not passed (logged either way).
 func _heckle() -> void:
 	if _rival_lines == null:
 		return
@@ -250,7 +250,6 @@ func _heckle() -> void:
 	_bubble_tween = create_tween()
 	_bubble_tween.tween_interval(RivalController.HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
-	_game.audio.play_heckle(HECKLE_CATEGORY, line)
 	print("[Title] Heckle (%s) #%d: \"%s\"" % [HECKLE_CATEGORY, heckles, line])
 
 

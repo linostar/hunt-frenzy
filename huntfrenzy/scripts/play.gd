@@ -69,8 +69,7 @@ extends Node2D
 ## the first frame its art shows above the grass line (Bird.appeared, once per bird: today
 ## every rising bird on its spawn frame, a gosling at its launch; fleeing makes no sound), its call (its spec's call
 ## at its call_pitch); the rival's
-## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
-## (Game.audio.play_heckle; silent while AudioManager.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
+## aim cue "rival_aim" and his steal "rival_steal". A timed run ticks ("countdown_tick") once at each of the last
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
 ## countdown runs on run_clock, so a pause stops it. The pause menu's sounds: PauseMenu.
 ## Juice: a kill stops the world for a moment (hit stop: HIT_STOP_TIME, HIT_STOP_HEAVY_TIME

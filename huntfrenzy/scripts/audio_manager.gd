@@ -3,12 +3,8 @@ extends Node
 ## Game/Audio: every sound goes through play_sfx(id) (audio/sfx/<id>.wav, tools/sfx.py), which
 ## logs "[Audio] SFX <id>" and plays it on the SFX bus from a pool of SFX_VOICES players;
 ## every Button's press plays "ui_tap" unless it is in OWN_SOUND_GROUP (it plays its own).
-## A heckle plays a gibberish blurt (play_heckle: blurt_plan strings the rival's syllables,
-## seeded by the line, pitched and voiced by the category). play_sfx_later plays a sound a
-## moment from now (the rival's laugh after his shot), on the same clock as the blurts; a
-## blurt asked for while such a sound is queued or playing waits until it has finished (the
-## rival never talks over his own laugh, the results' parting line included). The music is
-## one loop per screen (track_for: the title's for the title, the selects, the settings, the
+## play_sfx_later plays a sound a moment from now (the rival's laugh after his shot) on the
+## sound clock (held while paused). The music is one loop per screen (track_for: the title's for the title, the selects, the settings, the
 ## credits and the top scores, the chapter's or the mode's in a run, the results' on results)
 ## on the Music bus: SceneFlow.goto asks for it as the transition starts, a screen with the
 ## same loop leaves it playing, another crossfades in over CROSSFADE_TIME, and every change is
@@ -46,24 +42,6 @@ const SFX_LOG_SIZE := 256
 ## Buttons in this group play their own sound when pressed (the pause button and Resume),
 ## not "ui_tap".
 const OWN_SOUND_GROUP := &"own_sound"
-## The rival's syllables: audio/sfx/blurt_<timbre>_<vowel>.wav (tools/sfx.py TIMBRES, VOWELS).
-const BLURT_PATH := "res://audio/sfx/blurt_%s_%s.wav"
-const BLURT_TIMBRES: Array[String] = ["gruff", "nasal", "hoot"]
-const BLURT_VOWELS: Array[String] = ["a", "e", "o", "u"]
-## A blurt has one syllable per word of its line, at most this many, BLURT_GAP seconds apart
-## (varied a little).
-const BLURT_SYLLABLES_MAX := 6
-## Whether the rival's heckles speak (an experiment: off, his lines show in the bubble with
-## no gibberish blurt; his laugh on a steal still plays). One switch: set it true to bring
-## the blurts back (play_heckle, blurt_plan and the blurt_* WAVs are all kept).
-const HECKLE_BLURTS := false
-const BLURT_GAP := 0.13
-## The rival's voice per heckle category (RivalLines.CATEGORIES): the timbre and the base
-## pitch of the blurt (a mocking high nasal for a miss and a gloating higher one for a
-## steal, a grumble for the player's combo, a hoot at a wave's end, a gruff parting line).
-const HECKLE_VOICES: Dictionary[String, Array] = {
-	"miss": ["nasal", 1.2], "combo": ["gruff", 0.85], "wave_end": ["hoot", 1.0], "steal": ["nasal", 1.45], "results": ["gruff", 1.05],
-}
 ## The loops of the title (and the chapter and level selects) and of the results screen;
 ## a run plays its chapter's or mode's (data music, Content.music_path).
 const TITLE_TRACK := "title"
@@ -83,22 +61,18 @@ const SILENT_AUDIO_DRIVER := "Dummy"
 const QUIT_FRAMES := 3
 
 
-## One syllable of a heckle's blurt: the sound (a BLURT_PATH id), its pitch, and when it
-## starts (seconds after the first).
-class Syllable:
+## A sound play_sfx_later queued: its id and the _clock time it starts at.
+class LaterSound:
 	var sound: StringName
-	var pitch := 1.0
 	var at := 0.0
 
 ## Where sound effects are (SFX_PATH) and music loops are (MUSIC_PATH); tests swap them to
 ## check the missing and unloadable paths.
 var sfx_path := SFX_PATH
 var music_path := MUSIC_PATH
-## The ids of the latest sounds played, oldest first (SFX_LOG_SIZE at most; a heckle's blurt
-## is "heckle_<category>"), and the pitch each played at (1 for a blurt); tests read them.
+## The ids of the latest sounds played, oldest first (SFX_LOG_SIZE at most), and the pitch
+## each played at; tests read them.
 var sfx_log: Array[StringName] = []
-## HECKLE_BLURTS for this run of the game (tests turn it on to check the blurts themselves).
-var heckle_blurts := HECKLE_BLURTS
 var sfx_pitches: Array[float] = []
 ## The loop asked for ("" before the first) and how often it changed (a crossfade each).
 var music_track := ""
@@ -121,14 +95,8 @@ var _sfx_until: Array[float] = []
 ## The players the current pause holds, and the _clock it started at.
 var _held: Array[AudioStreamPlayer] = []
 var _held_at := 0.0
-## The syllables of blurts still to start, each at its _clock time (in order).
-var _blurt_queue: Array[Syllable] = []
 ## Sounds play_sfx_later queued, each at its _clock time (in order).
-var _later_queue: Array[Syllable] = []
-## The _clock time the last play_sfx_later sound ends (queued or playing; shifted by a
-## pause like the sounds), and its id: a blurt waits until then.
-var _later_until := -INF
-var _later_id := &""
+var _later_queue: Array[LaterSound] = []
 ## Loop file -> its stream, or null when it is missing (reported once).
 var _tracks: Dictionary[String, AudioStream] = {}
 var _music_players: Array[AudioStreamPlayer] = []
@@ -143,12 +111,9 @@ func _process(delta: float) -> void:
 	_clock += delta
 	# Pauses that did not call sync_audio_pause themselves (a test pausing the tree).
 	sync_audio_pause()
-	while not audio_paused and not _blurt_queue.is_empty() and _blurt_queue[0].at <= _clock:
-		var syllable: Syllable = _blurt_queue.pop_front()
-		_start_voice(_sound(syllable.sound), syllable.pitch)
 	while not audio_paused and not _later_queue.is_empty() and _later_queue[0].at <= _clock:
-		var later: Syllable = _later_queue.pop_front()
-		play_sfx(later.sound, later.pitch)
+		var later: LaterSound = _later_queue.pop_front()
+		play_sfx(later.sound)
 
 
 ## Closing the window: a stream still playing at quit keeps its playback (and the stream)
@@ -199,16 +164,14 @@ func setup() -> void:
 
 
 ## Reports every missing piece of the audio (log and error label): a bus missing from
-## default_bus_layout.tres, a sound effect or syllable file, the title or results loop (the
+## default_bus_layout.tres, a sound effect file, the title or results loop (the
 ## chapters' and modes' loops are data, checked by Content: I23). Returns whether all is there.
 func check_audio() -> bool:
 	var problems: Array[String] = []
 	for bus: StringName in [MUSIC_BUS, SFX_BUS]:
 		if AudioServer.get_bus_index(bus) < 0:
 			problems.append("Audio bus '%s' is missing from res://default_bus_layout.tres; its sounds play on Master" % bus)
-	var sounds: Array[StringName] = SFX_IDS.duplicate()
-	sounds.append_array(blurt_ids())
-	for id: StringName in sounds:
+	for id: StringName in SFX_IDS:
 		if not ResourceLoader.exists(sfx_path % id):
 			problems.append("Sound effect '%s' is missing: %s (run python3 tools/sfx.py)" % [id, sfx_path % id])
 	for track: String in [TITLE_TRACK, RESULTS_TRACK]:
@@ -218,17 +181,8 @@ func check_audio() -> bool:
 		_game.report_error(problem)
 	if problems.is_empty():
 		print("[Audio] %d sound effects, the title and results loops and the %s and %s buses are in place (driver %s%s)" % [
-			sounds.size(), MUSIC_BUS, SFX_BUS, AudioServer.get_driver_name(), ", silent: sounds are only recorded" if audio_silent() else ""])
+			SFX_IDS.size(), MUSIC_BUS, SFX_BUS, AudioServer.get_driver_name(), ", silent: sounds are only recorded" if audio_silent() else ""])
 	return problems.is_empty()
-
-
-## The ids of the rival's syllables (blurt_<timbre>_<vowel>), played from SFX_PATH.
-static func blurt_ids() -> Array[StringName]:
-	var ids: Array[StringName] = []
-	for timbre in BLURT_TIMBRES:
-		for vowel in BLURT_VOWELS:
-			ids.append(StringName("blurt_%s_%s" % [timbre, vowel]))
-	return ids
 
 
 ## True without an audio device (the Dummy driver of headless runs): sounds and loops are
@@ -255,73 +209,17 @@ func play_sfx(id: StringName, pitch := 1.0) -> void:
 func play_sfx_later(id: StringName, delay: float) -> void:
 	if _sound(id) == null:
 		return
-	var queued := Syllable.new()
+	var queued := LaterSound.new()
 	queued.sound = id
 	queued.at = _clock + delay
-	if queued.at + _sound(id).get_length() > _later_until:
-		_later_until = queued.at + _sound(id).get_length()
-		_later_id = id
 	_later_queue.append(queued)
-	_later_queue.sort_custom(func(a: Syllable, b: Syllable) -> bool: return a.at < b.at)
+	_later_queue.sort_custom(func(a: LaterSound, b: LaterSound) -> bool: return a.at < b.at)
 	print("[Audio] SFX %s in %.2f s" % [id, delay])
 
 
 ## The sounds play_sfx_later queued and not started yet.
 func sfx_waiting() -> int:
 	return _later_queue.size()
-
-
-## With heckle_blurts off (HECKLE_BLURTS, the default) plays nothing and logs "[Audio]
-## Heckle blurt muted (HECKLE_BLURTS off) for heckle_<category>: "<line>"". Else:
-## plays the rival's blurt for heckle `line` of `category` (blurt_plan) and logs it as
-## "[Audio] SFX heckle_<category>"; its syllables start one after another on the sound clock
-## (held while paused), from now or, while a play_sfx_later sound (his laugh) is queued or
-## playing, once it has finished (logged with the wait).
-func play_heckle(category: String, line: String) -> void:
-	var plan := blurt_plan(category, line)
-	if plan.is_empty():
-		_game.report_error("No blurt for the heckle category '%s' (AudioManager.HECKLE_VOICES)" % category)
-		return
-	var id := StringName("heckle_" + category)
-	if not heckle_blurts:
-		print("[Audio] Heckle blurt muted (HECKLE_BLURTS off) for %s: \"%s\"" % [id, line])
-		return
-	_log_sound(id)
-	var start := maxf(_clock, _later_until)
-	var heard := PackedStringArray()
-	for syllable in plan:
-		heard.append("%s x%.2f" % [syllable.sound.trim_prefix("blurt_"), syllable.pitch])
-		var queued := Syllable.new()
-		queued.sound = syllable.sound
-		queued.pitch = syllable.pitch
-		queued.at = start + syllable.at
-		_blurt_queue.append(queued)
-	_blurt_queue.sort_custom(func(a: Syllable, b: Syllable) -> bool: return a.at < b.at)
-	var wait := ", starting in %.2f s once %s has finished" % [start - _clock, _later_id] if start > _clock else ""
-	print("[Audio] SFX %s: %d syllables (%s) for \"%s\"%s" % [id, plan.size(), ", ".join(heard), line, wait])
-
-
-## The blurt of heckle `line` in `category`: one syllable per word of the line (at most
-## BLURT_SYLLABLES_MAX), the timbre and base pitch from HECKLE_VOICES, each syllable's vowel,
-## pitch and gap drawn from an RNG seeded by the line, so the same line always gives the same
-## blurt. Empty for an unknown category.
-static func blurt_plan(category: String, line: String) -> Array[Syllable]:
-	var plan: Array[Syllable] = []
-	if not HECKLE_VOICES.has(category):
-		return plan
-	var timbre: String = HECKLE_VOICES[category][0]
-	var base: float = HECKLE_VOICES[category][1]
-	var rng := RandomNumberGenerator.new()
-	rng.seed = line.hash()
-	var at := 0.0
-	for i in clampi(line.split(" ", false).size(), 1, BLURT_SYLLABLES_MAX):
-		var syllable := Syllable.new()
-		syllable.sound = StringName("blurt_%s_%s" % [timbre, BLURT_VOWELS[rng.randi_range(0, BLURT_VOWELS.size() - 1)]])
-		syllable.pitch = base * rng.randf_range(0.88, 1.15)
-		syllable.at = at
-		at += BLURT_GAP * rng.randf_range(0.8, 1.2)
-		plan.append(syllable)
-	return plan
 
 
 func _log_sound(id: StringName, pitch := 1.0) -> void:
@@ -333,14 +231,14 @@ func _log_sound(id: StringName, pitch := 1.0) -> void:
 		sfx_pitches.pop_front()
 
 
-## The stream of sound `id` (SFX_IDS or a syllable), loaded once; a sound that is unknown,
+## The stream of sound `id` (one of SFX_IDS), loaded once; a sound that is unknown,
 ## missing or unloadable is reported once (with its path) and is null.
 func _sound(id: StringName) -> AudioStream:
 	var path := sfx_path % id
 	if _sounds.has(path):
 		return _sounds[path]
 	var stream: AudioStream = null
-	if not id in SFX_IDS and not id in blurt_ids():
+	if not id in SFX_IDS:
 		_game.report_error("Unknown sound effect '%s' (not in AudioManager.SFX_IDS)" % id)
 	elif not ResourceLoader.exists(path):
 		_game.report_error("Sound effect '%s' is missing: %s (run python3 tools/sfx.py)" % [id, path])
@@ -382,11 +280,6 @@ func _start_voice(stream: AudioStream, pitch: float) -> void:
 	if not audio_silent():
 		player.play()
 		_check_started(player, "Sound '%s'" % stream.resource_path.get_file())
-
-
-## The blurt syllables queued and not started yet.
-func blurt_syllables_waiting() -> int:
-	return _blurt_queue.size()
 
 
 ## With an audio device, `player` must be playing right after play(): `what` did not start
@@ -444,18 +337,14 @@ func sync_audio_pause() -> void:
 				if was_playing and not _sfx_players[i].stream_paused:
 					_game.report_error("Sound on %s kept playing when the game paused (stream_paused did not hold it)" % _sfx_players[i].name)
 		held_sounds = _held.size()
-		print("[Audio] Paused: %d sounds held, %d blurt syllables waiting, music ducked by %.0f dB" % [held_sounds, _blurt_queue.size(), -PAUSE_DUCK_DB])
+		print("[Audio] Paused: %d sounds held, music ducked by %.0f dB" % [held_sounds, -PAUSE_DUCK_DB])
 	else:
 		var paused_for := _clock - _held_at
 		for player in _held:
 			player.stream_paused = false
 			_sfx_until[_sfx_players.find(player)] += paused_for
-		for syllable in _blurt_queue:
-			syllable.at += paused_for
 		for later in _later_queue:
 			later.at += paused_for
-		if _later_until > _held_at:
-			_later_until += paused_for
 		print("[Audio] Resumed after %.2f s: %d sounds continue, the music is back to full" % [paused_for, _held.size()])
 		_held.clear()
 		held_sounds = 0
