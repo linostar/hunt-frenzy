@@ -22,7 +22,7 @@ extends Node2D
 ## it neither ages, moves, flaps nor falls until the time is over, and the frame that ends
 ## the hold runs only for what is left of that frame, so the bird loses exactly the hold's
 ## time, as Play's clocks do.
-## The first frame any of its art shows above the grass line (field's bottom, Play.GRASS_Y:
+## The first frame any of its art shows above the grass line (field's bottom, Layout.GRASS_Y:
 ## the grass is solid from there down) it emits `appeared` (Play plays its call): the
 ## highest point of the flap frame it shows (art_top: the convex hull of the frame's opaque
 ## pixels, alpha >= OPAQUE_ALPHA, through its transform) is above the line. A launched bird

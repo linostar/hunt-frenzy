@@ -32,7 +32,7 @@ Usage (from repo root):
     python3 tools/music.py --check   render in memory and verify the lock, the MP3s (bytes and
                                      size) and their .import loop flags; prints "music: OK"
 Generating needs lame and ffmpeg on PATH (Homebrew: brew install lame ffmpeg). The MP3s are
-constant bitrate (96 kbps mono) without ID3 tags.
+constant bitrate (64 kbps mono) without ID3 tags.
 """
 import hashlib
 import json
@@ -542,7 +542,7 @@ def generate():
                 w.writeframes(pcm)
             mp3 = OUT_DIR / f"{name}.mp3"
             # CBR, no ID3 tags. Keep the LAME tag (no -t): it makes the decoded file one loop long.
-            result = subprocess.run([lame, "--quiet", "-m", "m", "-b", "96", "--noreplaygain", str(wav), str(mp3)],
+            result = subprocess.run([lame, "--quiet", "-m", "m", "-b", "64", "--noreplaygain", str(wav), str(mp3)],
                                     capture_output=True, text=True)
             if result.returncode != 0:
                 raise MusicError(f"lame failed for {mp3}: {result.stderr.strip()}")

@@ -12,10 +12,6 @@ signal screen_fit_changed
 ## Emitted when the rotate overlay shows (true) or hides (false).
 signal rotate_overlay_changed(shown: bool)
 
-## The base viewport (project.godot display/window/size): the playfield is laid out
-## in it and is never cropped (aspect expand only adds room).
-const BASE_SIZE := Vector2(960, 540)
-
 ## Tests set this (base units) to stand in for a notched screen's safe area; it applies
 ## from the next ScreenFit update. An empty rect means the display's own safe area.
 var safe_area_override := Rect2()
@@ -76,6 +72,14 @@ func visible_rect() -> Rect2:
 
 ## The part of the visible area clear of notches and rounded corners, in base units.
 func safe_rect() -> Rect2:
+	return _safe_rect
+
+
+## Lays a screen's `Safe` Control over the safe rect (every screen's _fit) and returns the
+## rect.
+func fit_safe(control: Control) -> Rect2:
+	control.position = _safe_rect.position
+	control.size = _safe_rect.size
 	return _safe_rect
 
 

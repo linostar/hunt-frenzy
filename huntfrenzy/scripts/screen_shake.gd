@@ -1,17 +1,10 @@
 class_name ScreenShake
 extends Node
-## Play/Shaker: shakes the World (never the HUD) for an event (SHAKES: amplitude and time per
+## Play/Shaker: shakes the World (never the HUD) for an event (Play.TUNING.shakes: amplitude and time per
 ## cause, decaying to exactly no offset). A weaker shake never cuts a stronger one short; with
 ## reduce motion on nothing shakes. Play drives it from its _process (update) and places the
 ## World through it (set_origin), so the offset is always from where _fit put it.
 
-## Screen shake per event: [amplitude in base units, seconds]. The world's offset decays as
-## (1 - t / time)^2 and is exactly zero once the time is over.
-const SHAKES: Dictionary[String, Array] = {
-	"armored kill": [6.0, 0.25], "golden kill": [8.0, 0.3], "decoy hit": [10.0, 0.3], "steal": [7.0, 0.3], "lost wave": [12.0, 0.4],
-}
-## How fast the shake swings (per second).
-const SHAKE_HZ := 18.0
 ## The backdrop and weather reach this far past the visible area, so a shake never bares an edge.
 const SHAKE_MARGIN := 12.0
 
@@ -32,14 +25,14 @@ func set_origin(origin: Vector2) -> void:
 	_world.position = origin
 
 
-## Shakes the world for `cause` (a SHAKES key): its amplitude and time, from now. A weaker
+## Shakes the world for `cause` (a Play.TUNING.shakes key): its amplitude and time, from now. A weaker
 ## shake never cuts a stronger one short. With reduce motion on nothing shakes. Logged.
 func shake(cause: String) -> void:
 	if (get_node(GameState.AUTOLOAD_PATH) as GameState).save.reduce_motion:
 		print("[Play] Shake (%s) skipped: reduce motion" % cause)
 		return
-	var amplitude: float = SHAKES[cause][0]
-	var time: float = SHAKES[cause][1]
+	var amplitude: float = Play.TUNING.shakes[cause][0]
+	var time: float = Play.TUNING.shakes[cause][1]
 	if shake_strength() > amplitude:
 		print("[Play] Shake (%s) skipped: a stronger one (%s) is running" % [cause, _cause])
 		return
@@ -71,7 +64,7 @@ func update(delta: float) -> void:
 	if _age >= _time:
 		stop()
 		return
-	var swing := TAU * SHAKE_HZ * _age
+	var swing := TAU * Play.TUNING.shake_hz * _age
 	_world.position = _origin + Vector2(sin(swing), sin(swing * 1.37 + 1.1)).limit_length(1.0) * shake_strength()
 
 

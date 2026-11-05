@@ -51,8 +51,11 @@ const DRIFT_AMPLITUDE := 10.0
 const DRIFT_PERIOD := 24.0
 ## The rival's lines for a goose shot on the title (a grumble at the player's luck).
 const HECKLE_CATEGORY := "combo"
-## The rival stands this far in from the safe area's left and above its bottom.
-const RIVAL_INSET := Vector2(16, 124)
+## The rival stands this far in from the safe area's left and above its bottom: where he
+## stands in a run (Layout.RIVAL_RECT) on the 16:9 base.
+const RIVAL_INSET := Vector2(Layout.RIVAL_RECT.position.x, Layout.BASE_SIZE.y - Layout.RIVAL_RECT.position.y)
+## His bubble's bottom sits this far above the safe area's bottom.
+const BUBBLE_MARGIN := 10.0
 
 ## Times Campaign, Endless and Time Attack have been pressed on this screen (tests and the
 ## smoke test read the log).
@@ -226,13 +229,13 @@ func _on_shot(at: Vector2) -> void:
 	_game.audio.play_sfx(&"hit")
 	_feathers.burst(point, goose.spec.sprite)
 	print("[Title] Shot goose #%d at (%.1f, %.1f): it falls; no score, nothing saved (%d shot on the title)" % [goose.number, at.x, at.y, geese_shot])
-	_sulk_until = _clock + RivalController.RIVAL_REACTION_TIME
+	_sulk_until = _clock + Play.TUNING.rival_reaction_time
 	_rival.texture = RIVAL_SULK
 	print("[Title] Rival sulks at goose #%d" % goose.number)
 	_heckle()
 
 
-## The rival grumbles a HECKLE_CATEGORY line in his bubble for RivalController.HECKLE_TIME,
+## The rival grumbles a HECKLE_CATEGORY line in his bubble for Play.TUNING.heckle_time,
 ## unless the cooldown since his last one has not passed (logged either way).
 func _heckle() -> void:
 	if _rival_lines == null:
@@ -248,28 +251,26 @@ func _heckle() -> void:
 	if _bubble_tween != null:
 		_bubble_tween.kill()
 	_bubble_tween = create_tween()
-	_bubble_tween.tween_interval(RivalController.HECKLE_TIME)
+	_bubble_tween.tween_interval(Play.TUNING.heckle_time)
 	_bubble_tween.tween_callback(_bubble.hide)
 	print("[Title] Heckle (%s) #%d: \"%s\"" % [HECKLE_CATEGORY, heckles, line])
 
 
 func _fit() -> void:
-	var safe := _game.screen.safe_rect()
+	var safe := _game.screen.fit_safe(_safe)
 	var shown := _game.screen.visible_rect()
-	_safe.position = safe.position
-	_safe.size = safe.size
 	# The scenery covers the visible area plus the drift on each side.
 	var local := shown.grow_individual(DRIFT_AMPLITUDE, 0.0, DRIFT_AMPLITUDE, 0.0)
-	_backdrop.fit(local, Play.GRASS_Y - Play.GRASS_TIP)
+	_backdrop.fit(local, Layout.GRASS_Y - Layout.GRASS_TIP)
 	_weather.fit(local)
 	_rival.position = Vector2(safe.position.x + RIVAL_INSET.x, safe.end.y - RIVAL_INSET.y)
-	_bubble.position = Vector2(_rival.position.x + _rival.size.x + 8.0, safe.end.y - _bubble.size.y - 10.0)
-	_shot_input.position = Vector2(shown.position.x, safe.position.y + Play.HUD_BAR_HEIGHT)
+	_bubble.position = Vector2(_rival.position.x + _rival.size.x + Layout.BUBBLE_GAP, safe.end.y - _bubble.size.y - BUBBLE_MARGIN)
+	_shot_input.position = Vector2(shown.position.x, safe.position.y + Layout.HUD_BAR_HEIGHT)
 	_shot_input.size = Vector2(shown.size.x, shown.end.y - _shot_input.position.y)
 	# From below the top bar to BAND_MARGIN above the first row of buttons (their anchored
 	# top, known before the containers settle), across the visible width plus the drift.
 	var buttons_top := safe.position.y + _campaign_button.anchor_top * safe.size.y + _campaign_button.offset_top
-	var top := safe.position.y + Play.HUD_BAR_HEIGHT
+	var top := safe.position.y + Layout.HUD_BAR_HEIGHT
 	_band = Rect2(local.position.x, top, local.size.x, maxf(buttons_top - BAND_MARGIN - top, 0.0))
 	# Geese already up move to the new band (a refit follows a resize or a rotation).
 	for goose in flying_geese():

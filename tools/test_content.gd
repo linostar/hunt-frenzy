@@ -637,7 +637,7 @@ func _test_i10_roster_and_chapters() -> void:
 		["no zigzag bird (pattern zigzag)", "chapter night introduces no bird", "zigzag never appears (not in a mix, not a golden bird, not a split child)"])
 
 
-## I11: every bird fits the field it flies in (Play.FIELD): narrower and lower than it.
+## I11: every bird fits the field it flies in (Layout.FIELD): narrower and lower than it.
 ## The wobble (title only) takes no part: a tall-wobbling bird that fits passes.
 func _test_i11_fits_field() -> void:
 	_check(_i11_problems().is_empty(), "I11 every bird fits the field", "\n".join(_i11_problems()))
@@ -1014,7 +1014,7 @@ func _i20_sim(plan_of: Callable) -> Dictionary:
 						late[key].append(index)
 				# No player can end a wave before its last bird spawns, so a timed run
 				# reaches at most the waves that start before time_limit at this pace.
-				start += Play.WAVE_LEAD + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
+				start += Play.TUNING.wave_lead + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
 				previous = plan
 				index += 1
 	var problems: Array[String] = []
@@ -1092,7 +1092,7 @@ func _perfect_player(mode: ModeSpec, plan: Wave.Plan) -> Dictionary:
 
 
 ## The first age (to SIM_FRAME) at which the bird's whole hitbox is above the grass line
-## (Play.GRASS_Y): a shot can hit any part of it from then on. INF if never before it flees.
+## (Layout.GRASS_Y): a shot can hit any part of it from then on. INF if never before it flees.
 func _field_entry_age(spec: BirdSpec, bird_seed: int, speed_scale: float) -> float:
 	var age := 0.0
 	while age <= spec.flee_time:
@@ -1105,9 +1105,9 @@ func _field_entry_age(spec: BirdSpec, bird_seed: int, speed_scale: float) -> flo
 
 
 func _in_field(spec: BirdSpec, bird_seed: int, age: float, speed_scale: float) -> bool:
-	var placed := Flight.transform_at(spec, bird_seed, age, Play.FIELD, speed_scale)
+	var placed := Flight.transform_at(spec, bird_seed, age, Layout.FIELD, speed_scale)
 	for point in spec.hitbox:
-		if (placed * point).y >= Play.GRASS_Y:
+		if (placed * point).y >= Layout.GRASS_Y:
 			return false
 	return true
 
@@ -1411,8 +1411,8 @@ func _i10_problems() -> Array[String]:
 func _i11_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for spec in Content.birds():
-		if spec.size.x >= Play.FIELD.size.x or spec.size.y >= Play.FIELD.size.y:
-			problems.append("%s: size %s does not fit the field %s" % [spec.id, spec.size, Play.FIELD.size])
+		if spec.size.x >= Layout.FIELD.size.x or spec.size.y >= Layout.FIELD.size.y:
+			problems.append("%s: size %s does not fit the field %s" % [spec.id, spec.size, Layout.FIELD.size])
 	return problems
 
 
@@ -1609,7 +1609,7 @@ func _i26_problems(tints: Dictionary) -> Array[String]:
 
 
 ## I27: every backdrop's grass tile (its imported texture) keeps the grass line: opaque
-## from Play.GRASS_TIP down (only the fringe above it), and seamless across its width (the
+## from Layout.GRASS_TIP down (only the fringe above it), and seamless across its width (the
 ## step from its last column to its first is no larger than its largest step between two
 ## neighbouring columns). Fires on a tile with a hole below the fringe and on a broken seam.
 func _test_i27_grass_tiles() -> void:
@@ -1619,7 +1619,7 @@ func _test_i27_grass_tiles() -> void:
 	_check(_i27_problems(images).is_empty(), "I27 every grass tile is opaque below the fringe and seamless", "\n".join(_i27_problems(images)))
 	var holed := images["dawn"].duplicate() as Image
 	holed.decompress()
-	holed.set_pixel(5, int(Play.GRASS_TIP) + 3, Color(0, 0, 0, 0))
+	holed.set_pixel(5, int(Layout.GRASS_TIP) + 3, Color(0, 0, 0, 0))
 	var seam := images["noon"].duplicate() as Image
 	seam.decompress()
 	for y in seam.get_height():
@@ -1635,7 +1635,7 @@ func _i27_problems(images: Dictionary) -> Array[String]:
 	for id: String in images:
 		var image: Image = images[id]
 		var hole := Vector2i(-1, -1)
-		for y in range(int(Play.GRASS_TIP), image.get_height()):
+		for y in range(int(Layout.GRASS_TIP), image.get_height()):
 			for x in image.get_width():
 				if image.get_pixel(x, y).a < 0.999:
 					hole = Vector2i(x, y)
@@ -1643,7 +1643,7 @@ func _i27_problems(images: Dictionary) -> Array[String]:
 			if hole.x >= 0:
 				break
 		if hole.x >= 0:
-			problems.append("%s grass: not opaque at (%d, %d), below the fringe (I27: opaque from y %d down)" % [id, hole.x, hole.y, int(Play.GRASS_TIP)])
+			problems.append("%s grass: not opaque at (%d, %d), below the fringe (I27: opaque from y %d down)" % [id, hole.x, hole.y, int(Layout.GRASS_TIP)])
 		var seam := _column_step(image, image.get_width() - 1, 0)
 		var largest := _largest_step(image)
 		if seam > largest:

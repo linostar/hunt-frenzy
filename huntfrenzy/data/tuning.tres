@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="Tuning" format=3]
+
+[ext_resource type="Script" path="res://scripts/tuning.gd" id="1_tuning"]
+
+[resource]
+script = ExtResource("1_tuning")
+wave_lead = 1.0
+backdrop_fade_time = 0.8
+countdown_seconds = 10
+sound_pitch_spread = 0.04
+hit_stop_time = 0.05
+hit_stop_heavy_time = 0.09
+popup_bounce_scale = 1.35
+popup_bounce_time = 0.18
+popup_combo_growth = 0.12
+popup_combo_scale_max = 1.6
+popup_shake = 6.0
+popup_shakes = 4
+popup_shake_time = 0.32
+popup_rise = 48.0
+popup_time = 0.8
+shakes = Dictionary[String, Array]({
+"armored kill": [6.0, 0.25],
+"decoy hit": [10.0, 0.3],
+"golden kill": [8.0, 0.3],
+"lost wave": [12.0, 0.4],
+"steal": [7.0, 0.3]
+})
+shake_hz = 18.0
+heckle_time = 2.5
+rival_reaction_time = 1.2
+rival_aim_gap = 1.5
+rival_laugh_delay = 0.3

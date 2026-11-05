@@ -192,7 +192,7 @@ const AHEAD_STEPS = 20;
 // still to come: all HIT_ATTEMPTS attempts are real shots.
 const SALVO = 5;
 const SALVO_SPREAD_S = 0.15;
-// The grass line (Play.GRASS_Y): the goose is aimed at once its centre is well above it.
+// The grass line (Layout.GRASS_Y): the goose is aimed at once its centre is well above it.
 const AIM_ABOVE_Y = 400;
 // First guess of the seconds from a click or touch to the frame that handles it; each
 // shot then measures it.

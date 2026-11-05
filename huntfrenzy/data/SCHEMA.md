@@ -26,7 +26,7 @@ them so they match. Do not leave the code working around the difference.
 
 ## Game rules the data relies on
 - **Flight** (`scripts/logic/flight.gd`): a bird rises from fully below the grass line at a seeded x and heading (30-60
-  degrees above the horizontal) into the field (`Play.FIELD`, x 0-960, y 56-440: below the HUD bar, above the grass),
+  degrees above the horizontal) into the field (`Layout.FIELD`, x 0-960, y 56-440: below the HUD bar, above the grass),
   then flies straight segments inside it at constant velocity, without wobble: it bounces off the field's edges
   (reflecting the matching velocity component) and turns to a new seeded heading (30-60 degrees from the
   horizontal, up or down, left or right) at seeded intervals: a `rise` bird every `Flight.TURN_INTERVAL_MIN`..`MAX`
@@ -50,7 +50,7 @@ them so they match. Do not leave the code working around the difference.
   rival's tally, and it counts as an escape (toward `escape_limit`); a stolen splitter launches no children, and the
   player's combo is untouched. Killing it during the cue saves it (a damaging hit does not); a bird that starts fleeing
   drops its cue. He aims at one bird at a time: while a cue runs no other starts, and after a cue ends (a steal or a
-  cancel) the next waits `RivalController.RIVAL_AIM_GAP` (1.5 s of run time; a pause does not count). He only starts a cue on a
+  cancel) the next waits `Play.TUNING.rival_aim_gap` (1.5 s of run time; a pause does not count). He only starts a cue on a
   bird with at least `aim_time` left before it flees (`min(flee_time, the age its shells ran out)` minus its age), so
   a cue he starts always finishes unless the wave's shells run out. Among the birds he may aim at, the cue goes to the
   one that has flown longest (the lower bird number on a tie). With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
@@ -82,7 +82,7 @@ them so they match. Do not leave the code working around the difference.
   bird's origin, scaled to `size`. A backdrop is `res://art/backdrops/<id>_sky.svg`, `_far.svg`, `_near.svg` and
   `_grass.svg` (`Content.BACKDROP_LAYERS`, back to front; the grass is drawn in front of the birds: a layered meadow
   tile, static, lit per chapter, I27). The rival (`rival_<idle|aim|brag|sulk>.svg`, 80x120, svg scale 3) stands on
-  the bank at `RivalController.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
+  the bank at `Layout.RIVAL_RECT`, lit by his backdrop's tint (I26). Every colour in
   the art comes from `art/palette.hex` (`tools/check_palette.gd`).
 
 ---
@@ -160,7 +160,7 @@ leaves out does not apply to it (`ModeSpec` holds 0 for it; code reads either fi
 - **Escape limit** (Endless): the run ends once `escape_limit` birds are lost (counted escapes and stolen birds).
 - **Time limit** (Time Attack): there is no escape limit (an escape costs only the bird's lost points) and the run
   ends after `time_limit` seconds of play. The clock is the run's game time from its start: it stops while the
-  game is paused (the pause menu, the rotate overlay) and runs through each wave's 1 s lead-in (`Play.WAVE_LEAD`),
+  game is paused (the pause menu, the rotate overlay) and runs through each wave's 1 s lead-in (`Play.TUNING.wave_lead`),
   so the lead-ins are part of the time limit (the first lead-in also covers the 0.15 s fade into the run, while
   shots are ignored and no bird has spawned yet). A wave ends when every bird of it has spawned and none of them is
   flying (all hit or escaped), or, in a timed mode only, the moment its pool runs out: the wave is lost (logged), its
@@ -252,7 +252,7 @@ against a fallback value.
 - **I10** The roster has every kind of bird, each able to appear: a plain bird (not golden), an armored one
   (`hp >= 2`), a splitter, a `zigzag` flier, a golden bird and a decoy. Each chapter introduces at least one bird
   that can appear, and every bird can appear (in a mode's or level's mix, as a `golden_bird` or as a split child).
-- **I11** Every bird fits the field (`Play.FIELD`, 960x384): `size.x < 960` and `size.y < 384`. A run's flight has
+- **I11** Every bird fits the field (`Layout.FIELD`, 960x384): `size.x < 960` and `size.y < 384`. A run's flight has
   no wobble, so its cruise band needs only the bird's size. `wobble` takes no part: the title's crossing (the only path
   that wobbles) cuts the wobble to the room its band leaves above and below the sprite (`Flight._crossing`) and keeps
   a band too short for the sprite centred, so no wobble can carry a goose out of the title's band.
@@ -262,7 +262,7 @@ against a fallback value.
   `flee_time`: `linger_time x 1` in each mode with `rival_steals`, and `linger_time x rival_linger_scale` in each chapter
   (the campaign always steals); so a bird the rival is free to aim at once it lingers can be cued and stolen before it
   flees on its own. A cue he starts always finishes (he never starts one with less than `aim_time` left), but with one
-  cue at a time and `RivalController.RIVAL_AIM_GAP` after each, a bird waiting behind another cue or the gap may run out of time
+  cue at a time and `Play.TUNING.rival_aim_gap` after each, a bird waiting behind another cue or the gap may run out of time
   and escape un-cued. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
   `data/birds.json [<id>] linger_time: <linger> x <scale> (<modes and chapters>) + aim_time <aim> is not under flee_time
   <flee> (I13: ...)`.
@@ -315,7 +315,7 @@ against a fallback value.
   `Backdrop.RIVAL_TINTS` (palette colours: neutral at noon, warm at dawn and sunset, cool and moonlit at night), which
   Play and the title set as the rival's modulate over it: `backdrop '<id>' has no rival tint (I26: ...)`.
 - **I27** Every backdrop's grass tile (`<id>_grass.svg`, 240x360) keeps the grass line and tiles: its imported texture
-  is opaque from `Play.GRASS_TIP` (24) down, so only the fringe of blade tips lies above the line, and its seam (its
+  is opaque from `Layout.GRASS_TIP` (24) down, so only the fringe of blade tips lies above the line, and its seam (its
   last column to its first) steps no more than any two neighbouring columns inside it.
 
 ## Current content

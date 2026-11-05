@@ -103,9 +103,7 @@ func _line_label(text: String) -> Label:
 
 
 func _fit() -> void:
-	var safe := _game.screen.safe_rect()
-	_safe.position = safe.position
-	_safe.size = safe.size
+	_game.screen.fit_safe(_safe)
 	# Anchors settle at the end of the frame; log Back's final rect for the smoke test.
 	_log_layout.call_deferred()
 
