@@ -10,7 +10,7 @@ extends RefCounted
 ## level, the best stars and the best score ever reached (separately; a replay never lowers
 ## either).
 
-## Stars a level can earn (Content.STAR_COUNT thresholds).
+## Stars a level can earn (LevelSpec.STAR_COUNT thresholds).
 const MAX_STARS := 3
 
 

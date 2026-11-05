@@ -3,6 +3,26 @@ extends Resource
 ## One game mode from data/modes.json. Built by Content (data/SCHEMA.md documents every field).
 
 
+## Field limits modes.json is checked against (Content reports a value outside them); a
+## level's waves (levels.json) share the wave ones: WAVE_BIRDS_MAX, SPEED_CAP_MAX,
+## SPAWN_INTERVAL_MIN..MAX, SHELLS_PER_HIT_MAX, COMBO_CAP_MAX and the mix's WEIGHT_MAX.
+const WAVE_BIRDS_MAX := 30
+const BIRD_GROWTH_MAX := 10
+const SPEED_GROWTH_MAX := 1.0
+const SPEED_CAP_MAX := 5.0
+const SPAWN_INTERVAL_MIN := 0.1
+const SPAWN_INTERVAL_MAX := 10.0
+const SHELLS_PER_HIT_MAX := 10
+const COMBO_CAP_MAX := 20
+const ESCAPE_LIMIT_MAX := 100
+## A timed mode's run lasts TIME_LIMIT_MIN..TIME_LIMIT_MAX seconds.
+const TIME_LIMIT_MIN := 10.0
+const TIME_LIMIT_MAX := 600.0
+## The latest wave a mode's bird or golden bird can unlock in, and the largest mix weight.
+const WAVE_MAX := 1000
+const WEIGHT_MAX := 100
+
+
 ## One bird of the mode's wave mix: the type, the first wave it can appear in, its weight
 ## in the seeded pick among the birds already unlocked and an optional guaranteed wave.
 class Entry:
