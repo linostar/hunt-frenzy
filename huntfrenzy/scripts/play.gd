@@ -299,17 +299,23 @@ func _start_run() -> void:
 		scoring = Scoring.new(mode.combo_cap)
 	rival.rival_lines = Content.rival_lines()
 	_pitch_rng.seed = hash([run_seed, "sound pitch"])
-	if level != null:
-		print("[Play] Run start: level %s (%s %d of %d), seed %d (%d waves%s, no escape limit, combo cap %d, %d shells per hit, rival steals on, linger x%.2f, aim %.2f s, heckle cooldown %.2f s, backdrop %s, weather %s)" % [
-			level.id, chapter.name, level.index, Content.LEVELS_PER_CHAPTER, run_seed, level.waves, ", the last a boss flock" if level.is_boss() else "", level.combo_cap, level.shells_per_hit,
-			linger_scale, rival.rival_lines.aim_time, rival.rival_lines.cooldown, chapter.backdrop, chapter.weather])
-	else:
-		var ends := "time limit %.2f s, no escape limit" % mode.time_limit if mode.is_timed() else "escape limit %d" % mode.escape_limit
-		print("[Play] Run start: mode %s, seed %d (%s, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
-			mode.id, run_seed, ends, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival.rival_lines.aim_time, rival.rival_lines.cooldown])
+	print("[Play] Run start: %s" % _run_start_note())
+	if mode != null:
 		hud.show_timer(mode.is_timed())
 	_start_wave(1)
 	show_crosshair(true)
+
+
+## The run start log's details: what runs, its seed, how it ends and the rules it plays by.
+func _run_start_note() -> String:
+	var lines := rival.rival_lines
+	if level != null:
+		return "level %s (%s %d of %d), seed %d (%d waves%s, no escape limit, combo cap %d, %d shells per hit, rival steals on, linger x%.2f, aim %.2f s, heckle cooldown %.2f s, backdrop %s, weather %s)" % [
+			level.id, chapter.name, level.index, Content.LEVELS_PER_CHAPTER, run_seed, level.waves, ", the last a boss flock" if level.is_boss() else "",
+			level.combo_cap, level.shells_per_hit, linger_scale, lines.aim_time, lines.cooldown, chapter.backdrop, chapter.weather]
+	var ends := "time limit %.2f s, no escape limit" % mode.time_limit if mode.is_timed() else "escape limit %d" % mode.escape_limit
+	return "mode %s, seed %d (%s, combo cap %d, %d shells per hit, rival steals %s, aim %.2f s, heckle cooldown %.2f s)" % [
+		mode.id, run_seed, ends, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", lines.aim_time, lines.cooldown]
 
 
 ## A run that cannot start: `message` is reported, nothing runs, and the menu offers only
@@ -355,7 +361,7 @@ func _on_shot(at: Vector2) -> void:
 	if not ammo.use():
 		refused += 1
 		_game.audio.play_sfx(&"empty_click")
-		print("[Play] Shot refused at (%.1f, %.1f): no shells left (wave %d at t %.2f, %d refused)" % [at.x, at.y, wave.index, wave_clock, refused])
+		print("[Play] Shot refused at %s: no shells left (%s, %d refused)" % [_at(at), _wave_at(), refused])
 		hud.show_empty_cue()
 		return
 	_play_sound(&"shot")
@@ -366,7 +372,7 @@ func _on_shot(at: Vector2) -> void:
 		_hit_bird(target, point, at)
 	else:
 		scoring.miss()
-		print("[Play] Miss at (%.1f, %.1f): combo reset, score %d (wave %d at t %.2f, %d shells left)" % [at.x, at.y, scoring.score, wave.index, wave_clock, ammo.shells])
+		print("[Play] Miss at %s: combo reset, score %d (%s)" % [_at(at), scoring.score, _shot_note()])
 		if rival.heckle("miss"):
 			rival.react(RivalController.RIVAL_BRAG, "brags after the miss")
 	if ammo.is_empty():
@@ -406,7 +412,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 		scoring.damage()
 		_game.audio.play_sfx(&"armored_clank")
 		_popup(point, DAMAGE_TEXT, HitPopup.Kind.DAMAGE)
-		print("[Play] Hit %s #%d (hit %d/%d) at (%.1f, %.1f): no points, combo x%d kept, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, multiplier, scoring.score, wave.index, wave_clock, ammo.shells])
+		print("[Play] Hit %s: no points, combo x%d kept, score %d (%s)" % [_hit_note(target, at, false), multiplier, scoring.score, _shot_note()])
 		return
 	var awarded := scoring.hit(target.spec.points)
 	_play_sound(_kill_sound(target.spec))
@@ -419,7 +425,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	elif _is_golden(target.spec):
 		shaker.shake("golden kill")
 	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier], HitPopup.Kind.SCORE if multiplier == 1 else HitPopup.Kind.COMBO, multiplier)
-	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): %d points x%d = %d, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.points, multiplier, awarded, scoring.score, wave.index, wave_clock, ammo.shells])
+	print("[Play] Hit %s: %d points x%d = %d, score %d (%s)" % [_hit_note(target, at, true), target.spec.points, multiplier, awarded, scoring.score, _shot_note()])
 	rival.react(RivalController.RIVAL_SULK, "sulks at the %d points on %s #%d" % [awarded, target.spec.id, target.number])
 	if target.is_cued():
 		rival.cancel_cue(target, "shot by the player")
@@ -462,13 +468,13 @@ func _start_hit_stop(target: Bird) -> void:
 	var heavy := target.spec.hp > 1 or _is_golden(target.spec)
 	var time := TUNING.hit_stop_heavy_time if heavy else TUNING.hit_stop_time
 	if _hit_stop_left > 0.0:
-		print("[Play] Hit stop for %s #%d skipped: one is running (%.3f s left)" % [target.spec.id, target.number, _hit_stop_left])
+		print("[Play] Hit stop for %s skipped: one is running (%.3f s left)" % [_bird_name(target), _hit_stop_left])
 		return
 	_hit_stop_left = time
 	hit_stops += 1
 	for child in _birds.get_children():
 		(child as Bird).hold(time)
-	print("[Play] Hit stop %.2f s on the kill of %s #%d (wave %d at t %.2f%s)" % [time, target.spec.id, target.number, wave.index, wave_clock, clock_note()])
+	print("[Play] Hit stop %.2f s on the kill of %s (%s%s)" % [time, _bird_name(target), _wave_at(), clock_note()])
 
 
 ## Seconds of hit stop still to run (0 when none runs).
@@ -489,7 +495,7 @@ func _split(parent: Bird, point: Vector2) -> void:
 			child.wave_index = parent.wave_index
 			child.flee()
 		children.append("#%d seed %d heading (%.2f, %.2f)" % [child.number, child_seed, headings[i].x, headings[i].y])
-	print("[Play] Split %s #%d at (%.1f, %.1f) into %d %s: %s (wave %d at t %.2f)%s" % [parent.spec.id, parent.number, point.x, point.y, headings.size(), parent.spec.splits_into, ", ".join(children), wave.index, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
+	print("[Play] Split %s at %s into %d %s: %s (%s)%s" % [_bird_name(parent), _at(point), headings.size(), parent.spec.splits_into, ", ".join(children), _wave_at(), ", fleeing (no shells)" if ammo.is_empty() else ""])
 
 
 ## A hit on the decoy: its penalty comes off the score (never below 0) and the combo resets.
@@ -500,7 +506,7 @@ func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	_feathers.burst(point, target.spec.sprite)
 	shaker.shake("decoy hit")
 	_popup(point, "-%d" % deducted, HitPopup.Kind.PENALTY)
-	print("[Play] Hit %s #%d (hit %d/%d, killed) at (%.1f, %.1f): penalty %d, -%d, combo reset, score %d (%d pigeons hit, wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, target.spec.penalty, deducted, scoring.score, scoring.penalties, wave.index, wave_clock, ammo.shells])
+	print("[Play] Hit %s: penalty %d, -%d, combo reset, score %d (%d pigeons hit, %s)" % [_hit_note(target, at, true), target.spec.penalty, deducted, scoring.score, scoring.penalties, _shot_note()])
 
 
 ## Bursts feathers in `sprite`'s colours at `point` (World coordinates).
@@ -523,6 +529,31 @@ func escapes() -> String:
 ## on escapes.
 func escape_limit_reached() -> bool:
 	return mode != null and not mode.is_timed() and escaped >= mode.escape_limit
+
+
+## "(x, y)" of a shot or hit point, for the log lines.
+static func _at(point: Vector2) -> String:
+	return "(%.1f, %.1f)" % [point.x, point.y]
+
+
+## "<type> #n" of `bird`, for the log lines.
+static func _bird_name(bird: Bird) -> String:
+	return "%s #%d" % [bird.spec.id, bird.number]
+
+
+## "<type> #n (hit k/hp[, killed]) at (x, y)": a hit on `target` at `at`, for the log lines.
+static func _hit_note(target: Bird, at: Vector2, killed: bool) -> String:
+	return "%s (hit %d/%d%s) at %s" % [_bird_name(target), target.hits_taken, target.spec.hp, ", killed" if killed else "", _at(at)]
+
+
+## "wave n at t T" in the log lines.
+func _wave_at() -> String:
+	return "wave %d at t %.2f" % [wave.index, wave_clock]
+
+
+## "wave n at t T, S shells left" in a shot's log lines.
+func _shot_note() -> String:
+	return "%s, %d shells left" % [_wave_at(), ammo.shells]
 
 
 ## ", 42.10 s left" in a timed run's log lines, "" in any other.
@@ -563,18 +594,18 @@ func _on_bird_appeared(bird: Bird) -> void:
 	if _over:
 		return
 	_game.audio.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
-	print("[Play] Call of %s #%d as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, wave %d at t %.2f%s)" % [bird.spec.id, bird.number, bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave.index, wave_clock, clock_note()])
+	print("[Play] Call of %s as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, %s%s)" % [_bird_name(bird), bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, _wave_at(), clock_note()])
 
 
 func _on_bird_escaped(bird: Bird) -> void:
 	if _over:
 		return
 	if not bird.spec.escape_counts:
-		print("[Play] Escaped %s #%d (not counted, %s, wave %d at t %.2f)" % [bird.spec.id, bird.number, escapes(), wave.index, wave_clock])
+		print("[Play] Escaped %s (not counted, %s, %s)" % [_bird_name(bird), escapes(), _wave_at()])
 		return
 	escaped += 1
 	_play_sound(&"escape")
-	print("[Play] Escaped %s #%d (%s, wave %d at t %.2f)" % [bird.spec.id, bird.number, escapes(), wave.index, wave_clock])
+	print("[Play] Escaped %s (%s, %s)" % [_bird_name(bird), escapes(), _wave_at()])
 	update_hud()
 	if escape_limit_reached():
 		end_run()
