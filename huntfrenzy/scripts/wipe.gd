@@ -13,11 +13,10 @@ const BLADE_WIDTH_MIN := 22.0
 const BLADE_WIDTH_MAX := 38.0
 ## Seeds the blades, so the wipe always looks the same.
 const BLADE_SEED := 4401
-const BODY := Color(0.18, 0.29, 0.227)
-const BACK_BLADES := Color(0.18, 0.29, 0.227)
-const FRONT_BLADES := Color(0.29, 0.478, 0.227)
-const LIGHT_BLADES := Color(0.435, 0.624, 0.29)
-const INK := Color(0.122, 0.102, 0.18)
+const BODY := Palette.GRASS_DARK
+const BACK_BLADES := Palette.GRASS_DARK
+const FRONT_BLADES := Palette.GRASS
+const LIGHT_BLADES := Palette.GRASS_LIGHT
 
 ## 0: below the screen, 1: covering it, 2: gone below it again.
 var progress := 0.0:
@@ -59,7 +58,7 @@ func _draw() -> void:
 			var blade := PackedVector2Array([Vector2(x, base), Vector2(x + width / 2.0 + lean, base - height), Vector2(x + width, base)])
 			var fill := BACK_BLADES if row == 0 else (FRONT_BLADES if i % 2 == 0 else LIGHT_BLADES)
 			draw_colored_polygon(blade, fill)
-			draw_polyline(PackedVector2Array([blade[0], blade[1], blade[2]]), INK, 2.0)
+			draw_polyline(PackedVector2Array([blade[0], blade[1], blade[2]]), Palette.INK, 2.0)
 			x += width * 0.7
 			i += 1
 	draw_rect(Rect2(0.0, edge + 2.0, size.x, maxf(size.y - edge - 2.0, 0.0)), BODY)

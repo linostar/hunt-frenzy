@@ -33,7 +33,8 @@ signal cursor_changed(shown: String, texture: Texture2D, shape: Input.CursorShap
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 ## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning). One shared object for
 ## the whole process (every reader and both test scripts): a test that changes a value puts
-## it back, as _test_tuning_values (run first and last) checks.
+## it back, as _test_tuning_values (run first and last) checks. Play's own alias of Game.tuning
+## (preload caches it: the same object); the controllers and every other script read Game.tuning.
 const TUNING: Tuning = preload("res://data/tuning.tres")
 ## The mouse pointer while the run is live (64x64 at most; its hotspot is its centre).
 const CROSSHAIR := preload("res://art/crosshair.svg")
@@ -362,7 +363,7 @@ func _on_shot(at: Vector2) -> void:
 	if not ammo.use():
 		refused += 1
 		_game.audio.play_sfx(AudioManager.SFX_EMPTY_CLICK)
-		print("[Play] Shot refused at %s: no shells left (%s, %d refused)" % [_at(at), _wave_at(), refused])
+		print("[Play] Shot refused at %s: no shells left (%s, %d refused)" % [_at(at), wave_note(), refused])
 		hud.show_empty_cue()
 		return
 	_play_sound(AudioManager.SFX_SHOT)
@@ -475,7 +476,7 @@ func _start_hit_stop(target: Bird) -> void:
 	hit_stop_started.emit(time)
 	for child in _birds.get_children():
 		(child as Bird).hold(time)
-	print("[Play] Hit stop %.2f s on the kill of %s (%s%s)" % [time, _bird_name(target), _wave_at(), clock_note()])
+	print("[Play] Hit stop %.2f s on the kill of %s (%s%s)" % [time, _bird_name(target), wave_note(), clock_note()])
 
 
 ## Seconds of hit stop still to run (0 when none runs).
@@ -496,7 +497,7 @@ func _split(parent: Bird, point: Vector2) -> void:
 			child.wave_index = parent.wave_index
 			child.flee()
 		children.append("#%d seed %d heading (%.2f, %.2f)" % [child.number, child_seed, headings[i].x, headings[i].y])
-	print("[Play] Split %s at %s into %d %s: %s (%s)%s" % [_bird_name(parent), _at(point), headings.size(), parent.spec.splits_into, ", ".join(children), _wave_at(), ", fleeing (no shells)" if ammo.is_empty() else ""])
+	print("[Play] Split %s at %s into %d %s: %s (%s)%s" % [_bird_name(parent), _at(point), headings.size(), parent.spec.splits_into, ", ".join(children), wave_note(), ", fleeing (no shells)" if ammo.is_empty() else ""])
 
 
 ## A hit on the decoy: its penalty comes off the score (never below 0) and the combo resets.
@@ -547,14 +548,19 @@ static func _hit_note(target: Bird, at: Vector2, killed: bool) -> String:
 	return "%s (hit %d/%d%s) at %s" % [_bird_name(target), target.hits_taken, target.spec.hp, ", killed" if killed else "", _at(at)]
 
 
-## "wave n at t T" in the log lines.
-func _wave_at() -> String:
-	return "wave %d at t %.2f" % [wave.index, wave_clock]
-
-
 ## "wave n at t T, S shells left" in a shot's log lines.
 func _shot_note() -> String:
-	return "%s, %d shells left" % [_wave_at(), ammo.shells]
+	return "%s, %d shells left" % [wave_note(), ammo.shells]
+
+
+## Counts one more bird lost (the rival's steal; Play counts its own escapes).
+func count_escape() -> void:
+	escaped += 1
+
+
+## "wave 3 at t 4.20" in the log lines of the run and its controllers.
+func wave_note() -> String:
+	return "wave %d at t %.2f" % [wave.index, wave_clock]
 
 
 ## ", 42.10 s left" in a timed run's log lines, "" in any other.
@@ -588,18 +594,18 @@ func _on_bird_appeared(bird: Bird) -> void:
 	if _over:
 		return
 	_game.audio.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
-	print("[Play] Call of %s as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, %s%s)" % [_bird_name(bird), bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, _wave_at(), clock_note()])
+	print("[Play] Call of %s as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, %s%s)" % [_bird_name(bird), bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave_note(), clock_note()])
 
 
 func _on_bird_escaped(bird: Bird) -> void:
 	if _over:
 		return
 	if not bird.spec.escape_counts:
-		print("[Play] Escaped %s (not counted, %s, %s)" % [_bird_name(bird), escapes(), _wave_at()])
+		print("[Play] Escaped %s (not counted, %s, %s)" % [_bird_name(bird), escapes(), wave_note()])
 		return
 	escaped += 1
 	_play_sound(AudioManager.SFX_ESCAPE)
-	print("[Play] Escaped %s (%s, %s)" % [_bird_name(bird), escapes(), _wave_at()])
+	print("[Play] Escaped %s (%s, %s)" % [_bird_name(bird), escapes(), wave_note()])
 	update_hud()
 	if escape_limit_reached():
 		end_run()

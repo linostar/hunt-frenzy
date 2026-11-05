@@ -4,6 +4,15 @@ extends Resource
 ## every field). A level's waves are a pure function of its fields (Wave.campaign): its
 ## fixed seed makes every play of it meet the same birds.
 
+## A level's star thresholds: STAR_COUNT final scores, each 1..STAR_SCORE_MAX.
+const STAR_COUNT := 3
+const STAR_SCORE_MAX := 10000000
+## A level's fixed seed lies in 0..SEED_MAX, its waves in 1..WAVES_MAX, its speed scales in
+## SPEED_MIN..ModeSpec.SPEED_CAP_MAX (its other wave limits are ModeSpec's).
+const SEED_MAX := 2147483647
+const WAVES_MAX := 20
+const SPEED_MIN := 0.5
+
 
 ## The boss flock that is the last wave of a chapter's last level (index 6): more birds,
 ## a shorter spawn interval and a higher speed than every other wave of the chapter.

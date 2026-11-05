@@ -17,14 +17,14 @@ extends Control
 ## Behind the buttons lies the sunset marsh (TITLE_BACKDROP's layers and the weather of the
 ## chapter that uses it) with the rival idling in the grass at the bottom left and geese
 ## crossing the sky (Flight's crossing path) on a seeded schedule (TITLE_SEED: one every
-## GOOSE_GAP_MIN..MAX seconds, at most GEESE_MAX at once), in a band from below the top bar
+## Game.tuning.title_goose_gap_min..max seconds, at most title_geese_max at once), in a band from below the top bar
 ## down to just above the first row of buttons, so a goose never covers a button. A tap on
 ## a goose (its hitbox polygon, as in play) shoots it: the shot and hit sounds, a feather
 ## burst, the goose falls, and the rival sulks and grumbles a heckle line
 ## (cooldown permitting, as in play); it scores nothing and saves nothing, and is logged
 ## ("[Title] Shot goose #n"). A tap on empty sky plays the shot only; a tap on a button only
 ## presses it (the buttons lie above the shot surface). The scenery drifts slowly from side
-## to side (DRIFT_AMPLITUDE over DRIFT_PERIOD) unless reduce motion is on.
+## to side (Game.tuning.title_drift_amplitude over title_drift_period) unless reduce motion is on.
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const CONTENT_ERROR_MESSAGE := "Content error: %d problem(s) in data/*.json, see the log. Play is disabled."
@@ -38,17 +38,8 @@ const TITLE_BACKDROP := "sunset"
 const TITLE_BIRD := "goose"
 ## Seeds the geese's schedule and paths, so the title always plays the same.
 const TITLE_SEED := 9091
-## Seconds between two geese (seeded in this range) and the most crossing at once.
-const GOOSE_GAP_MIN := 1.6
-const GOOSE_GAP_MAX := 3.0
-const GEESE_MAX := 4
-## When the first goose sets off (seconds after the title arrives).
-const FIRST_GOOSE_AT := 0.1
 ## The geese's band ends this far above the first row of buttons.
 const BAND_MARGIN := 8.0
-## The scenery's slow sway (base units either way, seconds per swing), off with reduce motion.
-const DRIFT_AMPLITUDE := 10.0
-const DRIFT_PERIOD := 24.0
 ## The rival's lines for a goose shot on the title (a grumble at the player's luck).
 const HECKLE_CATEGORY := "combo"
 ## The rival stands this far in from the safe area's left and above its bottom: where he
@@ -74,7 +65,7 @@ var _game: GameState
 var _clock := 0.0
 var _goose_spec: BirdSpec
 var _schedule := RandomNumberGenerator.new()
-var _next_goose_at := FIRST_GOOSE_AT
+var _next_goose_at := 0.0
 var _geese := 0
 ## The geese's band, in the scenery's coordinates (_fit).
 var _band := Rect2()
@@ -103,6 +94,7 @@ var _bubble_tween: Tween
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
+	_next_goose_at = _game.tuning.title_first_goose_at
 	_game.screen.screen_fit_changed.connect(_fit)
 	_shot_input.shot.connect(_on_shot)
 	_set_scenery()
@@ -153,17 +145,17 @@ func _set_scenery() -> void:
 		print("[Title] Scenery: backdrop %s, no geese and no weather (%d content problem(s))" % [TITLE_BACKDROP, problems])
 		return
 	print("[Title] Scenery: backdrop %s, weather %s, a %s every %.1f-%.1f s (seed %d, at most %d), %s" % [
-		TITLE_BACKDROP, weather if weather != "" else "none", TITLE_BIRD, GOOSE_GAP_MIN, GOOSE_GAP_MAX, TITLE_SEED, GEESE_MAX,
-		"still (reduce motion)" if _game.save.reduce_motion else "drifting %.0f either way over %.0f s" % [DRIFT_AMPLITUDE, DRIFT_PERIOD]])
+		TITLE_BACKDROP, weather if weather != "" else "none", TITLE_BIRD, _game.tuning.title_goose_gap_min, _game.tuning.title_goose_gap_max, TITLE_SEED, _game.tuning.title_geese_max,
+		"still (reduce motion)" if _game.save.reduce_motion else "drifting %.0f either way over %.0f s" % [_game.tuning.title_drift_amplitude, _game.tuning.title_drift_period]])
 
 
 func _process(delta: float) -> void:
 	_clock += delta
-	_scenery.position.x = 0.0 if _game.save.reduce_motion else DRIFT_AMPLITUDE * sin(TAU * _clock / DRIFT_PERIOD)
+	_scenery.position.x = 0.0 if _game.save.reduce_motion else _game.tuning.title_drift_amplitude * sin(TAU * _clock / _game.tuning.title_drift_period)
 	while _goose_spec != null and _clock >= _next_goose_at:
-		if flying_geese().size() < GEESE_MAX:
+		if flying_geese().size() < _game.tuning.title_geese_max:
 			_spawn_goose()
-		_next_goose_at += _schedule.randf_range(GOOSE_GAP_MIN, GOOSE_GAP_MAX)
+		_next_goose_at += _schedule.randf_range(_game.tuning.title_goose_gap_min, _game.tuning.title_goose_gap_max)
 	_rival.texture = RIVAL_SULK if _clock < _sulk_until else RIVAL_IDLE
 
 
@@ -229,13 +221,13 @@ func _on_shot(at: Vector2) -> void:
 	_game.audio.play_sfx(&"hit")
 	_feathers.burst(point, goose.spec.sprite)
 	print("[Title] Shot goose #%d at (%.1f, %.1f): it falls; no score, nothing saved (%d shot on the title)" % [goose.number, at.x, at.y, geese_shot])
-	_sulk_until = _clock + Play.TUNING.rival_reaction_time
+	_sulk_until = _clock + _game.tuning.rival_reaction_time
 	_rival.texture = RIVAL_SULK
 	print("[Title] Rival sulks at goose #%d" % goose.number)
 	_heckle()
 
 
-## The rival grumbles a HECKLE_CATEGORY line in his bubble for Play.TUNING.heckle_time,
+## The rival grumbles a HECKLE_CATEGORY line in his bubble for Game.tuning.heckle_time,
 ## unless the cooldown since his last one has not passed (logged either way).
 func _heckle() -> void:
 	if _rival_lines == null:
@@ -251,7 +243,7 @@ func _heckle() -> void:
 	if _bubble_tween != null:
 		_bubble_tween.kill()
 	_bubble_tween = create_tween()
-	_bubble_tween.tween_interval(Play.TUNING.heckle_time)
+	_bubble_tween.tween_interval(_game.tuning.heckle_time)
 	_bubble_tween.tween_callback(_bubble.hide)
 	print("[Title] Heckle (%s) #%d: \"%s\"" % [HECKLE_CATEGORY, heckles, line])
 
@@ -260,7 +252,7 @@ func _fit() -> void:
 	var safe := _game.screen.fit_safe(_safe)
 	var shown := _game.screen.visible_rect()
 	# The scenery covers the visible area plus the drift on each side.
-	var local := shown.grow_individual(DRIFT_AMPLITUDE, 0.0, DRIFT_AMPLITUDE, 0.0)
+	var local := shown.grow_individual(_game.tuning.title_drift_amplitude, 0.0, _game.tuning.title_drift_amplitude, 0.0)
 	_backdrop.fit(local, Layout.GRASS_Y - Layout.GRASS_TIP)
 	_weather.fit(local)
 	_rival.position = Vector2(safe.position.x + RIVAL_INSET.x, safe.end.y - RIVAL_INSET.y)

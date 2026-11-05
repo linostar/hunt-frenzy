@@ -16,7 +16,7 @@ const SHELL_ICON_SIZE := Vector2(12, 28)
 ## a bigger pool (Endless reaches 72) shows one icon and the shells left ("x36"), so the
 ## bar never overflows whatever the pool.
 const SHELL_ICONS_MAX := 10
-const EMPTY_TINT := Color(1.0, 0.451, 0.4)
+const EMPTY_TINT := Palette.CORAL
 
 var _empty_tween: Tween
 

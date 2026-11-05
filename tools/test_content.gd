@@ -1014,7 +1014,7 @@ func _i20_sim(plan_of: Callable) -> Dictionary:
 						late[key].append(index)
 				# No player can end a wave before its last bird spawns, so a timed run
 				# reaches at most the waves that start before time_limit at this pace.
-				start += Play.TUNING.wave_lead + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
+				start += (load(Tuning.PATH) as Tuning).wave_lead + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
 				previous = plan
 				index += 1
 	var problems: Array[String] = []
@@ -1116,7 +1116,7 @@ func _i16_problems() -> Array[String]:
 	var problems: Array[String] = []
 	for level in Content.levels():
 		var most := Campaign.max_score(level)
-		if level.stars.size() == Content.STAR_COUNT and level.stars[2] > most:
+		if level.stars.size() == LevelSpec.STAR_COUNT and level.stars[2] > most:
 			problems.append("%s: 3 stars at %d is above the most it can score, %d (every bird but the decoy killed, the combo rising to x%d)" % [level.id, level.stars[2], most, level.combo_cap])
 	return problems
 
