@@ -1,8 +1,10 @@
 # Hunt Frenzy content schema
 
 Source of truth for every file in `huntfrenzy/data/`. `Content` (`scripts/logic/content.gd`) loads against this
-document and `tools/test_content.gd` checks the invariants at the end. If the code and this file disagree, fix one of
-them so they match. Do not leave the code working around the difference.
+document, each file through its validator (`scripts/logic/<file>_file.gd`, e.g. `birds_file.gd`) and each field limit
+kept on its spec (`BirdSpec`, `ModeSpec`, `LevelSpec`, `RivalLines`); `tools/test_content.gd` checks the invariants at
+the end. If the code and this file disagree, fix one of them so they match. Do not leave the code working around the
+difference.
 
 ## Conventions (all files)
 - UTF-8 JSON. Every file's top level is a **non-empty array of objects**; every object has a unique `"id"`. The one
