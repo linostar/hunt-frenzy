@@ -58,10 +58,6 @@ extends Node
 
 ## Emitted when a goto() has finished: the new scene is in place and the cover is gone.
 signal transition_finished(state: Flow)
-## Emitted when the web page becomes hidden (another tab, the app sent to the background).
-## Godot's web build reports window blur but not page visibility, so Game watches the
-## document's visibilitychange event itself.
-signal page_hidden
 ## Emitted when a save fails: at once, or on the web when browser storage does not keep
 ## it. `reason` is save_error.
 signal save_failed(reason: String)
@@ -116,49 +112,6 @@ const DEFAULT_MUSIC_VOLUME := 70
 const DEFAULT_SFX_VOLUME := 80
 ## The largest whole number a float holds exactly (2^53); see _is_whole.
 const SAVE_EXACT_MAX := 9007199254740992.0
-## How long browser storage (IndexedDB) is given to hold a web save before it is
-## reported as lost.
-const WEB_PERSIST_TIMEOUT_MSEC := 5000
-## Defines window.huntFrenzyCheckPersisted(dbName, key, expected, timeoutMs, check, done).
-## Godot 4.7.1's web template mounts user:// as Emscripten IDBFS (database = the mount
-## path, store FILE_DATA, key = the file's full path, value {timestamp, mode, contents})
-## and syncs it after a file is written; a failed sync only logs "Failed to save IDB file
-## system". This polls that store every 250 ms until `key` holds `expected`, then calls
-## done(check, 1, milliseconds taken); on an IndexedDB error or after timeoutMs it calls
-## done(check, 0, reason), also when IndexedDB never answers (one overall deadline;
-## done is called exactly once). It never creates or changes the database.
-const WEB_PERSIST_CHECK_JS := """
-window.huntFrenzyCheckPersisted = function (dbName, key, expected, timeoutMs, check, done) {
-	const started = Date.now();
-	let last = 'nothing stored yet';
-	let finished = false;
-	const finish = (ok, detail) => { if (!finished) { finished = true; clearTimeout(deadline); done(check, ok, detail); } };
-	const deadline = setTimeout(() => finish(0, 'not stored after ' + timeoutMs + ' ms (' + last + ')'), timeoutMs);
-	const retry = () => { if (!finished) setTimeout(poll, 250); };
-	const poll = () => {
-		if (finished) return;
-		let request;
-		try { request = indexedDB.open(dbName); } catch (e) { finish(0, 'cannot open IndexedDB: ' + e); return; }
-		request.onupgradeneeded = (e) => e.target.transaction.abort();
-		request.onerror = (e) => { e.preventDefault(); finish(0, 'cannot open IndexedDB ' + dbName + ': ' + (request.error ? request.error.name + ' ' + request.error.message : 'unknown error')); };
-		request.onsuccess = () => {
-			const db = request.result;
-			let get;
-			try { get = db.transaction(['FILE_DATA'], 'readonly').objectStore('FILE_DATA').get(key); } catch (e) { db.close(); finish(0, 'cannot read IndexedDB: ' + e); return; }
-			get.onerror = (e) => { e.preventDefault(); db.close(); finish(0, 'cannot read ' + key + ': ' + (get.error ? get.error.name + ' ' + get.error.message : 'unknown error')); };
-			get.onsuccess = () => {
-				db.close();
-				const entry = get.result;
-				if (finished) return;
-				if (entry && entry.contents && new TextDecoder().decode(entry.contents) === expected) { finish(1, String(Date.now() - started)); return; }
-				last = entry ? 'an older save is stored' : 'nothing stored yet';
-				retry();
-			};
-		};
-	};
-	poll();
-};
-"""
 ## Seconds the plain fade (reduce motion) takes to cover the screen, and again to clear it.
 const FADE_TIME := 0.15
 ## Seconds the marsh-grass wipe (Wipe) takes to rise over the screen, and again to sink
@@ -264,10 +217,6 @@ var reduce_motion := false
 ## Why the latest save failed, short enough for the results screen; "" after a save that
 ## worked (on the web: once written; a later IndexedDB failure sets it again).
 var save_error := ""
-## False on the web when the browser gave Godot no IndexedDB at start (check_storage).
-var storage_persistent := true
-## The number of the latest web save check; an answer to an older one is ignored.
-var persist_check := 0
 ## The UI theme check_ui_theme last checked ("" before any; at start, the project's).
 var checked_theme := ""
 ## The ids of the latest sounds played, oldest first (SFX_LOG_SIZE at most; a heckle's blurt
@@ -290,10 +239,6 @@ var _transition_style := ""
 ## The campaign entries the last load dropped, one log message each (load_game backs the
 ## original up, then writes the save back without them).
 var _dropped_entries: Array[String] = []
-## The JavaScript visibilitychange listener (web only); kept so it is not freed.
-var _visibility_listener: JavaScriptObject
-## The JavaScript callback of the web save checks (web only); kept so it is not freed.
-var _persist_callback: JavaScriptObject
 ## Seconds since start (also while paused): the sound clock.
 var _clock := 0.0
 ## Sound file -> its stream, or null when it is missing (reported once).
@@ -326,6 +271,7 @@ var _music_fade: Tween
 @onready var _wipe: Wipe = $Fade/Cover/Wipe
 @onready var _error_label: Label = $Fade/ErrorLabel
 @onready var screen: ScreenFit = $Screen
+@onready var web: WebPersist = $Web
 
 
 func _ready() -> void:
@@ -335,11 +281,11 @@ func _ready() -> void:
 	if get_tree().get_script() != null:
 		save_path = TOOL_SAVE_PATH
 	if OS.has_feature("web"):
-		check_storage(OS.is_userfs_persistent())
+		web.check_storage(OS.is_userfs_persistent())
 	load_game()
 	check_ui_theme(ProjectSettings.get_setting(ResourceCheck.THEME_SETTING, ""))
 	check_audio()
-	_watch_page_visibility()
+	web.watch_page_visibility()
 	screen.start()
 	_announce_main_scene.call_deferred()
 
@@ -358,27 +304,6 @@ func _announce_main_scene() -> void:
 	state = found as Flow
 	print("[Game] Arrived at %s (main scene)" % Flow.keys()[state])
 	play_music(track_for(state, flow_args))
-
-
-## On the web, listens for the document's visibilitychange and emits page_hidden when
-## the page is hidden.
-func _watch_page_visibility() -> void:
-	if not OS.has_feature("web"):
-		return
-	var document := JavaScriptBridge.get_interface("document")
-	if document == null:
-		report_error("Cannot watch the page's visibility: no document object")
-		return
-	_visibility_listener = JavaScriptBridge.create_callback(_on_visibility_changed)
-	document.addEventListener("visibilitychange", _visibility_listener)
-
-
-func _on_visibility_changed(_args: Array) -> void:
-	# A JavaScript boolean arrives as a number, so ask for one explicitly.
-	var hidden := int(JavaScriptBridge.eval("document.hidden ? 1 : 0", true)) == 1
-	print("[Game] Page %s" % ("hidden" if hidden else "visible"))
-	if hidden:
-		page_hidden.emit()
 
 
 ## Changes to the scene of `new_state`, passing `args` through flow_args: the marsh-grass
@@ -525,77 +450,33 @@ func save_game() -> bool:
 	var file := FileAccess.open(temp, FileAccess.WRITE)
 	if file == null:
 		var open_error := error_string(FileAccess.get_open_error())
-		_save_failed("Could not open '%s' for writing the save: %s; '%s' is unchanged" % [temp, open_error, save_path], "cannot open the save file (%s)" % open_error)
+		fail_save("Could not open '%s' for writing the save: %s; '%s' is unchanged" % [temp, open_error, save_path], "cannot open the save file (%s)" % open_error)
 		return false
 	var written := file.store_string(text)
 	file.close()
 	if not written:
 		DirAccess.remove_absolute(temp)
-		_save_failed("Could not write the save to '%s'; '%s' is unchanged" % [temp, save_path], "cannot write the save file")
+		fail_save("Could not write the save to '%s'; '%s' is unchanged" % [temp, save_path], "cannot write the save file")
 		return false
 	var replaced := DirAccess.rename_absolute(temp, save_path)
 	if replaced != OK:
 		DirAccess.remove_absolute(temp)
-		_save_failed("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)], "cannot replace the save file (%s)" % error_string(replaced))
+		fail_save("Could not replace save '%s' with '%s': %s; the save is unchanged" % [save_path, temp, error_string(replaced)], "cannot replace the save file (%s)" % error_string(replaced))
 		return false
 	if not OS.has_feature("web"):
 		print("[Game] Saved to %s: version %d, %s" % [save_path, SAVE_VERSION, save_summary()])
 		return true
-	if not storage_persistent:
-		_save_failed("Wrote the save (%s) to %s in memory only: browser storage is unavailable, so it is lost when the page closes" % [save_summary(), save_path], "browser storage is unavailable")
+	if not web.storage_persistent:
+		fail_save("Wrote the save (%s) to %s in memory only: browser storage is unavailable, so it is lost when the page closes" % [save_summary(), save_path], "browser storage is unavailable")
 		return false
 	print("[Game] Saved to %s (written; waiting for browser storage to keep it): version %d, %s" % [save_path, SAVE_VERSION, save_summary()])
-	_check_web_persisted(text)
+	web.check_persisted(text)
 	return true
-
-
-## On the web, user:// persists only when the browser gave Godot IndexedDB at start;
-## without it every save lives in memory until the page closes, which the player is told
-## at once. Public for tests.
-func check_storage(persistent: bool) -> void:
-	storage_persistent = persistent
-	if persistent:
-		print("[Game] Browser storage (IndexedDB) is available for %s (%s)" % [save_path, ProjectSettings.globalize_path(save_path)])
-		return
-	report_error("Browser storage (IndexedDB) is unavailable (private browsing or blocked site data): best scores are kept only until the page closes")
-
-
-## The answer to web save check `check`: `ok` when IndexedDB holds the save, else
-## `detail` says why not. An answer to an older check is ignored (a newer save replaced
-## what it looked for). Public for tests.
-func persist_checked(check: int, ok: bool, detail: String) -> void:
-	if check != persist_check:
-		print("[Game] Ignored the answer to save check %d (superseded by check %d)" % [check, persist_check])
-		return
-	if ok:
-		print("[Game] Save persisted to browser storage: %s after %s ms (check %d)" % [save_path, detail, check])
-		return
-	_save_failed("The save (%s) was written to %s but browser storage (IndexedDB) did not keep it: %s (check %d); it is lost when the page closes" % [save_summary(), save_path, detail, check], "browser storage did not keep it (%s)" % detail)
-
-
-## Asks the page to confirm that IndexedDB holds `text` at save_path (see WEB_PERSIST_CHECK_JS).
-func _check_web_persisted(text: String) -> void:
-	persist_check += 1
-	if _persist_callback == null:
-		JavaScriptBridge.eval(WEB_PERSIST_CHECK_JS, true)
-		_persist_callback = JavaScriptBridge.create_callback(_on_persist_checked)
-	var window := JavaScriptBridge.get_interface("window")
-	# A JavaScript boolean arrives as a number, so ask for one explicitly.
-	if window == null or int(JavaScriptBridge.eval("typeof window.huntFrenzyCheckPersisted === 'function' ? 1 : 0", true)) != 1:
-		persist_checked(persist_check, false, "the page cannot check browser storage")
-		return
-	# Emscripten's IDBFS names its database after the mount point: the path's first segment (/userfs).
-	var key := ProjectSettings.globalize_path(save_path)
-	window.huntFrenzyCheckPersisted(key.substr(0, key.find("/", 1)), key, text, WEB_PERSIST_TIMEOUT_MSEC, persist_check, _persist_callback)
-
-
-func _on_persist_checked(args: Array) -> void:
-	persist_checked(int(args[0]), int(args[1]) == 1, str(args[2]))
 
 
 ## A failed save: `message` (with paths and causes) goes to the log and the error label,
 ## `reason` to save_error for the results screen.
-func _save_failed(message: String, reason: String) -> void:
+func fail_save(message: String, reason: String) -> void:
 	save_error = reason
 	report_error(message)
 	save_failed.emit(reason)

@@ -76,7 +76,7 @@ extends Node2D
 ## "E" without a limit) pushed to the right end. Only values change (_update_hud). The
 ## combo shows on the kill pop-ups ("+N xM") and the rival's score only on the results.
 ## Pause: the pause button, Escape (CancelKey), the window or app losing focus or
-## visibility (Godot notifications, and Game.page_hidden for the web page), and the rotate
+## visibility (Godot notifications, and Game.web.page_hidden for the web page), and the rotate
 ## overlay hiding after it showed during the run (or while the menu is open) open the
 ## pause menu with the tree paused; Resume (or Escape on the open menu) continues the run
 ## unchanged, Restart starts the run again (a new run of the mode, or the same level), Quit
@@ -313,7 +313,7 @@ func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
 	_game.screen.screen_fit_changed.connect(_fit)
 	_game.screen.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
-	_game.page_hidden.connect(open_pause.bind("page hidden"))
+	_game.web.page_hidden.connect(open_pause.bind("page hidden"))
 	_shot_input.shot.connect(_on_shot)
 	_cancel_key.triggered.connect(_on_cancel)
 	_pause_button.pressed.connect(open_pause.bind("pause button"))

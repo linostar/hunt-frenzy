@@ -1164,7 +1164,7 @@ func _test_pause_causes_and_resume() -> void:
 		"window lost focus": func() -> void: play.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT),
 		"app lost focus": func() -> void: play.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT),
 		"app paused or hidden": func() -> void: play.notification(Node.NOTIFICATION_APPLICATION_PAUSED),
-		"page hidden": func() -> void: _game.page_hidden.emit(),
+		"page hidden": func() -> void: _game.web.page_hidden.emit(),
 	}
 	for cause: String in causes:
 		var from := _log.size()
@@ -1446,25 +1446,25 @@ func _test_save_web_persist_reporting() -> void:
 	_game.save_failed.connect(record)
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
-	_game.check_storage(false)
+	_game.web.check_storage(false)
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
-	_check(not _game.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
-	_game.check_storage(true)
+	_check(not _game.web.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
+	_game.web.check_storage(true)
 	_game.goto(GameState.Flow.RESULTS, {"mode": "endless", "score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 500, "new_best": true, "save_error": ""})
 	await _game.transition_finished
 	var results := current_scene as Results
 	var notice := results.get_node("Safe/SaveError") as Label
 	_check(not notice.visible, "no save notice before a save fails", notice.text)
-	_game.persist_check += 1
-	var check := _game.persist_check
+	_game.web.persist_check += 1
+	var check := _game.web.persist_check
 	var from := _log.size()
 	errors = _game.reported_errors.size()
-	_game.persist_checked(check - 1, false, "stale")
+	_game.web.persist_checked(check - 1, false, "stale")
 	_check(_game.reported_errors.size() == errors and failed.is_empty(), "an answer to an older save check is ignored", str(failed))
-	_game.persist_checked(check, true, "12")
+	_game.web.persist_checked(check, true, "12")
 	_check_logged(from, "^\\[Game\\] Save persisted to browser storage: user://tool_save\\.json after 12 ms \\(check %d\\)$" % check, "a web save browser storage kept is logged as persisted")
 	_check(_game.reported_errors.size() == errors and failed.is_empty() and not notice.visible, "a kept web save reports nothing", str(failed))
-	_game.persist_checked(check, false, "QuotaExceededError: the quota has been exceeded")
+	_game.web.persist_checked(check, false, "QuotaExceededError: the quota has been exceeded")
 	reported = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	var reason := "browser storage did not keep it (QuotaExceededError: the quota has been exceeded)"
 	_check(failed == [reason] and _game.save_error == reason, "a web save browser storage did not keep fails with its reason", "%s / %s" % [failed, _game.save_error])
@@ -1724,7 +1724,7 @@ func _test_time_attack_pause_freezes_clock() -> void:
 			"window lost focus":
 				play.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
 			"page hidden":
-				_game.page_hidden.emit()
+				_game.web.page_hidden.emit()
 			"rotate overlay":
 				root.size = PORTRAIT_9_19_5
 		await process_frame
