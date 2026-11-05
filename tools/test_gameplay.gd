@@ -545,7 +545,7 @@ func _test_title_shows_mode_bests() -> void:
 	await _open_title()
 	var buttons := _title_buttons(current_scene as Title)
 	_check(buttons.map(func(button: Button) -> String: return button.text) == ["Campaign", "Endless", "Time Attack"], "the mode buttons show only their name, no best", str(buttons.map(func(button: Button) -> String: return button.text)))
-	var source := FileAccess.get_file_as_string("res://scripts/title.gd")
+	var source := FileAccess.get_file_as_string("res://scripts/screens/title.gd")
 	_check(not "MODE_BUTTON_TEXT" in source and not "Best %d" in source and not "best(" in source, "the title script no longer formats the bests", "")
 	_clear_tool_save()
 
@@ -5589,7 +5589,7 @@ func _test_credits_screen() -> void:
 	var hanging := bulleted[0] as HBoxContainer if bullets_ok else null
 	if hanging != null:
 		_check((hanging.get_child(1) as Control).get_global_rect().position.x > (hanging.get_child(0) as Control).get_global_rect().end.x, "a bullet's text starts after its bullet, so wrapped lines hang under the text", str((hanging.get_child(1) as Control).get_global_rect()))
-	var scene_text := FileAccess.get_file_as_string("res://scenes/credits.tscn") + FileAccess.get_file_as_string("res://scripts/credits.gd")
+	var scene_text := FileAccess.get_file_as_string("res://scenes/credits.tscn") + FileAccess.get_file_as_string("res://scripts/screens/credits.gd")
 	for banned: String in ["nintendo", "duck hunt"]:
 		_check(not banned in text.to_lower() and not banned in scene_text.to_lower(), "nothing in the credits names " + banned, text)
 	var back := credits.get_node("Safe/BackButton") as Button

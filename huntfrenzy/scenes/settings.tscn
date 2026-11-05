@@ -1,6 +1,6 @@
 [gd_scene load_steps=4 format=3]
 
-[ext_resource type="Script" path="res://scripts/settings.gd" id="1_settings"]
+[ext_resource type="Script" path="res://scripts/screens/settings.gd" id="1_settings"]
 [ext_resource type="Script" path="res://scripts/ui/touch_slider.gd" id="2_slider"]
 [ext_resource type="Script" path="res://scripts/ui/cancel_key.gd" id="3_cancel"]
 

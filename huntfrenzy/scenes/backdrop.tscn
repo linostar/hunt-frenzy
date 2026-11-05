@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3]
 
-[ext_resource type="Script" path="res://scripts/backdrop.gd" id="1_backdrop"]
+[ext_resource type="Script" path="res://scripts/fx/backdrop.gd" id="1_backdrop"]
 
 [node name="Backdrop" type="Node2D"]
 script = ExtResource("1_backdrop")

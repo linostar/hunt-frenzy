@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://scripts/credits.gd" id="1_credits"]
+[ext_resource type="Script" path="res://scripts/screens/credits.gd" id="1_credits"]
 [ext_resource type="Script" path="res://scripts/ui/cancel_key.gd" id="2_cancel"]
 
 [node name="Credits" type="Control"]

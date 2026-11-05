@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3]
 
-[ext_resource type="Script" path="res://scripts/level_select.gd" id="1_levels"]
+[ext_resource type="Script" path="res://scripts/screens/level_select.gd" id="1_levels"]
 [ext_resource type="Texture2D" path="res://art/star_full.svg" id="2_star"]
 
 [node name="LevelSelect" type="Control"]

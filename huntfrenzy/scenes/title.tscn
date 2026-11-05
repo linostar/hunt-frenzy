@@ -1,9 +1,9 @@
 [gd_scene load_steps=9 format=3]
 
-[ext_resource type="Script" path="res://scripts/title.gd" id="1_title"]
+[ext_resource type="Script" path="res://scripts/screens/title.gd" id="1_title"]
 [ext_resource type="PackedScene" path="res://scenes/backdrop.tscn" id="2_backdrop"]
 [ext_resource type="PackedScene" path="res://scenes/weather.tscn" id="3_weather"]
-[ext_resource type="Script" path="res://scripts/feathers.gd" id="4_feathers"]
+[ext_resource type="Script" path="res://scripts/fx/feathers.gd" id="4_feathers"]
 [ext_resource type="Texture2D" path="res://art/rival_idle.svg" id="5_rival"]
 [ext_resource type="Script" path="res://scripts/ui/shot_input.gd" id="6_shot"]
 

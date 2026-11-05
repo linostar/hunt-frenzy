@@ -293,7 +293,7 @@ def fx_rival_steal(rng):
 
 
 # Recorded sounds: the few effects not synthesised here, each a public-domain or CC0 recording
-# (none from any game), credited in the game (scripts/credits.gd). Each was cut once with
+# (none from any game), credited in the game (scripts/screens/credits.gd). Each was cut once with
 # ffmpeg 9 into tools/sources/ as mono 16-bit RATE Hz WAV, with these flags after its own
 # filter (FILTER below):
 #   ffmpeg -i <original> -af "<FILTER>" -ac 1 -ar 22050 -c:a pcm_s16le \
