@@ -75,6 +75,14 @@ func safe_rect() -> Rect2:
 	return _safe_rect
 
 
+## Lays a screen's `Safe` Control over the safe rect (every screen's _fit) and returns the
+## rect.
+func fit_safe(control: Control) -> Rect2:
+	control.position = _safe_rect.position
+	control.size = _safe_rect.size
+	return _safe_rect
+
+
 ## True while the rotate overlay covers the game (the visible area is portrait).
 func is_rotate_overlay_shown() -> bool:
 	return _rotate_overlay.visible

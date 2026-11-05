@@ -257,10 +257,8 @@ func _heckle() -> void:
 
 
 func _fit() -> void:
-	var safe := _game.screen.safe_rect()
+	var safe := _game.screen.fit_safe(_safe)
 	var shown := _game.screen.visible_rect()
-	_safe.position = safe.position
-	_safe.size = safe.size
 	# The scenery covers the visible area plus the drift on each side.
 	var local := shown.grow_individual(DRIFT_AMPLITUDE, 0.0, DRIFT_AMPLITUDE, 0.0)
 	_backdrop.fit(local, Layout.GRASS_Y - Layout.GRASS_TIP)

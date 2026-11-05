@@ -303,9 +303,7 @@ func _show_save_error(reason: String) -> void:
 
 
 func _fit() -> void:
-	var safe := _game.screen.safe_rect()
-	_safe.position = safe.position
-	_safe.size = safe.size
+	_game.screen.fit_safe(_safe)
 	_place_heading()
 
 
