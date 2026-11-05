@@ -1,6 +1,6 @@
 [gd_scene load_steps=11 format=3]
 
-[ext_resource type="Script" path="res://scripts/weather.gd" id="1_weather"]
+[ext_resource type="Script" path="res://scripts/fx/weather.gd" id="1_weather"]
 [ext_resource type="Texture2D" path="res://art/weather_mist.svg" id="2_mist"]
 [ext_resource type="Texture2D" path="res://art/weather_wind.svg" id="3_wind"]
 [ext_resource type="Texture2D" path="res://art/weather_rain.svg" id="4_rain"]
