@@ -6118,25 +6118,25 @@ func _test_screen_shake() -> void:
 	var bar := play.get_node("Hud/Bar") as Control
 	var bar_at := bar.global_position
 	var origin := world.position
-	for cause: String in Play.SHAKES:
-		var amplitude: float = Play.SHAKES[cause][0]
-		var time: float = Play.SHAKES[cause][1]
-		play.shake(cause)
+	for cause: String in ScreenShake.SHAKES:
+		var amplitude: float = ScreenShake.SHAKES[cause][0]
+		var time: float = ScreenShake.SHAKES[cause][1]
+		play.shaker.shake(cause)
 		var largest := 0.0
 		var moved_bar := false
 		var frames := 0
 		while frames < roundi(time / FRAME) + 2:
 			await process_frame
 			frames += 1
-			largest = maxf(largest, play.shake_offset().length())
+			largest = maxf(largest, play.shaker.shake_offset().length())
 			moved_bar = moved_bar or bar.global_position != bar_at
 		_check(largest > amplitude * 0.3 and largest <= amplitude + 0.001, "%s shakes the world by up to %.0f units" % [cause, amplitude], "largest %.2f" % largest)
-		_check(world.position == origin and play.shake_offset() == Vector2.ZERO and play.shake_strength() == 0.0, "%s's shake ends with the world exactly where it was" % cause, str(world.position - origin))
+		_check(world.position == origin and play.shaker.shake_offset() == Vector2.ZERO and play.shaker.shake_strength() == 0.0, "%s's shake ends with the world exactly where it was" % cause, str(world.position - origin))
 		_check(not moved_bar, "%s's shake leaves the HUD where it is" % cause, str(bar.global_position))
-	play.shake("lost wave")
+	play.shaker.shake("lost wave")
 	await process_frame
 	var from := _log.size()
-	play.shake("armored kill")
+	play.shaker.shake("armored kill")
 	_check_logged(from, "^\\[Play\\] Shake \\(armored kill\\) skipped: a stronger one \\(lost wave\\) is running$", "a weaker shake does not cut a stronger one short")
 	for i in 30:
 		await process_frame
@@ -6279,7 +6279,7 @@ func _test_reduce_motion_everywhere() -> void:
 		await process_frame
 	_check(not wiggled and still, "a decoy hit neither shakes the world nor its pop-up", "wiggled %s" % wiggled)
 	var from := _log.size()
-	play.shake("lost wave")
+	play.shaker.shake("lost wave")
 	await process_frame
 	_check(world.position == origin, "no shake at all, whatever the cause", str(world.position - origin))
 	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\) skipped: reduce motion$", "a skipped shake is logged")
