@@ -216,18 +216,40 @@ func _notification(what: int) -> void:
 			show_crosshair(false, "left the play scene")
 
 
+## One frame of the run, in order: the shake, the hit stop, the clocks, the due spawns, the
+## rival, then the wave's end. A step that ends the run stops the frame there.
 func _process(frame_delta: float) -> void:
 	if _over or wave == null:
 		return
 	shaker.update(frame_delta)
-	var delta := frame_delta
-	if _hit_stop_left > 0.0:
-		_hit_stop_left -= frame_delta
-		if _hit_stop_left >= 0.0:
-			return
-		# The stop ended inside this frame: only the rest of the frame runs (Bird.hold does the same).
-		delta = -_hit_stop_left
-		_hit_stop_left = 0.0
+	var delta := _run_hit_stop(frame_delta)
+	if delta < 0.0 or _advance_clock(delta):
+		return
+	_spawn_due()
+	rival.update_steals()
+	if _over:
+		return
+	rival.update_pose()
+	_check_wave_end()
+
+
+## The part of `frame_delta` the world runs this frame: all of it without a hit stop, -1
+## while the stop holds the whole frame, else what is left once the stop ends inside it
+## (Bird.hold does the same).
+func _run_hit_stop(frame_delta: float) -> float:
+	if _hit_stop_left <= 0.0:
+		return frame_delta
+	_hit_stop_left -= frame_delta
+	if _hit_stop_left >= 0.0:
+		return -1.0
+	var rest := -_hit_stop_left
+	_hit_stop_left = 0.0
+	return rest
+
+
+## Advances run_clock and wave_clock by `delta`; a timed run shows its time, ticks its
+## countdown and, on the frame its time runs out, sounds time_up and ends (returns true).
+func _advance_clock(delta: float) -> bool:
 	var left_before := time_left()
 	var step := delta
 	var next := run_clock + delta
@@ -245,18 +267,26 @@ func _process(frame_delta: float) -> void:
 		if time_left() <= 0.0:
 			_game.audio.play_sfx(&"time_up")
 			end_run()
-			return
+			return true
+	return false
+
+
+## Spawns every bird of the wave whose time has come (the first plays wave_start).
+func _spawn_due() -> void:
 	while _next_spawn < wave.spawns.size() and wave.spawns[_next_spawn].time <= wave_clock:
 		var spawn := wave.spawns[_next_spawn]
 		_next_spawn += 1
 		if _next_spawn == 1:
 			_game.audio.play_sfx(&"wave_start")
 		var bird := spawn_bird(spawn.bird_id, spawn.bird_seed)
-		print("[Play] Spawned %s #%d (wave %d, seed %d, speed x%.3f) at t %.2f%s" % [spawn.bird_id, bird.number, wave.index, spawn.bird_seed, bird.speed_scale, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
-	rival.update_steals()
-	if _over:
-		return
-	rival.update_pose()
+		var fleeing := ", fleeing (no shells)" if ammo.is_empty() else ""
+		print("[Play] Spawned %s #%d (wave %d, seed %d, speed x%.3f) at t %.2f%s" % [
+			spawn.bird_id, bird.number, wave.index, spawn.bird_seed, bird.speed_scale, wave_clock, fleeing])
+
+
+## Once every bird of the wave has spawned and none of them flies: a level's last wave ends
+## the run, any other wave is cleared and the next starts.
+func _check_wave_end() -> void:
 	if _next_spawn == wave.spawns.size() and _wave_birds_flying().is_empty():
 		if level != null and wave.index >= level.waves:
 			end_run()
