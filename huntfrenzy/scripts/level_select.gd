@@ -56,7 +56,7 @@ func _ready() -> void:
 	if _levels.size() != _buttons.size():
 		_game.report_error("Level select has %d level buttons for %d levels of %s" % [_buttons.size(), _levels.size(), chapter_id])
 	_heading.text = chapter.name
-	_heading_count.text = HEADING_STARS_TEXT % [Campaign.chapter_stars(chapter_id, _game.progress), _levels.size() * Campaign.MAX_STARS]
+	_heading_count.text = HEADING_STARS_TEXT % [Campaign.chapter_stars(chapter_id, _game.save.progress), _levels.size() * Campaign.MAX_STARS]
 	var focus := _back_button
 	var left := str(_game.flow_args.get("level", ""))
 	var returned: Button = null
@@ -66,8 +66,8 @@ func _ready() -> void:
 			button.hide()
 			continue
 		var level := _levels[i]
-		var open := Campaign.is_unlocked(level, _game.progress)
-		var record: Campaign.Record = _game.progress.get(level.id)
+		var open := Campaign.is_unlocked(level, _game.save.progress)
+		var record: Campaign.Record = _game.save.progress.get(level.id)
 		button.text = LEVEL_TEXT % level.index
 		button.disabled = not open
 		ChapterSkin.apply(button, chapter.backdrop, CAPTION_MARGINS)
@@ -129,13 +129,13 @@ func _fit() -> void:
 func _log_layout() -> void:
 	for i in mini(_buttons.size(), _levels.size()):
 		var level := _levels[i]
-		var record: Campaign.Record = _game.progress.get(level.id)
+		var record: Campaign.Record = _game.save.progress.get(level.id)
 		print("[LevelSelect] Level %s at %s (%s, %d stars, best %d)" % [level.id, _buttons[i].get_global_rect(), "locked" if _buttons[i].disabled else "open",
 			record.stars if record != null else 0, record.score if record != null else 0])
 
 
 func _on_level_pressed(level_id: String) -> void:
-	if not Campaign.is_unlocked(Content.level(level_id), _game.progress):
+	if not Campaign.is_unlocked(Content.level(level_id), _game.save.progress):
 		print("[LevelSelect] Level %s is locked; nothing starts" % level_id)
 		return
 	print("[LevelSelect] Level %s pressed; starting it" % level_id)

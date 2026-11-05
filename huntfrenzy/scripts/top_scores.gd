@@ -1,7 +1,7 @@
 class_name TopScores
 extends Control
 ## The top scores screen (the title's Top Scores button): the best score of each mode
-## (Endless, Time Attack; Game.best) in a row of panels (the theme's StatPanel, StatCaption
+## (Endless, Time Attack; Game.save.best) in a row of panels (the theme's StatPanel, StatCaption
 ## and StatValue, as on the results), and under them one panel per campaign chapter
 ## (data/chapters.json, in order) with a tiny star image beside the stars earned in it out
 ## of its levels x 3 ("12/18"). It fits the safe area at every supported aspect down to a
@@ -30,12 +30,12 @@ var _game: GameState
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
 	_game.screen.screen_fit_changed.connect(_fit)
-	_endless.text = str(_game.best(GameState.ENDLESS_MODE))
-	_time_attack.text = str(_game.best(GameState.TIME_ATTACK_MODE))
+	_endless.text = str(_game.save.best(GameState.ENDLESS_MODE))
+	_time_attack.text = str(_game.save.best(GameState.TIME_ATTACK_MODE))
 	var shown := PackedStringArray()
 	for spec in Content.chapters():
 		var most := Campaign.chapter_levels(spec.id).size() * Campaign.MAX_STARS
-		var stars := STARS_TEXT % [Campaign.chapter_stars(spec.id, _game.progress), most]
+		var stars := STARS_TEXT % [Campaign.chapter_stars(spec.id, _game.save.progress), most]
 		_chapters.add_child(_chapter_panel(spec, stars))
 		shown.append("%s %s" % [spec.id, stars])
 	_back_button.pressed.connect(_on_back_pressed)

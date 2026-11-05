@@ -45,7 +45,7 @@ func _ready() -> void:
 			button.hide()
 			continue
 		var spec := _chapters[i]
-		var open := Campaign.is_chapter_unlocked(spec.id, _game.progress)
+		var open := Campaign.is_chapter_unlocked(spec.id, _game.save.progress)
 		var most := Campaign.chapter_levels(spec.id).size() * Campaign.MAX_STARS
 		button.text = spec.name
 		button.disabled = not open
@@ -53,7 +53,7 @@ func _ready() -> void:
 		var row := ChapterSkin.detail_row(button, DETAIL_TOP, DETAIL_BOTTOM)
 		if open:
 			row.add_child(ChapterSkin.icon(ChapterSkin.STAR_FULL, STAR_SIDE, "Star"))
-			var count := ChapterSkin.label(STARS_TEXT % [Campaign.chapter_stars(spec.id, _game.progress), most], spec.backdrop, COUNT_FONT_SIZE)
+			var count := ChapterSkin.label(STARS_TEXT % [Campaign.chapter_stars(spec.id, _game.save.progress), most], spec.backdrop, COUNT_FONT_SIZE)
 			count.name = "Count"
 			row.add_child(count)
 		else:
@@ -90,11 +90,11 @@ func _fit() -> void:
 func _log_layout() -> void:
 	for i in mini(_buttons.size(), _chapters.size()):
 		var spec := _chapters[i]
-		print("[ChapterSelect] Chapter %s at %s (%s, %d stars)" % [spec.id, _buttons[i].get_global_rect(), "locked" if _buttons[i].disabled else "open", Campaign.chapter_stars(spec.id, _game.progress)])
+		print("[ChapterSelect] Chapter %s at %s (%s, %d stars)" % [spec.id, _buttons[i].get_global_rect(), "locked" if _buttons[i].disabled else "open", Campaign.chapter_stars(spec.id, _game.save.progress)])
 
 
 func _on_chapter_pressed(chapter_id: String) -> void:
-	if not Campaign.is_chapter_unlocked(chapter_id, _game.progress):
+	if not Campaign.is_chapter_unlocked(chapter_id, _game.save.progress):
 		print("[ChapterSelect] Chapter %s is locked; nothing starts" % chapter_id)
 		return
 	print("[ChapterSelect] Chapter %s pressed; opening its levels" % chapter_id)

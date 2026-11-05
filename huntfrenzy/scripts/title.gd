@@ -151,12 +151,12 @@ func _set_scenery() -> void:
 		return
 	print("[Title] Scenery: backdrop %s, weather %s, a %s every %.1f-%.1f s (seed %d, at most %d), %s" % [
 		TITLE_BACKDROP, weather if weather != "" else "none", TITLE_BIRD, GOOSE_GAP_MIN, GOOSE_GAP_MAX, TITLE_SEED, GEESE_MAX,
-		"still (reduce motion)" if _game.reduce_motion else "drifting %.0f either way over %.0f s" % [DRIFT_AMPLITUDE, DRIFT_PERIOD]])
+		"still (reduce motion)" if _game.save.reduce_motion else "drifting %.0f either way over %.0f s" % [DRIFT_AMPLITUDE, DRIFT_PERIOD]])
 
 
 func _process(delta: float) -> void:
 	_clock += delta
-	_scenery.position.x = 0.0 if _game.reduce_motion else DRIFT_AMPLITUDE * sin(TAU * _clock / DRIFT_PERIOD)
+	_scenery.position.x = 0.0 if _game.save.reduce_motion else DRIFT_AMPLITUDE * sin(TAU * _clock / DRIFT_PERIOD)
 	while _goose_spec != null and _clock >= _next_goose_at:
 		if flying_geese().size() < GEESE_MAX:
 			_spawn_goose()

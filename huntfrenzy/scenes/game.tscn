@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
 [ext_resource type="Script" path="res://scripts/wipe.gd" id="2_wipe"]
 [ext_resource type="Script" path="res://scripts/screen_fit.gd" id="3_screen"]
 [ext_resource type="Script" path="res://scripts/web_persist.gd" id="4_web_persist"]
+[ext_resource type="Script" path="res://scripts/save_store.gd" id="5_save_store"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_error"]
 content_margin_left = 8.0
@@ -87,3 +88,6 @@ script = ExtResource("3_screen")
 
 [node name="Web" type="Node" parent="."]
 script = ExtResource("4_web_persist")
+
+[node name="Save" type="Node" parent="."]
+script = ExtResource("5_save_store")

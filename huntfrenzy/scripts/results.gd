@@ -16,7 +16,7 @@ extends Control
 ## rival steals) and Rival (his score, from his steals), shown only in a run with rival
 ## steals. The verdict ("you vs rival"), the pigeons hit and the rival's parting line are
 ## not shown; the [Results] log lines keep them. SaveError shows when saving failed (the
-## run's save_error, or a later Game.save_failed: a web save that browser storage did not
+## run's save_error, or a later Game.save.save_failed: a web save that browser storage did not
 ## keep). Opened without run stats, the panels show dashes.
 ## Endless: Play again (focused on arrival, ring hidden until keyboard navigation) starts
 ## a new Endless run; Title goes to the title. Time Attack ("TIME UP", no Rival panel and
@@ -31,7 +31,7 @@ extends Control
 ## (Game.play_heckle, "results"; after a run ended by his steal it waits for his laugh to
 ## finish); a level's earned stars each play "star", STAR_SOUND_GAP seconds apart, and a
 ## new best then plays "new_best". Each earned star pops in with its sound (a scale bounce,
-## STAR_POP_TIME; with Game.reduce_motion it just appears at the same moment), and the
+## STAR_POP_TIME; with Game.save.reduce_motion it just appears at the same moment), and the
 ## New best badge bounces with its fanfare (not with reduce motion).
 
 const NO_VALUE := "—"
@@ -117,7 +117,7 @@ func _ready() -> void:
 	_next_button.pressed.connect(_on_next_pressed)
 	_retry_button.pressed.connect(_on_retry_pressed)
 	_levels_button.pressed.connect(_on_levels_pressed)
-	_game.save_failed.connect(_show_save_error)
+	_game.save.save_failed.connect(_show_save_error)
 	_show_stats(_game.flow_args)
 
 
@@ -178,7 +178,7 @@ func _show_stats(stats: Dictionary) -> void:
 				label.text = NO_VALUE
 			for label: Label in [_shots, _escaped]:
 				label.text = ""
-			_best.text = best_text(_game.best(GameState.ENDLESS_MODE))
+			_best.text = best_text(_game.save.best(GameState.ENDLESS_MODE))
 			_new_best.hide()
 			_rival_panel.hide()
 			_show_buttons([_play_again_button, _title_button])
@@ -224,7 +224,7 @@ func _show_stats(stats: Dictionary) -> void:
 		_heading.text = ENDLESS_HEADING
 		_show_buttons([_play_again_button, _title_button])
 	# A web save can fail during the fade here, before save_failed is connected.
-	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save_error if stats["new_best"] or _level != null else "")
+	var save_error: String = stats["save_error"] if stats["save_error"] != "" else (_game.save.save_error if stats["new_best"] or _level != null else "")
 	if save_error != "":
 		_show_save_error(save_error)
 	print("[Results] Score %d, accuracy %s (%d of %d shots), %d birds hit, %d escaped, %d stolen, rival score %d, %d pigeons hit, best %d%s; rival: \"%s\"" % [
@@ -261,9 +261,9 @@ func _pop_star(index: int, earned: int) -> void:
 	var full := _star_slots()[index].get_node("Full") as Control
 	full.show()
 	stars_popped += 1
-	last_pop_style = "plain" if _game.reduce_motion else "bounce"
-	print("[Results] Star %d of %d pops in (%s)" % [index + 1, earned, "no bounce: reduce motion" if _game.reduce_motion else "bounce"])
-	if _game.reduce_motion:
+	last_pop_style = "plain" if _game.save.reduce_motion else "bounce"
+	print("[Results] Star %d of %d pops in (%s)" % [index + 1, earned, "no bounce: reduce motion" if _game.save.reduce_motion else "bounce"])
+	if _game.save.reduce_motion:
 		full.scale = Vector2.ONE
 		return
 	full.scale = Vector2.ONE * STAR_POP_FROM
@@ -272,7 +272,7 @@ func _pop_star(index: int, earned: int) -> void:
 
 ## The New best badge's bounce with its fanfare (none with reduce motion).
 func _bounce_badge() -> void:
-	if not _game.reduce_motion and _new_best.visible:
+	if not _game.save.reduce_motion and _new_best.visible:
 		_bounce(_new_best, 1.0, BADGE_POP_SCALE)
 
 
@@ -351,7 +351,7 @@ func _on_title_pressed() -> void:
 
 func _on_next_pressed() -> void:
 	var next := Campaign.next_level(_level)
-	if next == null or not Campaign.is_unlocked(next, _game.progress):
+	if next == null or not Campaign.is_unlocked(next, _game.save.progress):
 		_game.report_error("Next pressed after %s, but no next level is open" % _level.id)
 		return
 	print("[Results] Next pressed: starting %s" % next.id)

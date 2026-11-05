@@ -506,8 +506,8 @@ func _test_title_button_layout() -> void:
 ## Top Scores screen shows those; menu-stars AC 1).
 func _test_title_shows_mode_bests() -> void:
 	_clear_tool_save()
-	_game.bests[GameState.ENDLESS_MODE] = 1234
-	_game.bests[GameState.TIME_ATTACK_MODE] = 5678
+	_game.save.bests[GameState.ENDLESS_MODE] = 1234
+	_game.save.bests[GameState.TIME_ATTACK_MODE] = 5678
 	await _open_title()
 	var buttons := _title_buttons(current_scene as Title)
 	_check(buttons.map(func(button: Button) -> String: return button.text) == ["Campaign", "Endless", "Time Attack"], "the mode buttons show only their name, no best", str(buttons.map(func(button: Button) -> String: return button.text)))
@@ -875,25 +875,25 @@ func _test_scoring_combo() -> void:
 
 ## A best score is written to the save and survives a reload; a new best saves at once.
 func _test_save_and_reload() -> void:
-	_check(_game.save_path == GameState.TOOL_SAVE_PATH, "tool runs use the tool save", _game.save_path)
-	_game.bests[GameState.ENDLESS_MODE] = 1234
-	_game.bests[GameState.TIME_ATTACK_MODE] = 5678
-	_game.save_game()
-	_game.bests[GameState.ENDLESS_MODE] = 0
-	_game.bests[GameState.TIME_ATTACK_MODE] = 0
-	_game.load_game()
-	_check(_game.best(GameState.ENDLESS_MODE) == 1234 and _game.best(GameState.TIME_ATTACK_MODE) == 5678, "each mode's best survives a save and reload", str(_game.bests))
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(saved is Dictionary and saved.get("version") == 4.0 and GameState.SAVE_VERSION == 4 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless") and saved.get("settings", {}).get("reduce_motion") == false, "the save is version 4 with a best per mode and reduce_motion", str(saved))
+	_check(_game.save.save_path == SaveStore.TOOL_SAVE_PATH, "tool runs use the tool save", _game.save.save_path)
+	_game.save.bests[GameState.ENDLESS_MODE] = 1234
+	_game.save.bests[GameState.TIME_ATTACK_MODE] = 5678
+	_game.save.save_game()
+	_game.save.bests[GameState.ENDLESS_MODE] = 0
+	_game.save.bests[GameState.TIME_ATTACK_MODE] = 0
+	_game.save.load_game()
+	_check(_game.save.best(GameState.ENDLESS_MODE) == 1234 and _game.save.best(GameState.TIME_ATTACK_MODE) == 5678, "each mode's best survives a save and reload", str(_game.save.bests))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
+	_check(saved is Dictionary and saved.get("version") == 4.0 and SaveStore.SAVE_VERSION == 4 and saved.get("bests") == {"endless": 1234.0, "time_attack": 5678.0} and not saved.has("best_endless") and saved.get("settings", {}).get("reduce_motion") == false, "the save is version 4 with a best per mode and reduce_motion", str(saved))
 	var endless := Content.mode(GameState.ENDLESS_MODE)
 	var time_attack := Content.mode(GameState.TIME_ATTACK_MODE)
-	_check(not _game.record_best(endless, 1000) and _game.best(GameState.ENDLESS_MODE) == 1234, "a lower score is not a best", str(_game.bests))
-	_check(_game.record_best(endless, 2000) and _game.best(GameState.TIME_ATTACK_MODE) == 5678, "a higher score is a new best of its own mode only", str(_game.bests))
-	_check(not _game.record_best(time_attack, 5678) and _game.record_best(time_attack, 6000) and _game.best(GameState.ENDLESS_MODE) == 2000, "Time Attack keeps its own best (a tie is no new best)", str(_game.bests))
-	_game.bests[GameState.ENDLESS_MODE] = 0
-	_game.bests[GameState.TIME_ATTACK_MODE] = 0
-	_game.load_game()
-	_check(_game.best(GameState.ENDLESS_MODE) == 2000 and _game.best(GameState.TIME_ATTACK_MODE) == 6000, "a new best is saved at once", str(_game.bests))
+	_check(not _game.save.record_best(endless, 1000) and _game.save.best(GameState.ENDLESS_MODE) == 1234, "a lower score is not a best", str(_game.save.bests))
+	_check(_game.save.record_best(endless, 2000) and _game.save.best(GameState.TIME_ATTACK_MODE) == 5678, "a higher score is a new best of its own mode only", str(_game.save.bests))
+	_check(not _game.save.record_best(time_attack, 5678) and _game.save.record_best(time_attack, 6000) and _game.save.best(GameState.ENDLESS_MODE) == 2000, "Time Attack keeps its own best (a tie is no new best)", str(_game.save.bests))
+	_game.save.bests[GameState.ENDLESS_MODE] = 0
+	_game.save.bests[GameState.TIME_ATTACK_MODE] = 0
+	_game.save.load_game()
+	_check(_game.save.best(GameState.ENDLESS_MODE) == 2000 and _game.save.best(GameState.TIME_ATTACK_MODE) == 6000, "a new best is saved at once", str(_game.save.bests))
 	_clear_tool_save()
 
 
@@ -914,22 +914,22 @@ func _test_save_corrupt_and_unknown_version() -> void:
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for text: String in cases:
-		var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+		var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 		file.store_string(text)
 		file.close()
-		_game.bests[GameState.ENDLESS_MODE] = 77
-		_game.bests[GameState.TIME_ATTACK_MODE] = 88
+		_game.save.bests[GameState.ENDLESS_MODE] = 77
+		_game.save.bests[GameState.TIME_ATTACK_MODE] = 88
 		_game.quiet_errors = true
 		var errors := _game.reported_errors.size()
-		_game.load_game()
+		_game.save.load_game()
 		_game.quiet_errors = false
 		var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 		var label := "save %s" % cases[text]
-		_check(reported.contains(cases[text]) and reported.contains(_game.backup_path()), label + " is reported", reported)
+		_check(reported.contains(cases[text]) and reported.contains(_game.save.backup_path()), label + " is reported", reported)
 		_check(error_label.visible and error_label.text == reported, label + " shows on the error label", error_label.text)
-		_check(FileAccess.get_file_as_string(_game.backup_path()) == text, label + " is backed up", FileAccess.get_file_as_string(_game.backup_path()))
-		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-		_check(_game.bests == {"endless": 0, "time_attack": 0} and fresh is Dictionary and fresh.get("bests") == {"endless": 0.0, "time_attack": 0.0}, label + ": the game starts fresh", "bests %s, save %s" % [_game.bests, fresh])
+		_check(FileAccess.get_file_as_string(_game.save.backup_path()) == text, label + " is backed up", FileAccess.get_file_as_string(_game.save.backup_path()))
+		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
+		_check(_game.save.bests == {"endless": 0, "time_attack": 0} and fresh is Dictionary and fresh.get("bests") == {"endless": 0.0, "time_attack": 0.0}, label + ": the game starts fresh", "bests %s, save %s" % [_game.save.bests, fresh])
 	error_label.hide()
 	_clear_tool_save()
 
@@ -1023,7 +1023,7 @@ func _test_play_hud_fits_any_pool() -> void:
 	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
 	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
-		play.scoring.score = GameState.SAVE_SCORE_MAX
+		play.scoring.score = SaveStore.SAVE_SCORE_MAX
 		play.wave.index = 999
 		play.escaped = play.mode.escape_limit
 		play.set_shell_pool(pool)
@@ -1346,9 +1346,9 @@ func _test_run_ends_on_results() -> void:
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
 	_check(again.has_focus() and again.get_global_rect().size.y >= MIN_TARGET and _game.screen.safe_rect().encloses(again.get_global_rect()), "Play again is focused, >= 44 high, in the safe area", str(root.gui_get_focus_owner()))
-	_game.bests[GameState.ENDLESS_MODE] = 0
-	_game.load_game()
-	_check(_game.best(GameState.ENDLESS_MODE) == 100, "the new best survives a save and reload", str(_game.bests))
+	_game.save.bests[GameState.ENDLESS_MODE] = 0
+	_game.save.load_game()
+	_check(_game.save.best(GameState.ENDLESS_MODE) == 100, "the new best survives a save and reload", str(_game.save.bests))
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == results.get_node("Safe/TitleButton"), "Tab reaches Title", str(root.gui_get_focus_owner()))
 	var gotos := _game.transition_log.size()
@@ -1443,7 +1443,7 @@ func _test_save_web_persist_reporting() -> void:
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	var failed: Array[String] = []
 	var record := func(why: String) -> void: failed.append(why)
-	_game.save_failed.connect(record)
+	_game.save.save_failed.connect(record)
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
 	_game.web.check_storage(false)
@@ -1467,12 +1467,12 @@ func _test_save_web_persist_reporting() -> void:
 	_game.web.persist_checked(check, false, "QuotaExceededError: the quota has been exceeded")
 	reported = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	var reason := "browser storage did not keep it (QuotaExceededError: the quota has been exceeded)"
-	_check(failed == [reason] and _game.save_error == reason, "a web save browser storage did not keep fails with its reason", "%s / %s" % [failed, _game.save_error])
-	_check("did not keep it: QuotaExceededError" in reported and _game.save_path in reported and error_label.visible and error_label.text == reported, "it is reported in the log and on the error label with the save path", reported)
+	_check(failed == [reason] and _game.save.save_error == reason, "a web save browser storage did not keep fails with its reason", "%s / %s" % [failed, _game.save.save_error])
+	_check("did not keep it: QuotaExceededError" in reported and _game.save.save_path in reported and error_label.visible and error_label.text == reported, "it is reported in the log and on the error label with the save path", reported)
 	_check(notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the results screen says the best could not be saved", notice.text)
 	_game.quiet_errors = false
-	_game.save_failed.disconnect(record)
-	_game.save_error = ""
+	_game.save.save_failed.disconnect(record)
+	_game.save.save_error = ""
 	error_label.hide()
 
 
@@ -1587,7 +1587,7 @@ func _test_run_end_save_failure() -> void:
 	var play := await _start_run(42)
 	var bird := await _spawn_flying(play, 12)
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
-	_game.save_path = UNWRITABLE_SAVE_PATH
+	_game.save.save_path = UNWRITABLE_SAVE_PATH
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
@@ -1600,7 +1600,7 @@ func _test_run_end_save_failure() -> void:
 	Engine.time_scale = 1.0
 	await process_frame
 	_game.quiet_errors = false
-	_game.save_path = GameState.TOOL_SAVE_PATH
+	_game.save.save_path = SaveStore.TOOL_SAVE_PATH
 	var results := current_scene as Results
 	_check(results != null, "the run ends on the results screen", str(current_scene))
 	if results == null:
@@ -1616,9 +1616,9 @@ func _test_run_end_save_failure() -> void:
 	_check(notice.get_global_rect().end.y <= below.position.y + 0.5 and notice.get_global_rect().position.y >= above.end.y - 0.5 and notice.get_visible_line_count() == notice.get_line_count(), "the notice fits between the panels and Play again, every line shown", "%s, %d of %d lines" % [notice.get_global_rect(), notice.get_visible_line_count(), notice.get_line_count()])
 	_check_logged(from, "^\\[Play\\] Run end: .* best 100 \\(new best, not saved: cannot open the save file", "the run end log says the new best was not saved")
 	_check(_log.since(from).find("[Game] Saved to %s" % UNWRITABLE_SAVE_PATH) == -1 and not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to")), "nothing logs the failed save as saved", "a Saved line")
-	_game.load_game()
-	_check(_game.best(GameState.ENDLESS_MODE) == 0, "the unsaved best is not in the save", str(_game.bests))
-	_game.save_error = ""
+	_game.save.load_game()
+	_check(_game.save.best(GameState.ENDLESS_MODE) == 0, "the unsaved best is not in the save", str(_game.save.bests))
+	_game.save.save_error = ""
 	_clear_tool_save()
 
 
@@ -1650,7 +1650,7 @@ func _test_time_attack_start_and_hud() -> void:
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
 	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
 		play.set_shell_pool(pool)
-		play.scoring.score = GameState.SAVE_SCORE_MAX
+		play.scoring.score = SaveStore.SAVE_SCORE_MAX
 		play.wave.index = 999
 		play.escaped = 999
 		play.set_shell_pool(pool)
@@ -2010,9 +2010,9 @@ func _test_time_attack_results() -> void:
 	var title_button := results.get_node("Safe/TitleButton") as Button
 	_check(retry.visible and retry.has_focus() and title_button.visible and not (results.get_node("Safe/PlayAgainButton") as Control).visible and not (results.get_node("Safe/NextButton") as Control).visible and not (results.get_node("Safe/LevelsButton") as Control).visible, "Time Attack results offer Retry (focused) and Title", str(root.gui_get_focus_owner()))
 	await _check_results_fit(results)
-	_game.bests[GameState.TIME_ATTACK_MODE] = 0
-	_game.load_game()
-	_check(_game.best(GameState.TIME_ATTACK_MODE) == 100 and _game.best(GameState.ENDLESS_MODE) == 0, "the Time Attack best survives a reload, the Endless best untouched", str(_game.bests))
+	_game.save.bests[GameState.TIME_ATTACK_MODE] = 0
+	_game.save.load_game()
+	_check(_game.save.best(GameState.TIME_ATTACK_MODE) == 100 and _game.save.best(GameState.ENDLESS_MODE) == 0, "the Time Attack best survives a reload, the Endless best untouched", str(_game.save.bests))
 	await _key(KEY_TAB)
 	_check(title_button.has_focus(), "Tab reaches Title", str(root.gui_get_focus_owner()))
 	await _key(KEY_TAB)
@@ -2044,7 +2044,7 @@ func _test_time_attack_quit_saves_nothing() -> void:
 	play.open_pause("pause button")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Control)
 	await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE and _game.best(GameState.TIME_ATTACK_MODE) == 0 and not FileAccess.file_exists(_game.save_path), "quitting to the title records and saves nothing", "%s, bests %s, save %s" % [_game.state, _game.bests, FileAccess.file_exists(_game.save_path)])
+	_check(_game.state == GameState.Flow.TITLE and _game.save.best(GameState.TIME_ATTACK_MODE) == 0 and not FileAccess.file_exists(_game.save.save_path), "quitting to the title records and saves nothing", "%s, bests %s, save %s" % [_game.state, _game.save.bests, FileAccess.file_exists(_game.save.save_path)])
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved") or line.contains("best:")), "nothing logs a best or a save", "a save line")
 	_check_logged(from, "^\\[Play\\] Left the run \\(Quit to title\\): mode time_attack, seed \\d+, wave 1, score 100, 0 escaped, [\\d.]+ s left; nothing recorded$", "leaving the run is logged with the time left")
 	_clear_tool_save()
@@ -2061,26 +2061,26 @@ func _test_time_attack_save_failure() -> void:
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	var failed: Array[String] = []
 	var record := func(why: String) -> void: failed.append(why)
-	_game.save_failed.connect(record)
-	_game.save_path = UNWRITABLE_SAVE_PATH
+	_game.save.save_failed.connect(record)
+	_game.save.save_path = UNWRITABLE_SAVE_PATH
 	_game.quiet_errors = true
 	for i in 400:
 		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
 			break
 		await process_frame
 	_game.quiet_errors = false
-	_game.save_path = GameState.TOOL_SAVE_PATH
-	_game.save_failed.disconnect(record)
+	_game.save.save_path = SaveStore.TOOL_SAVE_PATH
+	_game.save.save_failed.disconnect(record)
 	time_attack.time_limit = 60.0
 	var results := current_scene as Results
 	var reason: String = _game.flow_args.get("save_error", "")
-	_check(results != null and _game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file") and _game.save_error == reason and failed == [reason], "an unsaved Time Attack best sets save_error and emits save_failed", "%s / %s" % [_game.flow_args, failed])
+	_check(results != null and _game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file") and _game.save.save_error == reason and failed == [reason], "an unsaved Time Attack best sets save_error and emits save_failed", "%s / %s" % [_game.flow_args, failed])
 	if results != null:
 		var notice := results.get_node("Safe/SaveError") as Label
 		_check((results.get_node("%NewBest") as Label).visible and notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the Time Attack results say New best! and that it could not be saved", notice.text)
-	_game.load_game()
-	_check(_game.best(GameState.TIME_ATTACK_MODE) == 0, "the unsaved Time Attack best is not in the save", str(_game.bests))
-	_game.save_error = ""
+	_game.save.load_game()
+	_check(_game.save.best(GameState.TIME_ATTACK_MODE) == 0, "the unsaved Time Attack best is not in the save", str(_game.save.bests))
+	_game.save.save_error = ""
 	_clear_tool_save()
 
 
@@ -3285,10 +3285,10 @@ func _test_ui_theme_and_fonts() -> void:
 ## Endless and Time Attack bests at SAVE_SCORE_MAX fit their panels in the safe area.
 func _test_menu_texts_fit_largest_values() -> void:
 	_clear_tool_save()
-	for mode_id in GameState.BEST_MODES:
-		_game.bests[mode_id] = GameState.SAVE_SCORE_MAX
+	for mode_id in SaveStore.BEST_MODES:
+		_game.save.bests[mode_id] = SaveStore.SAVE_SCORE_MAX
 	for level in Content.levels():
-		_game.progress[level.id] = Campaign.Record.new(Campaign.MAX_STARS, GameState.SAVE_SCORE_MAX)
+		_game.save.progress[level.id] = Campaign.Record.new(Campaign.MAX_STARS, SaveStore.SAVE_SCORE_MAX)
 	var screens: Array[Array] = [[GameState.Flow.TITLE, {}, ["Safe/CampaignButton", "Safe/EndlessButton", "Safe/TimeAttackButton"]], [GameState.Flow.CHAPTER_SELECT, {}, ["Safe/Chapter1", "Safe/Chapter2", "Safe/Chapter3", "Safe/Chapter4", "Safe/BackButton"]]]
 	for chapter_spec in Content.chapters():
 		screens.append([GameState.Flow.LEVEL_SELECT, {"chapter": chapter_spec.id}, ["Safe/Level1", "Safe/Level2", "Safe/Level3", "Safe/Level4", "Safe/Level5", "Safe/Level6", "Safe/BackButton"]])
@@ -3331,7 +3331,7 @@ func _test_menu_texts_fit_largest_values() -> void:
 			if label.get_combined_minimum_size().x > rect.size.x + 0.5 or not _game.screen.safe_rect().encloses(rect):
 				problems.append("%s '%s' %s" % [label.name, label.text, rect])
 		var values := [(current_scene.get_node("%EndlessBest") as Label).text, (current_scene.get_node("%TimeAttackBest") as Label).text]
-		_check(problems.is_empty() and values == [str(GameState.SAVE_SCORE_MAX), str(GameState.SAVE_SCORE_MAX)], "TOP_SCORES %dx%d: the largest bests and 18/18 stars fit their panels inside the safe area" % [window.x, window.y], "; ".join(problems))
+		_check(problems.is_empty() and values == [str(SaveStore.SAVE_SCORE_MAX), str(SaveStore.SAVE_SCORE_MAX)], "TOP_SCORES %dx%d: the largest bests and 18/18 stars fit their panels inside the safe area" % [window.x, window.y], "; ".join(problems))
 	root.size = BASE_WINDOW
 	await process_frame
 	_clear_tool_save()
@@ -3522,28 +3522,28 @@ func _test_campaign_stars_unlocks_and_best() -> void:
 	_check(first.stars == 2 and first.score == 900 and kept.stars == 3 and kept.score == 900 and lower.stars == 2 and lower.score == 900, "a replay keeps the best stars and the best score, never lowering either", "%d/%d %d/%d %d/%d" % [first.stars, first.score, kept.stars, kept.score, lower.stars, lower.score])
 
 
-## Game.record_level: the finished level's stars and score are kept as its best, saved at
+## Game.save.record_level: the finished level's stars and score are kept as its best, saved at
 ## once and logged with the level, the stars, the score and the level it unlocks; a lower
 ## replay changes nothing; the progress survives a reload.
 func _test_campaign_record_level() -> void:
 	_clear_tool_save()
 	var dawn_1 := Content.level("dawn_1")
 	var from := _log.size()
-	_check(_game.record_level(dawn_1, 1500), "a first finish with points is a new best", "")
-	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's stars and score are recorded", str(_game.progress.keys()))
+	_check(_game.save.record_level(dawn_1, 1500), "a first finish with points is a new best", "")
+	_check(_game.save.progress.has("dawn_1") and _game.save.progress["dawn_1"].stars == 2 and _game.save.progress["dawn_1"].score == 1500, "the level's stars and score are recorded", str(_game.save.progress.keys()))
 	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 1500, 2 stars \\(passed\\); best 2 stars, score 1500 \\(was never finished\\); dawn_2 unlocked$", "the finished level is logged with its stars, score and unlock")
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 0, 1 levels finished \\(2 stars\\), music 70, sfx 80$", "the finished level is saved at once")
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and saved.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}}, "the save holds the level's best", str(saved))
 	from = _log.size()
-	_check(not _game.record_level(dawn_1, 900) and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "a lower replay keeps the best stars and score", "%d/%d" % [_game.progress["dawn_1"].stars, _game.progress["dawn_1"].score])
+	_check(not _game.save.record_level(dawn_1, 900) and _game.save.progress["dawn_1"].stars == 2 and _game.save.progress["dawn_1"].score == 1500, "a lower replay keeps the best stars and score", "%d/%d" % [_game.save.progress["dawn_1"].stars, _game.save.progress["dawn_1"].score])
 	_check_logged(from, "^\\[Game\\] Level dawn_1 finished: score 900, 1 stars \\(passed\\); best 2 stars, score 1500 \\(was 2 stars, score 1500\\)$", "a replay is logged with the best it keeps")
-	_check(not _game.record_level(Content.level("dawn_2"), 0) and _game.progress["dawn_2"].stars == 0, "a level finished with 0 stars is recorded, not passed", "")
+	_check(not _game.save.record_level(Content.level("dawn_2"), 0) and _game.save.progress["dawn_2"].stars == 0, "a level finished with 0 stars is recorded, not passed", "")
 	_check_logged(from, "^\\[Game\\] Level dawn_2 finished: score 0, 0 stars \\(not passed\\); best 0 stars, score 0 \\(was never finished\\)$", "a level not passed is logged as such, unlocking nothing")
-	_check(_game.record_level(dawn_1, 2100) and _game.progress["dawn_1"].stars == 3, "a better replay raises the best", "")
-	_game.progress = {}
-	_game.load_game()
-	_check(_game.progress.size() == 2 and _game.progress["dawn_1"].stars == 3 and _game.progress["dawn_1"].score == 2100 and _game.progress["dawn_2"].stars == 0, "the progress survives a reload", str(_game.progress.keys()))
+	_check(_game.save.record_level(dawn_1, 2100) and _game.save.progress["dawn_1"].stars == 3, "a better replay raises the best", "")
+	_game.save.progress = {}
+	_game.save.load_game()
+	_check(_game.save.progress.size() == 2 and _game.save.progress["dawn_1"].stars == 3 and _game.save.progress["dawn_1"].score == 2100 and _game.save.progress["dawn_2"].stars == 0, "the progress survives a reload", str(_game.save.progress.keys()))
 	_clear_tool_save()
 
 
@@ -3553,16 +3553,16 @@ func _test_campaign_record_level() -> void:
 ## save is written back at once.
 func _test_save_v1_migrates_to_v4() -> void:
 	_clear_tool_save()
-	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 1, "best_endless": 777}))
 	file.close()
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
-	_game.music_volume = 5
-	_game.load_game()
-	_check(_game.bests == {"endless": 777, "time_attack": 0} and _game.progress.is_empty() and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME and _game.sfx_volume == GameState.DEFAULT_SFX_VOLUME and not _game.music_muted and not _game.sfx_muted,
-		"a v1 save migrates keeping the Endless best, no levels, default settings", "bests %s, %d levels, music %d" % [_game.bests, _game.progress.size(), _game.music_volume])
-	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_game.save.music_volume = 5
+	_game.save.load_game()
+	_check(_game.save.bests == {"endless": 777, "time_attack": 0} and _game.save.progress.is_empty() and _game.save.music_volume == SaveStore.DEFAULT_MUSIC_VOLUME and _game.save.sfx_volume == SaveStore.DEFAULT_SFX_VOLUME and not _game.save.music_muted and not _game.save.sfx_muted,
+		"a v1 save migrates keeping the Endless best, no levels, default settings", "bests %s, %d levels, music %d" % [_game.save.bests, _game.save.progress.size(), _game.save.music_volume])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.save.backup_path()), "a migrated save is not reported or backed up", str(_game.reported_errors.slice(errors)))
 	_check_logged(from, "^\\[Game\\] Save upgrade 1 -> 2: Endless best 777 kept, no campaign levels finished yet, default settings$", "the migration step is logged")
 	_check_logged(from, "^\\[Game\\] Upgraded the save to version 2$", "the step to version 2 is logged")
 	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 777 kept as bests\\.endless, Time Attack best 0$", "the step 2 -> 3 is logged")
@@ -3571,7 +3571,7 @@ func _test_save_v1_migrates_to_v4() -> void:
 	_check_logged(from, "^\\[Game\\] Upgraded the save to version 4$", "the step to version 4 is logged")
 	_check_logged(from, "^\\[Game\\] Loaded save from user://tool_save\\.json: version 4, Endless best 777, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the migrated save's load is logged")
 	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 1 as version 4$", "writing the upgraded save is logged")
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 777.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {} and saved.get("settings") == {"music": 70.0, "sfx": 80.0, "music_muted": false, "sfx_muted": false, "reduce_motion": false}, "the upgraded save is written as version 4", str(saved))
 	_clear_tool_save()
 
@@ -3582,20 +3582,20 @@ func _test_save_v1_migrates_to_v4() -> void:
 ## written back at once.
 func _test_save_v2_migrates_to_v4() -> void:
 	_clear_tool_save()
-	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 2, "best_endless": 4321, "levels": {"dawn_1": {"stars": 3, "score": 2100}}, "settings": {"music": 30, "sfx": 0, "music_muted": true, "sfx_muted": false}}))
 	file.close()
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
-	_game.load_game()
-	_check(_game.bests == {"endless": 4321, "time_attack": 0} and _game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 3 and _game.progress["dawn_1"].score == 2100 and _game.music_volume == 30 and _game.sfx_volume == 0 and _game.music_muted and not _game.sfx_muted,
-		"a v2 save migrates keeping the Endless best, the campaign progress and the settings", "bests %s, %s, music %d" % [_game.bests, _game.progress.keys(), _game.music_volume])
-	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v2 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_game.save.load_game()
+	_check(_game.save.bests == {"endless": 4321, "time_attack": 0} and _game.save.progress.keys() == ["dawn_1"] and _game.save.progress["dawn_1"].stars == 3 and _game.save.progress["dawn_1"].score == 2100 and _game.save.music_volume == 30 and _game.save.sfx_volume == 0 and _game.save.music_muted and not _game.save.sfx_muted,
+		"a v2 save migrates keeping the Endless best, the campaign progress and the settings", "bests %s, %s, music %d" % [_game.save.bests, _game.save.progress.keys(), _game.save.music_volume])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.save.backup_path()), "a migrated v2 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2")), "a v2 save takes only the step 2 -> 3", "a 1 -> 2 line")
 	_check_logged(from, "^\\[Game\\] Save upgrade 2 -> 3: Endless best 4321 kept as bests\\.endless, Time Attack best 0$", "the v2 -> v3 step is logged")
 	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 2 as version 4$", "writing the v2 save as v4 is logged")
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 4321, Time Attack best 0, 1 levels finished \\(3 stars\\), music 30 muted, sfx 0$", "the upgraded v2 save is written back at once")
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 4321.0, "time_attack": 0.0} and not saved.has("best_endless") and saved.get("levels") == {"dawn_1": {"stars": 3.0, "score": 2100.0}}, "the upgraded v2 save is written as version 4", str(saved))
 	_clear_tool_save()
 
@@ -3605,23 +3605,23 @@ func _test_save_v2_migrates_to_v4() -> void:
 ## logged, nothing is reported or backed up, and the save is written back at once.
 func _test_save_v3_migrates_to_v4() -> void:
 	_clear_tool_save()
-	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"version": 3, "bests": {"endless": 900, "time_attack": 450}, "levels": {"noon_1": {"stars": 2, "score": 3100}}, "settings": {"music": 40, "sfx": 60, "music_muted": false, "sfx_muted": true}}))
 	file.close()
-	_game.reduce_motion = true
+	_game.save.reduce_motion = true
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
-	_game.load_game()
-	_check(_game.bests == {"endless": 900, "time_attack": 450} and _game.progress.keys() == ["noon_1"] and _game.progress["noon_1"].score == 3100 and _game.music_volume == 40 and _game.sfx_volume == 60 and not _game.music_muted and _game.sfx_muted and not _game.reduce_motion,
-		"a v3 save migrates keeping its bests, progress and settings, reduce motion off", "bests %s, %s, music %d, reduce motion %s" % [_game.bests, _game.progress.keys(), _game.music_volume, _game.reduce_motion])
-	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.backup_path()), "a migrated v3 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
+	_game.save.load_game()
+	_check(_game.save.bests == {"endless": 900, "time_attack": 450} and _game.save.progress.keys() == ["noon_1"] and _game.save.progress["noon_1"].score == 3100 and _game.save.music_volume == 40 and _game.save.sfx_volume == 60 and not _game.save.music_muted and _game.save.sfx_muted and not _game.save.reduce_motion,
+		"a v3 save migrates keeping its bests, progress and settings, reduce motion off", "bests %s, %s, music %d, reduce motion %s" % [_game.save.bests, _game.save.progress.keys(), _game.save.music_volume, _game.save.reduce_motion])
+	_check(_game.reported_errors.size() == errors and not FileAccess.file_exists(_game.save.backup_path()), "a migrated v3 save is not reported or backed up", str(_game.reported_errors.slice(errors)))
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Save upgrade 1 -> 2") or line.begins_with("[Game] Save upgrade 2 -> 3")), "a v3 save takes only the step 3 -> 4", "an earlier step logged")
 	_check_logged(from, "^\\[Game\\] Save upgrade 3 -> 4: reduce_motion off, the bests, the campaign progress and the other settings kept$", "the v3 -> v4 step is logged")
 	_check_logged(from, "^\\[Game\\] Writing the save upgraded from version 3 as version 4$", "writing the v3 save as v4 is logged")
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and saved.get("version") == 4.0 and saved.get("bests") == {"endless": 900.0, "time_attack": 450.0} and saved.get("levels") == {"noon_1": {"stars": 2.0, "score": 3100.0}} and saved.get("settings") == {"music": 40.0, "sfx": 60.0, "music_muted": false, "sfx_muted": true, "reduce_motion": false}, "the upgraded v3 save is written as version 4", str(saved))
 	_clear_tool_save()
-	_game.load_game()
+	_game.save.load_game()
 
 
 ## reduce_motion round-trips through the save (and shows in the save's log summary); a v4
@@ -3631,13 +3631,13 @@ func _test_save_v3_migrates_to_v4() -> void:
 func _test_save_reduce_motion_strict() -> void:
 	_clear_tool_save()
 	var from := _log.size()
-	_game.reduce_motion = true
-	_game.save_game()
+	_game.save.reduce_motion = true
+	_game.save.save_game()
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80, reduce motion$", "a save with reduce motion on says so in its log line")
-	_game.reduce_motion = false
-	_game.load_game()
-	_check(_game.reduce_motion, "reduce motion on survives a save and reload", str(_game.reduce_motion))
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_game.save.reduce_motion = false
+	_game.save.load_game()
+	_check(_game.save.reduce_motion, "reduce motion on survives a save and reload", str(_game.save.reduce_motion))
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and saved.get("settings", {}).get("reduce_motion") == true, "the save holds settings.reduce_motion", str(saved))
 	var settings := {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}
 	var missing := JSON.stringify({"version": 4, "bests": {"endless": 0, "time_attack": 0}, "levels": {}, "settings": settings})
@@ -3659,21 +3659,21 @@ func _test_save_reduce_motion_strict() -> void:
 	}
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	for text: String in cases:
-		var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+		var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 		file.store_string(text)
 		file.close()
-		_game.reduce_motion = true
+		_game.save.reduce_motion = true
 		_game.quiet_errors = true
 		var errors := _game.reported_errors.size()
-		_game.load_game()
+		_game.save.load_game()
 		_game.quiet_errors = false
 		var message: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
-		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-		_check(message.contains(cases[text]) and message.contains(_game.backup_path()) and error_label.text == message and FileAccess.get_file_as_string(_game.backup_path()) == text and not _game.reduce_motion and fresh is Dictionary and fresh.get("settings", {}).get("reduce_motion") == false,
+		var fresh: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
+		_check(message.contains(cases[text]) and message.contains(_game.save.backup_path()) and error_label.text == message and FileAccess.get_file_as_string(_game.save.backup_path()) == text and not _game.save.reduce_motion and fresh is Dictionary and fresh.get("settings", {}).get("reduce_motion") == false,
 			"save %s: backed up, reported on the label, fresh with reduce motion off" % cases[text], message)
 	error_label.hide()
 	_clear_tool_save()
-	_game.load_game()
+	_game.save.load_game()
 
 
 ## The settings (volumes and mutes) round-trip through the save; a save whose settings or
@@ -3682,17 +3682,17 @@ func _test_save_reduce_motion_strict() -> void:
 ## its key and dropped while the rest of the save loads.
 func _test_save_settings_and_bad_entries() -> void:
 	_clear_tool_save()
-	_game.music_volume = 30
-	_game.sfx_volume = 0
-	_game.music_muted = true
-	_game.progress["noon_2"] = Campaign.Record.new(1, 4000)
-	_game.save_game()
-	_game.music_volume = 70
-	_game.sfx_volume = 80
-	_game.music_muted = false
-	_game.progress = {}
-	_game.load_game()
-	_check(_game.music_volume == 30 and _game.sfx_volume == 0 and _game.music_muted and not _game.sfx_muted and _game.progress.has("noon_2") and _game.progress["noon_2"].score == 4000, "settings and progress survive a save and reload", "music %d, sfx %d, muted %s" % [_game.music_volume, _game.sfx_volume, _game.music_muted])
+	_game.save.music_volume = 30
+	_game.save.sfx_volume = 0
+	_game.save.music_muted = true
+	_game.save.progress["noon_2"] = Campaign.Record.new(1, 4000)
+	_game.save.save_game()
+	_game.save.music_volume = 70
+	_game.save.sfx_volume = 80
+	_game.save.music_muted = false
+	_game.save.progress = {}
+	_game.save.load_game()
+	_check(_game.save.music_volume == 30 and _game.save.sfx_volume == 0 and _game.save.music_muted and not _game.save.sfx_muted and _game.save.progress.has("noon_2") and _game.save.progress["noon_2"].score == 4000, "settings and progress survive a save and reload", "music %d, sfx %d, muted %s" % [_game.save.music_volume, _game.save.sfx_volume, _game.save.music_muted])
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	var levels := {
 		"dawn_1": {"stars": 2, "score": 1500}, "dusk_9": {"stars": 1, "score": 10}, "dawn_2": {"stars": 4, "score": 10},
@@ -3705,39 +3705,39 @@ func _test_save_settings_and_bad_entries() -> void:
 		"dawn_5": "{\"stars\":1}: must be exactly [\"stars\", \"score\"]", "dawn_6": "{\"stars\":1.5,\"score\":3}: stars 1.5 is not a whole number 0..3",
 	}
 	var original := JSON.stringify({"version": 2, "best_endless": 42, "levels": levels, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}, "", false)
-	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 	file.store_string(original)
 	file.close()
 	# An earlier corrupt-save backup must survive: the dropped entries' backup has its own name.
-	file = FileAccess.open(_game.backup_path(), FileAccess.WRITE)
+	file = FileAccess.open(_game.save.backup_path(), FileAccess.WRITE)
 	file.store_string("earlier corrupt save")
 	file.close()
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
-	_game.load_game()
+	_game.save.load_game()
 	_game.quiet_errors = false
 	var reported := _game.reported_errors.slice(errors)
-	var backup := _game.save_path.get_basename() + ".dropped.json"
-	_check(_game.progress.keys() == ["dawn_1"] and _game.progress["dawn_1"].stars == 2 and _game.best(GameState.ENDLESS_MODE) == 42, "bad campaign entries are dropped and the rest of the save loads", "%s, bests %s" % [_game.progress.keys(), _game.bests])
+	var backup := _game.save.save_path.get_basename() + ".dropped.json"
+	_check(_game.save.progress.keys() == ["dawn_1"] and _game.save.progress["dawn_1"].stars == 2 and _game.save.best(GameState.ENDLESS_MODE) == 42, "bad campaign entries are dropped and the rest of the save loads", "%s, bests %s" % [_game.save.progress.keys(), _game.save.bests])
 	for id: String in expected:
 		var line := "dropped the campaign entry levels.%s = %s" % [id, expected[id]]
-		_check(reported.any(func(message: String) -> bool: return message.contains(line) and message.contains(_game.save_path)), "a bad entry is reported with its key and stored value: " + id, "\n".join(reported))
-	var summary := "Save '%s': 6 campaign entries were dropped (see the log); the original is kept as '%s'" % [_game.save_path, backup]
+		_check(reported.any(func(message: String) -> bool: return message.contains(line) and message.contains(_game.save.save_path)), "a bad entry is reported with its key and stored value: " + id, "\n".join(reported))
+	var summary := "Save '%s': 6 campaign entries were dropped (see the log); the original is kept as '%s'" % [_game.save.save_path, backup]
 	_check(reported.size() == expected.size() + 1 and reported.back() == summary and error_label.visible and error_label.text == summary, "the screen says how many entries were dropped and where the original is", "%d reports, label '%s'" % [reported.size(), error_label.text])
-	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
+	_check(FileAccess.get_file_as_string(backup) == original and FileAccess.get_file_as_string(_game.save.backup_path()) == "earlier corrupt save", "the original save is backed up byte for byte before the write-back, no other backup replaced", FileAccess.get_file_as_string(backup))
 	_check_logged(from, "^\\[Game\\] Backed up the save with 6 dropped campaign entries to user://tool_save\\.dropped\\.json$", "the backup path is logged")
-	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	var rewritten: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(rewritten is Dictionary and rewritten.get("levels") == {"dawn_1": {"stars": 2.0, "score": 1500.0}} and rewritten.get("version") == 4.0 and rewritten.get("bests") == {"endless": 42.0, "time_attack": 0.0}, "the v2 save is written back as v4 without the dropped entries", str(rewritten))
 	# A second save with a bad entry: its backup takes the next free name.
 	var second := JSON.stringify({"version": 2, "best_endless": 42, "levels": {"old_level": {"stars": 3, "score": 999}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
-	file = FileAccess.open(_game.save_path, FileAccess.WRITE)
+	file = FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 	file.store_string(second)
 	file.close()
 	_game.quiet_errors = true
-	_game.load_game()
+	_game.save.load_game()
 	_game.quiet_errors = false
-	var next_backup := _game.save_path.get_basename() + ".dropped.2.json"
+	var next_backup := _game.save.save_path.get_basename() + ".dropped.2.json"
 	_check(FileAccess.get_file_as_string(next_backup) == second and FileAccess.get_file_as_string(backup) == original and error_label.text.contains("1 campaign entry was dropped") and error_label.text.contains(next_backup), "a later drop backs up to the next free name, keeping the first backup", error_label.text)
 	_clear_tool_save()
 	var corrupt := {
@@ -3747,19 +3747,19 @@ func _test_save_settings_and_bad_entries() -> void:
 		JSON.stringify({"version": 2, "best_endless": 0, "levels": [], "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}}): "'levels' is not an object",
 	}
 	for text: String in corrupt:
-		file = FileAccess.open(_game.save_path, FileAccess.WRITE)
+		file = FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 		file.store_string(text)
 		file.close()
 		_game.quiet_errors = true
 		errors = _game.reported_errors.size()
-		_game.load_game()
+		_game.save.load_game()
 		_game.quiet_errors = false
 		var message: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
-		_check(message.contains(corrupt[text]) and message.contains(_game.backup_path()) and FileAccess.get_file_as_string(_game.backup_path()) == text and _game.music_volume == GameState.DEFAULT_MUSIC_VOLUME, "save %s: backed up, reported, fresh" % corrupt[text], message)
+		_check(message.contains(corrupt[text]) and message.contains(_game.save.backup_path()) and FileAccess.get_file_as_string(_game.save.backup_path()) == text and _game.save.music_volume == SaveStore.DEFAULT_MUSIC_VOLUME, "save %s: backed up, reported, fresh" % corrupt[text], message)
 	error_label.hide()
-	_game.music_volume = GameState.DEFAULT_MUSIC_VOLUME
-	_game.sfx_volume = GameState.DEFAULT_SFX_VOLUME
-	_game.music_muted = false
+	_game.save.music_volume = SaveStore.DEFAULT_MUSIC_VOLUME
+	_game.save.sfx_volume = SaveStore.DEFAULT_SFX_VOLUME
+	_game.save.music_muted = false
 	_clear_tool_save()
 
 
@@ -3771,7 +3771,7 @@ func _test_save_settings_and_bad_entries() -> void:
 ## hidden, Retry is focused and plays the level again.
 func _test_campaign_level_plays_all_waves() -> void:
 	_clear_tool_save()
-	_game.progress["dawn_1"] = Campaign.Record.new(1, 900)
+	_game.save.progress["dawn_1"] = Campaign.Record.new(1, 900)
 	var from := _log.size()
 	var play := await _start_level("dawn_2")
 	_check_logged(from, "^\\[Play\\] Run start: level dawn_2 \\(Dawn 2 of 6\\), seed 102 \\(3 waves, no escape limit, combo cap 3, 3 shells per hit, rival steals on, linger x1\\.00, aim 1\\.00 s, heckle cooldown 4\\.00 s, backdrop dawn, weather mist\\)$", "the level's run start is logged with its seed and settings")
@@ -3793,7 +3793,7 @@ func _test_campaign_level_plays_all_waves() -> void:
 	_check(results != null and waves_seen == [1, 2, 3] and stats.get("level") == "dawn_2" and stats.get("escaped") == 12 and stats.get("stars") == 0, "the level plays all 3 waves, losing all 12 birds, and then ends on results", "waves %s, %s" % [waves_seen, stats])
 	_check_logged(from, "^\\[Play\\] Run end: level dawn_2, seed 102, wave 3 of 3, score 0, 0 shots .*, 12 escaped \\(\\d+ stolen\\), rival score \\d+, 0 stars, level best 0 \\(0 stars\\)$", "the level's end is logged with its stars and best")
 	_check_logged(from, "^\\[Game\\] Level dawn_2 finished: score 0, 0 stars \\(not passed\\); best 0 stars, score 0 \\(was never finished\\)$", "the finished level is recorded as not passed")
-	_check(_game.progress.has("dawn_2") and not Campaign.is_unlocked(Content.level("dawn_3"), _game.progress), "0 stars unlocks nothing", "")
+	_check(_game.save.progress.has("dawn_2") and not Campaign.is_unlocked(Content.level("dawn_3"), _game.save.progress), "0 stars unlocks nothing", "")
 	if results == null:
 		return
 	var shown := _results_texts(results, ["Heading", "Outcome", "Score", "Best"])
@@ -3881,9 +3881,9 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	await _key(KEY_ENTER)
 	await _game.transition_finished
 	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_2"), "Next plays the next level", str(_game.flow_args))
-	_game.progress = {}
-	_game.load_game()
-	_check(_game.progress.has("dawn_1") and _game.progress["dawn_1"].stars == 2 and _game.progress["dawn_1"].score == 1500, "the level's progress survives a reload", str(_game.progress.keys()))
+	_game.save.progress = {}
+	_game.save.load_game()
+	_check(_game.save.progress.has("dawn_1") and _game.save.progress["dawn_1"].stars == 2 and _game.save.progress["dawn_1"].score == 1500, "the level's progress survives a reload", str(_game.save.progress.keys()))
 	_clear_tool_save()
 
 
@@ -3894,10 +3894,10 @@ func _test_campaign_save_failure() -> void:
 	_clear_tool_save()
 	var failed: Array[String] = []
 	var record := func(why: String) -> void: failed.append(why)
-	_game.save_failed.connect(record)
+	_game.save.save_failed.connect(record)
 	var play := await _start_level("dawn_1")
 	play.scoring.score = 900
-	_game.save_path = UNWRITABLE_SAVE_PATH
+	_game.save.save_path = UNWRITABLE_SAVE_PATH
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
@@ -3909,11 +3909,11 @@ func _test_campaign_save_failure() -> void:
 	Engine.time_scale = 1.0
 	await process_frame
 	_game.quiet_errors = false
-	_game.save_path = GameState.TOOL_SAVE_PATH
-	_game.save_failed.disconnect(record)
+	_game.save.save_path = SaveStore.TOOL_SAVE_PATH
+	_game.save.save_failed.disconnect(record)
 	var results := current_scene as Results
 	var reason: String = _game.flow_args.get("save_error", "")
-	_check(results != null and reason.begins_with("cannot open the save file") and failed == [reason] and _game.save_error == reason, "a failed level save sets save_error and emits save_failed", "%s / %s" % [failed, _game.flow_args])
+	_check(results != null and reason.begins_with("cannot open the save file") and failed == [reason] and _game.save.save_error == reason, "a failed level save sets save_error and emits save_failed", "%s / %s" % [failed, _game.flow_args])
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(UNWRITABLE_SAVE_PATH in reported, "the failed level save is reported with the save path", reported)
 	if results != null:
@@ -3921,7 +3921,7 @@ func _test_campaign_save_failure() -> void:
 		_check(notice.visible and notice.text == Results.PROGRESS_SAVE_ERROR_TEXT % reason, "the results say the progress could not be saved, with the reason", notice.text)
 	_check_logged(from, "^\\[Play\\] Run end: level dawn_1, .*, 1 stars, level best 900 \\(1 stars\\) \\(new best\\), not saved: cannot open the save file", "the level's end log says it was not saved")
 	_check(not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to")), "nothing logs the failed level save as saved", "a Saved line")
-	_game.save_error = ""
+	_game.save.save_error = ""
 	(_game.get_node("Fade/ErrorLabel") as Label).hide()
 	_clear_tool_save()
 
@@ -4001,7 +4001,7 @@ func _test_results_stars_and_panels() -> void:
 	_clear_tool_save()
 	var base := {"score": 1200, "shots": 4, "hits": 3, "kills": 3, "pigeons": 1, "escaped": 2, "stolen": 1, "rival_score": 100, "rival_line": "Not bad.", "rival_steals": true, "best": 1200, "new_best": false, "save_error": "", "level": "dawn_1", "best_stars": 3, "next_level": "dawn_2"}
 	for reduce_motion: bool in [false, true]:
-		_game.set_reduce_motion(reduce_motion)
+		_game.save.set_reduce_motion(reduce_motion)
 		for earned in Campaign.MAX_STARS + 1:
 			var label := "%d stars%s" % [earned, ", reduce motion" if reduce_motion else ""]
 			var stats := base.duplicate()
@@ -4054,7 +4054,7 @@ func _test_results_stars_and_panels() -> void:
 				_check_logged(from, "^\\[Results\\] Star %d of %d pops in \\(%s\\)$" % [earned, earned, "no bounce: reduce motion" if reduce_motion else "bounce"], "%s: the last star's pop is logged" % label)
 			if stats["new_best"]:
 				_check((badge_peak > 1.05) != reduce_motion, "%s: the New best! badge %s with its fanfare" % [label, "stays still" if reduce_motion else "bounces"], "peak scale %.2f" % badge_peak)
-	_game.set_reduce_motion(false)
+	_game.save.set_reduce_motion(false)
 	var opened_from := _log.size()
 	_game.goto(GameState.Flow.RESULTS, {})
 	await _game.transition_finished
@@ -4119,7 +4119,7 @@ func _test_chapter_select() -> void:
 	await _game.transition_finished
 	_check(_game.state == GameState.Flow.TITLE, "Back goes to the title", str(_game.state))
 	for index in range(1, 7):
-		_game.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
+		_game.save.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
 	_game.goto(GameState.Flow.CHAPTER_SELECT)
 	await _game.transition_finished
 	await process_frame
@@ -4142,7 +4142,7 @@ func _test_chapter_select() -> void:
 ## select.
 func _test_level_select() -> void:
 	_clear_tool_save()
-	_game.progress["dawn_1"] = Campaign.Record.new(2, 1500)
+	_game.save.progress["dawn_1"] = Campaign.Record.new(2, 1500)
 	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
 	await _game.transition_finished
 	await process_frame
@@ -4197,25 +4197,25 @@ func _test_level_select() -> void:
 func _test_save_dropped_backup_failure() -> void:
 	_clear_tool_save()
 	var original := JSON.stringify({"version": 2, "best_endless": 7, "levels": {"dawn_1": {"stars": 2, "score": 300}, "old_level": {"stars": 3, "score": 999}, "dawn_2": {"stars": 9, "score": 5}}, "settings": {"music": 70, "sfx": 80, "music_muted": false, "sfx_muted": false}})
-	var file := FileAccess.open(_game.save_path, FileAccess.WRITE)
+	var file := FileAccess.open(_game.save.save_path, FileAccess.WRITE)
 	file.store_string(original)
 	file.close()
-	for n in range(1, GameState.DROPPED_BACKUPS_MAX + 1):
-		var taken := FileAccess.open(_game.save_path.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n), FileAccess.WRITE)
+	for n in range(1, SaveStore.DROPPED_BACKUPS_MAX + 1):
+		var taken := FileAccess.open(_game.save.save_path.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n), FileAccess.WRITE)
 		taken.store_string("earlier backup %d" % n)
 		taken.close()
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
 	var from := _log.size()
-	_game.load_game()
+	_game.save.load_game()
 	_game.quiet_errors = false
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(reported.contains("2 campaign entries were dropped") and reported.contains("could not be backed up") and reported.contains("the save is left as it is") and error_label.text == reported, "a failed backup is reported on screen with the count", reported)
-	_check(FileAccess.get_file_as_string(_game.save_path.get_basename() + ".dropped.json") == "earlier backup 1", "no earlier backup is replaced", "")
-	_check(FileAccess.get_file_as_string(_game.save_path) == original, "a failed backup leaves the original save on disk", FileAccess.get_file_as_string(_game.save_path))
+	_check(FileAccess.get_file_as_string(_game.save.save_path.get_basename() + ".dropped.json") == "earlier backup 1", "no earlier backup is replaced", "")
+	_check(FileAccess.get_file_as_string(_game.save.save_path) == original, "a failed backup leaves the original save on disk", FileAccess.get_file_as_string(_game.save.save_path))
 	_check(not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Game] Saved to") or l.begins_with("[Game] Writing the save without")), "nothing is written back without a backup", "a write-back line")
-	_check(_game.progress.keys() == ["dawn_1"] and _game.best(GameState.ENDLESS_MODE) == 7, "the rest of the save still loads", str(_game.progress.keys()))
+	_check(_game.save.progress.keys() == ["dawn_1"] and _game.save.best(GameState.ENDLESS_MODE) == 7, "the rest of the save still loads", str(_game.save.progress.keys()))
 	error_label.hide()
 	_clear_tool_save()
 
@@ -4227,8 +4227,8 @@ func _test_save_dropped_backup_failure() -> void:
 func _test_select_focus_returns() -> void:
 	_clear_tool_save()
 	for index in range(1, 7):
-		_game.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
-	_game.progress["noon_1"] = Campaign.Record.new(1, 3000)
+		_game.save.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
+	_game.save.progress["noon_1"] = Campaign.Record.new(1, 3000)
 	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
 	await _game.transition_finished
 	await process_frame
@@ -4497,15 +4497,15 @@ func _touches(points: Array[Vector2], indices: Array[int]) -> void:
 
 
 func _clear_tool_save() -> void:
-	var paths: Array[String] = [GameState.TOOL_SAVE_PATH, GameState.TOOL_SAVE_PATH.get_basename() + ".corrupt.json"]
-	for n in range(1, GameState.DROPPED_BACKUPS_MAX + 1):
-		paths.append(GameState.TOOL_SAVE_PATH.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n))
+	var paths: Array[String] = [SaveStore.TOOL_SAVE_PATH, SaveStore.TOOL_SAVE_PATH.get_basename() + ".corrupt.json"]
+	for n in range(1, SaveStore.DROPPED_BACKUPS_MAX + 1):
+		paths.append(SaveStore.TOOL_SAVE_PATH.get_basename() + (".dropped.json" if n == 1 else ".dropped.%d.json" % n))
 	for path in paths:
 		if FileAccess.file_exists(path) or DirAccess.dir_exists_absolute(path):
 			DirAccess.remove_absolute(path)
-	for mode_id in GameState.BEST_MODES:
-		_game.bests[mode_id] = 0
-	_game.progress = {}
+	for mode_id in SaveStore.BEST_MODES:
+		_game.save.bests[mode_id] = 0
+	_game.save.progress = {}
 
 
 ## The title's Campaign, Endless and Time Attack buttons, in that order.
@@ -4570,9 +4570,9 @@ func _test_audio_buses_follow_settings() -> void:
 		"every sound effect player is on the SFX bus", str(_game.sfx_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
 	_check(_game.music_players().size() == 2 and _game.music_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.MUSIC_BUS),
 		"every music player is on the Music bus", str(_game.music_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
-	var kept := [_game.music_volume, _game.sfx_volume, _game.music_muted, _game.sfx_muted]
+	var kept := [_game.save.music_volume, _game.save.sfx_volume, _game.save.music_muted, _game.save.sfx_muted]
 	# Volume -> the bus level it must give: silent at 0, -6.02 dB at half, 0 dB at full.
-	var levels := {0: GameState.SILENT_VOLUME_DB, 50: -6.0206, GameState.VOLUME_MAX: 0.0}
+	var levels := {0: GameState.SILENT_VOLUME_DB, 50: -6.0206, SaveStore.VOLUME_MAX: 0.0}
 	for volume: int in levels:
 		_game.set_music_volume(volume)
 		_game.set_sfx_volume(volume)
@@ -4594,14 +4594,14 @@ func _test_audio_buses_follow_settings() -> void:
 	for bus: int in [music_bus, sfx_bus]:
 		AudioServer.set_bus_volume_db(bus, 0.0)
 		AudioServer.set_bus_mute(bus, false)
-	_game.load_game()
+	_game.save.load_game()
 	_check(AudioServer.is_bus_mute(music_bus) and absf(AudioServer.get_bus_volume_db(music_bus) - linear_to_db(0.3)) < 0.01, "a loaded save's music volume and mute reach the Music bus",
 		"mute %s, %.3f dB" % [AudioServer.is_bus_mute(music_bus), AudioServer.get_bus_volume_db(music_bus)])
 	_check(not AudioServer.is_bus_mute(sfx_bus) and absf(AudioServer.get_bus_volume_db(sfx_bus) - linear_to_db(0.8)) < 0.01, "a loaded save's sound volume reaches the SFX bus",
 		"mute %s, %.3f dB" % [AudioServer.is_bus_mute(sfx_bus), AudioServer.get_bus_volume_db(sfx_bus)])
-	_game.music_volume = kept[0]
-	_game.sfx_volume = kept[1]
-	_game.music_muted = kept[2]
+	_game.save.music_volume = kept[0]
+	_game.save.sfx_volume = kept[1]
+	_game.save.music_muted = kept[2]
 	_game.set_sfx_muted(kept[3])
 
 
@@ -4948,16 +4948,16 @@ func _test_pause_menu_mutes() -> void:
 		var bus := AudioServer.get_bus_index(buses[i])
 		var from := _log.size()
 		await _tap(toggle)
-		var muted := _game.music_muted if i == 0 else _game.sfx_muted
+		var muted := _game.save.music_muted if i == 0 else _game.save.sfx_muted
 		_check(muted and AudioServer.is_bus_mute(bus) and not toggle.button_pressed and toggle.text.ends_with(": off"), "a press on %s mutes its bus at once and shows it off" % toggle.name, "%s, bus mute %s" % [toggle.text, AudioServer.is_bus_mute(bus)])
 		_check_logged(from, "^\\[Audio\\] %s muted$" % ["Music", "SFX"][i], "%s's mute is logged" % toggle.name)
-		var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 		var key := "music_muted" if i == 0 else "sfx_muted"
 		_check(saved is Dictionary and (saved as Dictionary)["settings"][key] == true, "%s's mute is saved" % toggle.name, str(saved))
-		_game.load_game()
-		_check((_game.music_muted if i == 0 else _game.sfx_muted) and AudioServer.is_bus_mute(bus) and toggle.text.ends_with(": off"), "%s's mute survives a reload" % toggle.name, toggle.text)
+		_game.save.load_game()
+		_check((_game.save.music_muted if i == 0 else _game.save.sfx_muted) and AudioServer.is_bus_mute(bus) and toggle.text.ends_with(": off"), "%s's mute survives a reload" % toggle.name, toggle.text)
 		await _tap(toggle)
-		_check(not (_game.music_muted if i == 0 else _game.sfx_muted) and not AudioServer.is_bus_mute(bus) and toggle.button_pressed and toggle.text.ends_with(": on"), "a second press on %s unmutes it" % toggle.name, toggle.text)
+		_check(not (_game.save.music_muted if i == 0 else _game.save.sfx_muted) and not AudioServer.is_bus_mute(bus) and toggle.button_pressed and toggle.text.ends_with(": on"), "a second press on %s unmutes it" % toggle.name, toggle.text)
 	play.resume()
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
@@ -5405,8 +5405,8 @@ func _plan_text(plan: Array[GameState.Syllable]) -> String:
 ## return to the title with Settings focused (plan ACs 10, 11).
 func _test_settings_screen() -> void:
 	_clear_tool_save()
-	_game.load_game()
-	_game.save_game()
+	_game.save.load_game()
+	_game.save.save_game()
 	await _open_title()
 	var title := current_scene as Title
 	var from := _log.size()
@@ -5429,7 +5429,7 @@ func _test_settings_screen() -> void:
 	var controls: Array[Control] = [music, music_toggle, sfx, sfx_toggle, reduce, back]
 	var labels: Array[Label] = [settings.get_node("Safe/Heading") as Label, settings.get_node("Safe/MusicLabel") as Label, settings.get_node("Safe/SfxLabel") as Label, settings.get_node("Safe/ReduceMotionHint") as Label]
 	_check(music.has_focus() and not music.has_focus(true), "the music slider is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
-	_check(_text_of(settings, "MusicLabel") == "Music 70" and _text_of(settings, "SfxLabel") == "SFX 80" and music_toggle.text == "Music: on" and sfx_toggle.text == "SFX: on" and reduce.text == "Reduce motion: off" and is_equal_approx(music.value, 70) and is_equal_approx(sfx.value, 80) and music.max_value == GameState.VOLUME_MAX and music.min_value == 0,
+	_check(_text_of(settings, "MusicLabel") == "Music 70" and _text_of(settings, "SfxLabel") == "SFX 80" and music_toggle.text == "Music: on" and sfx_toggle.text == "SFX: on" and reduce.text == "Reduce motion: off" and is_equal_approx(music.value, 70) and is_equal_approx(sfx.value, 80) and music.max_value == SaveStore.VOLUME_MAX and music.min_value == 0,
 		"every setting shows its state in text, the sliders run 0..VOLUME_MAX", "%s | %s | %s | %s | %s" % [_text_of(settings, "MusicLabel"), _text_of(settings, "SfxLabel"), music_toggle.text, sfx_toggle.text, reduce.text])
 	await _check_screen_layout(settings, controls, labels)
 	var reached: Array[String] = []
@@ -5448,8 +5448,8 @@ func _test_settings_screen() -> void:
 	var outside_from := _log.size()
 	var outside_sounds := _game.sfx_log.size()
 	music.value = 40
-	var outside: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(_game.music_volume == 40 and (outside as Dictionary)["settings"]["music"] == 40.0 and _game.sfx_log.slice(outside_sounds) == [&"ui_tap"], "a change outside any hold (the mouse wheel) saves at once and taps", "volume %d, sounds %s" % [_game.music_volume, _game.sfx_log.slice(outside_sounds)])
+	var outside: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
+	_check(_game.save.music_volume == 40 and (outside as Dictionary)["settings"]["music"] == 40.0 and _game.sfx_log.slice(outside_sounds) == [&"ui_tap"], "a change outside any hold (the mouse wheel) saves at once and taps", "volume %d, sounds %s" % [_game.save.music_volume, _game.sfx_log.slice(outside_sounds)])
 	_check_logged(outside_from, "^\\[Settings\\] Music slider moved to 40$", "a change outside a hold is logged without (held)")
 	var saved: Variant
 	var sounds := 0
@@ -5458,7 +5458,7 @@ func _test_settings_screen() -> void:
 	for i in toggles.size():
 		from = _log.size()
 		await _tap(toggles[i])
-		saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+		saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 		var key := "music_muted" if i == 0 else "sfx_muted"
 		_check(AudioServer.is_bus_mute(AudioServer.get_bus_index(buses[i])) and toggles[i].text.ends_with(": off") and not toggles[i].button_pressed and (saved as Dictionary)["settings"][key] == true, "a tap on %s mutes its bus, shows off and saves" % toggles[i].name, toggles[i].text)
 		_check_logged(from, "^\\[Settings\\] %s toggle pressed: %s off$" % [["Music", "SFX"][i], ["music", "sound effects"][i]], "%s is logged" % toggles[i].name)
@@ -5467,11 +5467,11 @@ func _test_settings_screen() -> void:
 	from = _log.size()
 	sounds = _game.sfx_log.size()
 	await _tap(reduce)
-	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
-	_check(_game.reduce_motion and reduce.button_pressed and reduce.text == "Reduce motion: on" and (saved as Dictionary)["settings"]["reduce_motion"] == true and _game.sfx_log.slice(sounds) == [&"ui_tap"], "Reduce motion turns on, shows it, is saved and taps", "%s, %s" % [reduce.text, _game.sfx_log.slice(sounds)])
+	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
+	_check(_game.save.reduce_motion and reduce.button_pressed and reduce.text == "Reduce motion: on" and (saved as Dictionary)["settings"]["reduce_motion"] == true and _game.sfx_log.slice(sounds) == [&"ui_tap"], "Reduce motion turns on, shows it, is saved and taps", "%s, %s" % [reduce.text, _game.sfx_log.slice(sounds)])
 	_check_logged(from, "^\\[Settings\\] Reduce motion toggle pressed: on$", "the reduce motion press is logged")
 	_check_logged(from, "^\\[Game\\] Reduce motion on: no screen shake, plain fades, steady pop-ups and title$", "Game logs reduce motion")
-	_game.set_reduce_motion(false)
+	_game.save.set_reduce_motion(false)
 	_check(reduce.text == "Reduce motion: off" and not reduce.button_pressed, "the screen follows a change made elsewhere", reduce.text)
 	back.grab_focus()
 	await _key(KEY_ENTER)
@@ -5491,8 +5491,8 @@ func _test_settings_screen() -> void:
 		await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/SettingsButton") as Button).has_focus(), "Escape on the settings screen returns to the title too", str(current_scene))
 	_check_logged(from, "^\\[Settings\\] Back pressed; returning to the title$", "Back is logged")
-	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
-	_game.set_sfx_volume(GameState.DEFAULT_SFX_VOLUME)
+	_game.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
+	_game.set_sfx_volume(SaveStore.DEFAULT_SFX_VOLUME)
 	_clear_tool_save()
 
 
@@ -5503,7 +5503,7 @@ func _test_settings_screen() -> void:
 ## menu's toggles stay in sync both ways (plan AC 11).
 func _test_settings_over_paused_run() -> void:
 	_clear_tool_save()
-	_game.load_game()
+	_game.save.load_game()
 	var play := await _start_run(55)
 	await _spawn_flying(play, 7)
 	_game.play_sfx(&"wave_start")
@@ -5530,20 +5530,20 @@ func _test_settings_over_paused_run() -> void:
 	_check(music.has_focus(), "the overlay focuses its music slider", str(root.gui_get_focus_owner()))
 	await _key(KEY_LEFT)
 	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
-	_check(_game.music_volume == 70 - int(TouchSlider.KEY_STEP) and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(70 - int(TouchSlider.KEY_STEP), GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
+	_check(_game.save.music_volume == 70 - int(TouchSlider.KEY_STEP) and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(70 - int(TouchSlider.KEY_STEP), GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
 	var shots := play.scoring.shots()
 	await _tap(settings.get_node("Safe/ReduceMotionHint") as Control)
 	_check(play.scoring.shots() == shots and play.refused == 0, "a touch on the overlay is no shot", "%d shots" % play.scoring.shots())
 	await _tap(settings.get_node("Safe/MusicToggle") as Control)
 	var menu_toggle := panel.get_node("MusicToggle") as Button
-	_check(_game.music_muted and menu_toggle.text == "Music: off" and not menu_toggle.button_pressed, "a mute set in the settings shows on the pause menu's toggle", menu_toggle.text)
+	_check(_game.save.music_muted and menu_toggle.text == "Music: off" and not menu_toggle.button_pressed, "a mute set in the settings shows on the pause menu's toggle", menu_toggle.text)
 	from = _log.size()
 	await _key(KEY_ESCAPE)
 	_check(play.settings_overlay() == null and play.is_paused() and paused and settings_button.has_focus(), "Escape closes the settings, the run stays paused, Settings is focused", "overlay %s, paused %s, focus %s" % [play.settings_overlay(), paused, root.gui_get_focus_owner()])
 	_check((panel as Control).visible, "the pause menu's panel shows again", "hidden")
 	_check_logged(from, "^\\[Play\\] Settings closed; back to the pause menu$", "closing is logged")
 	await _tap(menu_toggle)
-	_check(not _game.music_muted and menu_toggle.text == "Music: on", "the pause menu's toggle still works", menu_toggle.text)
+	_check(not _game.save.music_muted and menu_toggle.text == "Music: on", "the pause menu's toggle still works", menu_toggle.text)
 	await _tap(settings_button)
 	settings = play.settings_overlay()
 	_check(settings != null and (settings.get_node("Safe/MusicToggle") as Button).text == "Music: on", "the settings show the mute the pause menu set", str(settings))
@@ -5555,7 +5555,7 @@ func _test_settings_over_paused_run() -> void:
 	play.resume()
 	await process_frame
 	_check(play.settings_overlay() == null and not paused and not _game.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
-	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	_clear_tool_save()
@@ -5643,11 +5643,11 @@ func _test_credits_screen() -> void:
 ## (menu-stars AC 2, 3).
 func _test_top_scores_screen() -> void:
 	_clear_tool_save()
-	_game.bests[GameState.ENDLESS_MODE] = 4321
-	_game.bests[GameState.TIME_ATTACK_MODE] = 987
+	_game.save.bests[GameState.ENDLESS_MODE] = 4321
+	_game.save.bests[GameState.TIME_ATTACK_MODE] = 987
 	for index in range(1, 7):
-		_game.progress["dawn_%d" % index] = Campaign.Record.new(3 if index < 3 else 1, 2000)
-	_game.progress["noon_1"] = Campaign.Record.new(2, 900)
+		_game.save.progress["dawn_%d" % index] = Campaign.Record.new(3 if index < 3 else 1, 2000)
+	_game.save.progress["noon_1"] = Campaign.Record.new(2, 900)
 	await _open_title()
 	var title := current_scene as Title
 	var from := _log.size()
@@ -5803,9 +5803,9 @@ func _test_title_scenery_and_geese() -> void:
 ## (plan AC 2).
 func _test_title_goose_shot() -> void:
 	_clear_tool_save()
-	_game.save_game()
-	var save_before := FileAccess.get_file_as_string(_game.save_path)
-	var bests_before := _game.bests.duplicate()
+	_game.save.save_game()
+	var save_before := FileAccess.get_file_as_string(_game.save.save_path)
+	var bests_before := _game.save.bests.duplicate()
 	await _open_title()
 	var title := current_scene as Title
 	var scenery := title.get_node("Scenery") as Node2D
@@ -5861,7 +5861,7 @@ func _test_title_goose_shot() -> void:
 		second.set_process(true)
 		_check(title.geese_shot == 2 and title.rival_pose() == "sulk", "a second goose is shot and the rival sulks again", "%d shot" % title.geese_shot)
 		_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) skipped: cooldown, ", "inside the cooldown the rival keeps quiet (logged)")
-	_check(FileAccess.get_file_as_string(_game.save_path) == save_before and _game.bests == bests_before, "nothing is saved and no best changes", "save changed")
+	_check(FileAccess.get_file_as_string(_game.save.save_path) == save_before and _game.save.bests == bests_before, "nothing is saved and no best changes", "save changed")
 	_check(not Array(_log.since(shots_from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")), "title shots write no save", "a save line")
 	from = _log.size()
 	sounds = _game.sfx_log.size()
@@ -5895,7 +5895,7 @@ func _test_transition_wipe_and_fade() -> void:
 	var wipe := _game.get_node("Fade/Cover/Wipe") as Wipe
 	_check(GameState.WIPE_TIME <= 0.4 and GameState.WIPE_TIME > 0.0, "the wipe takes at most 0.4 s each way", str(GameState.WIPE_TIME))
 	for reduce: bool in [false, true]:
-		_game.reduce_motion = reduce
+		_game.save.reduce_motion = reduce
 		await _open_title()
 		var title := current_scene as Title
 		var from := _log.size()
@@ -5949,7 +5949,7 @@ func _test_transition_wipe_and_fade() -> void:
 		await _tap(title.get_node("Safe/CampaignButton") as Control)
 		_check(title.campaign_presses == 0, "%s: a tap during the transition presses nothing" % label, "%d presses" % title.campaign_presses)
 		await _game.transition_finished
-	_game.reduce_motion = false
+	_game.save.reduce_motion = false
 
 
 ## Hit stop: a kill freezes the world for HIT_STOP_TIME (HIT_STOP_HEAVY_TIME for an armored
@@ -6238,8 +6238,8 @@ func _test_popup_motion() -> void:
 ## gameplay cues (the empty cue, the aim cue) (plan AC 8).
 func _test_reduce_motion_everywhere() -> void:
 	_clear_tool_save()
-	_game.set_reduce_motion(true)
-	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save_path))
+	_game.save.set_reduce_motion(true)
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and (saved as Dictionary)["settings"]["reduce_motion"] == true, "reduce motion is saved", str(saved))
 	await _open_title()
 	_check(_game.transition_style() == "fade", "screens change by the plain fade", _game.transition_style())
@@ -6288,7 +6288,7 @@ func _test_reduce_motion_everywhere() -> void:
 	play.set_shell_pool(0)
 	await _touch(_global(play, Vector2(480, 200)))
 	_check(play.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
-	_game.set_reduce_motion(false)
+	_game.save.set_reduce_motion(false)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	_check(_game.transition_style() == "wipe", "with reduce motion off the wipe is back", _game.transition_style())
@@ -6303,8 +6303,8 @@ func _test_reduce_motion_everywhere() -> void:
 func _check_slider(settings: Settings, slider: TouchSlider, what: String, bus_name: StringName, key: String, start: int) -> void:
 	var bus := AudioServer.get_bus_index(bus_name)
 	var label := "MusicLabel" if key == "music" else "SfxLabel"
-	var volume := func() -> int: return _game.music_volume if key == "music" else _game.sfx_volume
-	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save_path)) as Dictionary)["settings"][key]
+	var volume := func() -> int: return _game.save.music_volume if key == "music" else _game.save.sfx_volume
+	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path)) as Dictionary)["settings"][key]
 	slider.grab_focus()
 	var from := _log.size()
 	var sounds := _game.sfx_log.size()
@@ -6380,9 +6380,9 @@ func _drag(at: Vector2, index := TOUCH_INDEX) -> void:
 ## the held volume (review finding 1).
 func _test_slider_hold_cut_short() -> void:
 	_clear_tool_save()
-	_game.load_game()
-	_game.save_game()
-	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save_path)) as Dictionary)["settings"]["music"]
+	_game.save.load_game()
+	_game.save.save_game()
+	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path)) as Dictionary)["settings"]["music"]
 	_game.goto(GameState.Flow.SETTINGS)
 	await _game.transition_finished
 	await process_frame
@@ -6391,7 +6391,7 @@ func _test_slider_hold_cut_short() -> void:
 	var points := _slider_points(slider)
 	var from := _log.size()
 	await _finger(points[0], true)
-	_check(slider.is_held() and _game.music_volume == 25 and stored.call() == 70.0, "a finger down on the music slider holds it at 25, unsaved", "held %s, volume %d" % [slider.is_held(), _game.music_volume])
+	_check(slider.is_held() and _game.save.music_volume == 25 and stored.call() == 70.0, "a finger down on the music slider holds it at 25, unsaved", "held %s, volume %d" % [slider.is_held(), _game.save.music_volume])
 	root.size = PORTRAIT_9_19_5
 	await process_frame
 	_check(_game.screen.is_rotate_overlay_shown() and not slider.is_held() and stored.call() == 25.0, "the rotate overlay showing mid-press ends the hold and saves the held volume", "held %s, stored %s" % [slider.is_held(), stored.call()])
@@ -6402,16 +6402,16 @@ func _test_slider_hold_cut_short() -> void:
 	await process_frame
 	await _finger(points[1], true, TOUCH_INDEX + 1)
 	await _finger(points[1], false, TOUCH_INDEX + 1)
-	_check(_game.music_volume == 75 and stored.call() == 75.0 and not slider.is_held(), "after the overlay a later touch moves the slider and its lift saves", "volume %d, stored %s" % [_game.music_volume, stored.call()])
+	_check(_game.save.music_volume == 75 and stored.call() == 75.0 and not slider.is_held(), "after the overlay a later touch moves the slider and its lift saves", "volume %d, stored %s" % [_game.save.music_volume, stored.call()])
 	from = _log.size()
 	slider.grab_focus()
 	await _key(KEY_RIGHT)
-	_check(_game.music_volume == 80 and stored.call() == 80.0 and not slider.is_held(), "after the overlay a key step is saved on its release (no stuck hold)", "volume %d, stored %s" % [_game.music_volume, stored.call()])
+	_check(_game.save.music_volume == 80 and stored.call() == 80.0 and not slider.is_held(), "after the overlay a key step is saved on its release (no stuck hold)", "volume %d, stored %s" % [_game.save.music_volume, stored.call()])
 	# A lift that never comes: the next press (another finger) ends the old hold first.
 	from = _log.size()
 	await _finger(points[0], true)
 	await _finger(points[1], true, TOUCH_INDEX + 1)
-	_check(stored.call() == 25.0 and slider.is_held() and _game.music_volume == 75, "a new touch while a finger is down saves the old hold and takes over", "stored %s, volume %d" % [stored.call(), _game.music_volume])
+	_check(stored.call() == 25.0 and slider.is_held() and _game.save.music_volume == 75, "a new touch while a finger is down saves the old hold and takes over", "stored %s, volume %d" % [stored.call(), _game.save.music_volume])
 	_check_logged(from, "^\\[Settings\\] Music slider released at 25 \\(a new touch took over\\); saving$", "the take-over is logged")
 	await _finger(points[1], false, TOUCH_INDEX + 1)
 	await _finger(points[0], false)
@@ -6428,7 +6428,7 @@ func _test_slider_hold_cut_short() -> void:
 		from = _log.size()
 		await _finger(overlay_points[0], true)
 		await _drag(overlay_points[1])
-		_check(overlay_slider.is_held() and _game.music_volume == 75, "%s: a finger holds the overlay's slider at 75" % closer, "volume %d" % _game.music_volume)
+		_check(overlay_slider.is_held() and _game.save.music_volume == 75, "%s: a finger holds the overlay's slider at 75" % closer, "volume %d" % _game.save.music_volume)
 		if closer == "Escape":
 			await _key(KEY_ESCAPE)
 		else:
@@ -6440,7 +6440,7 @@ func _test_slider_hold_cut_short() -> void:
 		_game.set_music_volume(70)
 		if play.is_paused():
 			play.resume()
-	_game.set_music_volume(GameState.DEFAULT_MUSIC_VOLUME)
+	_game.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	_clear_tool_save()
@@ -6684,7 +6684,7 @@ func _test_rival_laugh_before_results_blurt() -> void:
 	_game.heckle_blurts = true
 	for reduce_motion: bool in [false, true]:
 		var label := "reduce motion" if reduce_motion else "the wipe"
-		_game.set_reduce_motion(reduce_motion)
+		_game.save.set_reduce_motion(reduce_motion)
 		_clear_tool_save()
 		var play := await _start_run(79)
 		play._next_spawn = play.wave.spawns.size()
@@ -6720,7 +6720,7 @@ func _test_rival_laugh_before_results_blurt() -> void:
 			await process_frame
 		var results := current_scene as Results
 		_check(results != null and (results.get_node("%RivalPanel") as Control).visible, "%s: the results show at once, the rival's panel with them" % label, "scene %s" % current_scene)
-	_game.set_reduce_motion(false)
+	_game.save.set_reduce_motion(false)
 	_game.heckle_blurts = GameState.HECKLE_BLURTS
 	_clear_tool_save()
 	await _open_title()

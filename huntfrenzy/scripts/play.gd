@@ -19,7 +19,7 @@ extends Node2D
 ## escaped: the score is recorded (a new best is saved at once) and the results screen
 ## opens. A campaign level has no escape limit: it plays all its waves (the boss level's
 ## last one is the boss flock) and then ends on the results screen, the level's stars and
-## best recorded and saved at once (Game.record_level). In a level the chapter's backdrop
+## best recorded and saved at once (Game.save.record_level). In a level the chapter's backdrop
 ## and weather show, and the rival waits linger_time x the chapter's rival_linger_scale. In
 ## a mode each wave shows its stage (ModeSpec.stage_for: Endless walks dawn, noon, sunset,
 ## night; Time Attack stays on noon); a new backdrop cross-fades in over BACKDROP_FADE_TIME
@@ -839,7 +839,7 @@ func hit_stop_left() -> float:
 ## Shakes the world for `cause` (a SHAKES key): its amplitude and time, from now. A weaker
 ## shake never cuts a stronger one short. With reduce motion on nothing shakes. Logged.
 func shake(cause: String) -> void:
-	if _game.reduce_motion:
+	if _game.save.reduce_motion:
 		print("[Play] Shake (%s) skipped: reduce motion" % cause)
 		return
 	var amplitude: float = SHAKES[cause][0]
@@ -1117,24 +1117,24 @@ func _end_run() -> void:
 	var shots := "score %d, %d shots (%d hits, %d misses, %d pigeons hit), %d birds killed, %d refused, %d escaped (%d stolen), rival score %d" % [
 		scoring.score, scoring.shots(), scoring.hits, scoring.misses, scoring.penalties, scoring.kills, refused, escaped, stolen, rival_score]
 	if level != null:
-		var new_best := _game.record_level(level, scoring.score)
-		var record: Campaign.Record = _game.progress[level.id]
+		var new_best := _game.save.record_level(level, scoring.score)
+		var record: Campaign.Record = _game.save.progress[level.id]
 		var next := Campaign.next_level(level)
-		var open_next := next.id if next != null and Campaign.is_unlocked(next, _game.progress) else ""
+		var open_next := next.id if next != null and Campaign.is_unlocked(next, _game.save.progress) else ""
 		stats.merge({"level": level.id, "stars": Campaign.stars(level, scoring.score), "best": record.score, "best_stars": record.stars,
-			"new_best": new_best, "save_error": _game.save_error, "next_level": open_next})
+			"new_best": new_best, "save_error": _game.save.save_error, "next_level": open_next})
 		print("[Play] Run end: level %s, seed %d, wave %d of %d, %s, %d stars, level best %d (%d stars)%s%s" % [
 			level.id, run_seed, wave.index, level.waves, shots, stats["stars"], record.score, record.stars, " (new best)" if new_best else "",
-			", not saved: %s" % _game.save_error if _game.save_error != "" else ""])
+			", not saved: %s" % _game.save.save_error if _game.save.save_error != "" else ""])
 	else:
-		var new_best := _game.record_best(mode, scoring.score)
-		var save_error := _game.save_error if new_best else ""
-		stats.merge({"mode": mode.id, "best": _game.best(mode.id), "new_best": new_best, "save_error": save_error})
+		var new_best := _game.save.record_best(mode, scoring.score)
+		var save_error := _game.save.save_error if new_best else ""
+		stats.merge({"mode": mode.id, "best": _game.save.best(mode.id), "new_best": new_best, "save_error": save_error})
 		var best_note := ""
 		if new_best:
 			best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
 		var time_used := ", time used %.2f of %.2f s" % [run_clock, mode.time_limit] if mode.is_timed() else ""
-		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.best(mode.id), best_note])
+		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.save.best(mode.id), best_note])
 	_game.goto(GameState.Flow.RESULTS, stats)
 
 
@@ -1205,7 +1205,7 @@ func _tick_countdown(before: float, now: float) -> void:
 
 ## The pause menu's Music toggle: on plays the music, off mutes the Music bus (saved).
 func _on_music_toggled(on: bool) -> void:
-	if on == not _game.music_muted:
+	if on == not _game.save.music_muted:
 		return
 	print("[Play] Music toggle pressed: music %s" % ("on" if on else "off"))
 	_game.set_music_muted(not on)
@@ -1213,7 +1213,7 @@ func _on_music_toggled(on: bool) -> void:
 
 ## The pause menu's SFX toggle: on plays the sound effects, off mutes the SFX bus (saved).
 func _on_sfx_toggled(on: bool) -> void:
-	if on == not _game.sfx_muted:
+	if on == not _game.save.sfx_muted:
 		return
 	print("[Play] SFX toggle pressed: sound effects %s" % ("on" if on else "off"))
 	_game.set_sfx_muted(not on)
@@ -1221,10 +1221,10 @@ func _on_sfx_toggled(on: bool) -> void:
 
 ## Shows the mutes on the pause menu's toggles (pressed = on), whoever changed them.
 func _show_audio_settings() -> void:
-	_music_toggle.set_pressed_no_signal(not _game.music_muted)
-	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.music_muted else "off")
-	_sfx_toggle.set_pressed_no_signal(not _game.sfx_muted)
-	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.sfx_muted else "off")
+	_music_toggle.set_pressed_no_signal(not _game.save.music_muted)
+	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.save.music_muted else "off")
+	_sfx_toggle.set_pressed_no_signal(not _game.save.sfx_muted)
+	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.save.sfx_muted else "off")
 
 
 func _show_empty_cue() -> void:
@@ -1257,7 +1257,7 @@ func _popup(point: Vector2, text: String, color: Color, kind: String, multiplier
 	_popups.add_child(label)
 	var size := label.get_combined_minimum_size()
 	var rest := minf(1.0 + POPUP_COMBO_GROWTH * (multiplier - 1), POPUP_COMBO_SCALE_MAX) if kind == "combo" else 1.0
-	var still := _game.reduce_motion
+	var still := _game.save.reduce_motion
 	var largest := rest * (POPUP_BOUNCE_SCALE if not still and kind != "penalty" else 1.0)
 	# Centred on the hit, moved in so its largest size (and the shake) stays on screen,
 	# the rise included.

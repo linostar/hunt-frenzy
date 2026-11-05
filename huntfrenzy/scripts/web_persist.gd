@@ -96,7 +96,7 @@ func _on_visibility_changed(_args: Array) -> void:
 func check_storage(persistent: bool) -> void:
 	storage_persistent = persistent
 	if persistent:
-		print("[Game] Browser storage (IndexedDB) is available for %s (%s)" % [_game.save_path, ProjectSettings.globalize_path(_game.save_path)])
+		print("[Game] Browser storage (IndexedDB) is available for %s (%s)" % [_game.save.save_path, ProjectSettings.globalize_path(_game.save.save_path)])
 		return
 	_game.report_error("Browser storage (IndexedDB) is unavailable (private browsing or blocked site data): best scores are kept only until the page closes")
 
@@ -109,9 +109,9 @@ func persist_checked(check: int, ok: bool, detail: String) -> void:
 		print("[Game] Ignored the answer to save check %d (superseded by check %d)" % [check, persist_check])
 		return
 	if ok:
-		print("[Game] Save persisted to browser storage: %s after %s ms (check %d)" % [_game.save_path, detail, check])
+		print("[Game] Save persisted to browser storage: %s after %s ms (check %d)" % [_game.save.save_path, detail, check])
 		return
-	_game.fail_save("The save (%s) was written to %s but browser storage (IndexedDB) did not keep it: %s (check %d); it is lost when the page closes" % [_game.save_summary(), _game.save_path, detail, check], "browser storage did not keep it (%s)" % detail)
+	_game.save.fail_save("The save (%s) was written to %s but browser storage (IndexedDB) did not keep it: %s (check %d); it is lost when the page closes" % [_game.save.save_summary(), _game.save.save_path, detail, check], "browser storage did not keep it (%s)" % detail)
 
 
 ## Asks the page to confirm that IndexedDB holds `text` at the save path (see WEB_PERSIST_CHECK_JS).
@@ -126,7 +126,7 @@ func check_persisted(text: String) -> void:
 		persist_checked(persist_check, false, "the page cannot check browser storage")
 		return
 	# Emscripten's IDBFS names its database after the mount point: the path's first segment (/userfs).
-	var key := ProjectSettings.globalize_path(_game.save_path)
+	var key := ProjectSettings.globalize_path(_game.save.save_path)
 	window.huntFrenzyCheckPersisted(key.substr(0, key.find("/", 1)), key, text, WEB_PERSIST_TIMEOUT_MSEC, persist_check, _persist_callback)
 
 
