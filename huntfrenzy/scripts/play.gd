@@ -40,7 +40,7 @@ const CROSSHAIR := preload("res://art/crosshair.svg")
 ## The pop-up of a hit that only damages a bird.
 const DAMAGE_TEXT := "Clank!"
 ## The run's most frequent sounds, each played at a seeded pitch (TUNING.sound_pitch_spread).
-const VARIED_SOUNDS: Array[StringName] = [&"shot", &"hit", &"escape"]
+const VARIED_SOUNDS: Array[StringName] = [AudioManager.SFX_SHOT, AudioManager.SFX_HIT, AudioManager.SFX_ESCAPE]
 
 ## The mode (Endless, Time Attack), or null in a campaign level.
 var mode: ModeSpec
@@ -163,7 +163,7 @@ func _advance_clock(delta: float) -> bool:
 		hud.show_time_left(time_left())
 		_tick_countdown(left_before, time_left())
 		if time_left() <= 0.0:
-			_game.audio.play_sfx(&"time_up")
+			_game.audio.play_sfx(AudioManager.SFX_TIME_UP)
 			end_run()
 			return true
 	return false
@@ -175,7 +175,7 @@ func _spawn_due() -> void:
 		var spawn := wave.spawns[_next_spawn]
 		_next_spawn += 1
 		if _next_spawn == 1:
-			_game.audio.play_sfx(&"wave_start")
+			_game.audio.play_sfx(AudioManager.SFX_WAVE_START)
 		var bird := spawn_bird(spawn.bird_id, spawn.bird_seed)
 		var fleeing := ", fleeing (no shells)" if ammo.is_empty() else ""
 		print("[Play] Spawned %s #%d (wave %d, seed %d, speed x%.3f) at t %.2f%s" % [
@@ -189,7 +189,7 @@ func _check_wave_end() -> void:
 		if level != null and wave.index >= level.waves:
 			end_run()
 			return
-		_game.audio.play_sfx(&"wave_clear")
+		_game.audio.play_sfx(AudioManager.SFX_WAVE_CLEAR)
 		rival.heckle("wave_end")
 		_start_wave(wave.index + 1)
 
@@ -361,11 +361,11 @@ func _on_shot(at: Vector2) -> void:
 	var point := _world.to_local(at)
 	if not ammo.use():
 		refused += 1
-		_game.audio.play_sfx(&"empty_click")
+		_game.audio.play_sfx(AudioManager.SFX_EMPTY_CLICK)
 		print("[Play] Shot refused at %s: no shells left (%s, %d refused)" % [_at(at), _wave_at(), refused])
 		hud.show_empty_cue()
 		return
-	_play_sound(&"shot")
+	_play_sound(AudioManager.SFX_SHOT)
 	var target := bird_at(point)
 	if target != null and target.spec.penalty > 0:
 		_hit_decoy(target, point, at)
@@ -377,7 +377,7 @@ func _on_shot(at: Vector2) -> void:
 		if rival.heckle("miss"):
 			rival.react(RivalController.RIVAL_BRAG, "brags after the miss")
 	if ammo.is_empty():
-		_game.audio.play_sfx(&"out_of_shells")
+		_game.audio.play_sfx(AudioManager.SFX_OUT_OF_SHELLS)
 		var fleeing := flying_birds()
 		for bird in fleeing:
 			bird.flee()
@@ -397,8 +397,8 @@ func _lose_wave(waiting: int) -> void:
 		if Content.bird(wave.spawns[i].bird_id).escape_counts:
 			counted += 1
 	escaped += counted
-	_game.audio.play_sfx(&"wave_lost")
-	shaker.shake("lost wave")
+	_game.audio.play_sfx(AudioManager.SFX_WAVE_LOST)
+	shaker.shake(ScreenShake.LOST_WAVE)
 	print("[Play] Wave %d lost (no shells): %d birds still to spawn skipped, %d of them counted as escaped (%s escaped), %d flying flee%s" % [
 		wave.index, waiting, counted, escapes(), _wave_birds_flying().size(), clock_note()])
 	rival.heckle("wave_end")
@@ -411,20 +411,20 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	var multiplier := scoring.multiplier
 	if not target.hit():
 		scoring.damage()
-		_game.audio.play_sfx(&"armored_clank")
+		_game.audio.play_sfx(AudioManager.SFX_ARMORED_CLANK)
 		_popup(point, DAMAGE_TEXT, HitPopup.Kind.DAMAGE)
 		print("[Play] Hit %s: no points, combo x%d kept, score %d (%s)" % [_hit_note(target, at, false), multiplier, scoring.score, _shot_note()])
 		return
 	var awarded := scoring.hit(target.spec.points)
 	_play_sound(_kill_sound(target.spec))
 	if scoring.multiplier > multiplier:
-		_game.audio.play_sfx(&"combo_up")
+		_game.audio.play_sfx(AudioManager.SFX_COMBO_UP)
 	_start_hit_stop(target)
 	_feathers.burst(point, target.spec.sprite)
 	if target.spec.hp > 1:
-		shaker.shake("armored kill")
+		shaker.shake(ScreenShake.ARMORED_KILL)
 	elif _is_golden(target.spec):
-		shaker.shake("golden kill")
+		shaker.shake(ScreenShake.GOLDEN_KILL)
 	_popup(point, "+%d" % awarded if multiplier == 1 else "+%d x%d" % [awarded, multiplier], HitPopup.Kind.SCORE if multiplier == 1 else HitPopup.Kind.COMBO, multiplier)
 	print("[Play] Hit %s: %d points x%d = %d, score %d (%s)" % [_hit_note(target, at, true), target.spec.points, multiplier, awarded, scoring.score, _shot_note()])
 	rival.react(RivalController.RIVAL_SULK, "sulks at the %d points on %s #%d" % [awarded, target.spec.id, target.number])
@@ -446,12 +446,12 @@ func _play_sound(id: StringName) -> void:
 ## run's golden bird, or a plain hit.
 func _kill_sound(spec: BirdSpec) -> StringName:
 	if spec.hp > 1:
-		return &"armored_kill"
+		return AudioManager.SFX_ARMORED_KILL
 	if spec.split_count > 0:
-		return &"split_pop"
+		return AudioManager.SFX_SPLIT_POP
 	if _is_golden(spec):
-		return &"golden_chime"
-	return &"hit"
+		return AudioManager.SFX_GOLDEN_CHIME
+	return AudioManager.SFX_HIT
 
 
 ## True for the run's golden bird (its level's or mode's golden_bird).
@@ -503,9 +503,9 @@ func _split(parent: Bird, point: Vector2) -> void:
 func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	target.hit()
 	var deducted := scoring.penalty(target.spec.penalty)
-	_game.audio.play_sfx(&"decoy_penalty")
+	_game.audio.play_sfx(AudioManager.SFX_DECOY_PENALTY)
 	_feathers.burst(point, target.spec.sprite)
-	shaker.shake("decoy hit")
+	shaker.shake(ScreenShake.DECOY_HIT)
 	_popup(point, "-%d" % deducted, HitPopup.Kind.PENALTY)
 	print("[Play] Hit %s: penalty %d, -%d, combo reset, score %d (%d pigeons hit, %s)" % [_hit_note(target, at, true), target.spec.penalty, deducted, scoring.score, scoring.penalties, _shot_note()])
 
@@ -598,7 +598,7 @@ func _on_bird_escaped(bird: Bird) -> void:
 		print("[Play] Escaped %s (not counted, %s, %s)" % [_bird_name(bird), escapes(), _wave_at()])
 		return
 	escaped += 1
-	_play_sound(&"escape")
+	_play_sound(AudioManager.SFX_ESCAPE)
 	print("[Play] Escaped %s (%s, %s)" % [_bird_name(bird), escapes(), _wave_at()])
 	update_hud()
 	if escape_limit_reached():
@@ -652,7 +652,7 @@ func _tick_countdown(before: float, now: float) -> void:
 	for second in range(TUNING.countdown_seconds, 0, -1):
 		if now <= second and before > second:
 			countdown_ticks += 1
-			_game.audio.play_sfx(&"countdown_tick")
+			_game.audio.play_sfx(AudioManager.SFX_COUNTDOWN_TICK)
 			print("[Play] Countdown tick %d: %d s left (%.2f s, wave %d)" % [countdown_ticks, second, now, wave.index])
 
 

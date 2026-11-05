@@ -27,11 +27,42 @@ const MUSIC_BUS := &"Music"
 const SFX_BUS := &"SFX"
 ## The game's sound effects: audio/sfx/<id>.wav (tools/sfx.py EFFECTS makes one per id).
 const SFX_PATH := "res://audio/sfx/%s.wav"
+## Each sound effect's id, so a misspelt one fails to compile.
+const SFX_SHOT := &"shot"
+const SFX_EMPTY_CLICK := &"empty_click"
+const SFX_OUT_OF_SHELLS := &"out_of_shells"
+const SFX_HIT := &"hit"
+const SFX_ARMORED_CLANK := &"armored_clank"
+const SFX_ARMORED_KILL := &"armored_kill"
+const SFX_SPLIT_POP := &"split_pop"
+const SFX_GOLDEN_CHIME := &"golden_chime"
+const SFX_DECOY_PENALTY := &"decoy_penalty"
+const SFX_ESCAPE := &"escape"
+const SFX_WAVE_START := &"wave_start"
+const SFX_WAVE_CLEAR := &"wave_clear"
+const SFX_WAVE_LOST := &"wave_lost"
+const SFX_COMBO_UP := &"combo_up"
+const SFX_RIVAL_AIM := &"rival_aim"
+const SFX_RIVAL_STEAL := &"rival_steal"
+const SFX_RIVAL_LAUGH := &"rival_laugh"
+const SFX_COUNTDOWN_TICK := &"countdown_tick"
+const SFX_TIME_UP := &"time_up"
+const SFX_STAR := &"star"
+const SFX_NEW_BEST := &"new_best"
+const SFX_UI_TAP := &"ui_tap"
+const SFX_PAUSE := &"pause"
+const SFX_RESUME := &"resume"
+const SFX_CALL_QUACK := &"call_quack"
+const SFX_CALL_GOSLING := &"call_gosling"
+const SFX_CALL_PIGEON := &"call_pigeon"
+const SFX_CALL_SWIFT := &"call_swift"
+## Every sound effect id (play_sfx refuses any other).
 const SFX_IDS: Array[StringName] = [
-	&"shot", &"empty_click", &"out_of_shells", &"hit", &"armored_clank", &"armored_kill", &"split_pop",
-	&"golden_chime", &"decoy_penalty", &"escape", &"wave_start", &"wave_clear", &"wave_lost", &"combo_up",
-	&"rival_aim", &"rival_steal", &"rival_laugh", &"countdown_tick", &"time_up", &"star", &"new_best", &"ui_tap", &"pause", &"resume",
-	&"call_quack", &"call_gosling", &"call_pigeon", &"call_swift",
+	SFX_SHOT, SFX_EMPTY_CLICK, SFX_OUT_OF_SHELLS, SFX_HIT, SFX_ARMORED_CLANK, SFX_ARMORED_KILL,
+	SFX_SPLIT_POP, SFX_GOLDEN_CHIME, SFX_DECOY_PENALTY, SFX_ESCAPE, SFX_WAVE_START, SFX_WAVE_CLEAR,
+	SFX_WAVE_LOST, SFX_COMBO_UP, SFX_RIVAL_AIM, SFX_RIVAL_STEAL, SFX_RIVAL_LAUGH, SFX_COUNTDOWN_TICK,
+	SFX_TIME_UP, SFX_STAR, SFX_NEW_BEST, SFX_UI_TAP, SFX_PAUSE, SFX_RESUME, SFX_CALL_QUACK, SFX_CALL_GOSLING,
+	SFX_CALL_PIGEON, SFX_CALL_SWIFT,
 ]
 ## Sound effect players: at most this many sounds at once (the oldest gives way). One more
 ## player, the menu voice, plays every sound started while the audio is paused (the pause

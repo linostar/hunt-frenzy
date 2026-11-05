@@ -6100,6 +6100,11 @@ func _test_screen_shake() -> void:
 	for cause: String in Play.TUNING.shakes:
 		var reach: float = Play.TUNING.shakes[cause][0]
 		_check(reach <= ScreenShake.SHAKE_MARGIN, "the %s shake stays within the backdrop's margin" % cause, "%.1f > %.1f" % [reach, ScreenShake.SHAKE_MARGIN])
+	var causes := [ScreenShake.ARMORED_KILL, ScreenShake.GOLDEN_KILL, ScreenShake.DECOY_HIT, ScreenShake.STEAL, ScreenShake.LOST_WAVE]
+	var tuned := Play.TUNING.shakes.keys()
+	causes.sort()
+	tuned.sort()
+	_check(causes == tuned, "ScreenShake names exactly the tuned shake causes", "%s vs %s" % [causes, tuned])
 	var play := await _start_run(64)
 	var world := play.get_node("World") as Node2D
 	var bar := play.get_node("Hud/Bar") as Control
