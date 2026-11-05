@@ -24,6 +24,12 @@ extends Node2D
 ## Everything is logged with enough context (the run seed, wave times, shot positions) to
 ## replay the run.
 
+## Emitted when a kill starts a hit stop of `seconds`.
+signal hit_stop_started(seconds: float)
+## Emitted on every pointer change: `shown` ("crosshair" or "arrow (<why>)") and the arguments
+## it passed to Input.set_custom_mouse_cursor (a null texture: the default arrow).
+signal cursor_changed(shown: String, texture: Texture2D, shape: Input.CursorShape, hotspot: Vector2)
+
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 ## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning). One shared object for
 ## the whole process (every reader and both test scripts): a test that changes a value puts
@@ -58,12 +64,8 @@ var refused := 0
 var wave_clock := 0.0
 ## Countdown ticks played this run (a timed run's last TUNING.countdown_seconds).
 var countdown_ticks := 0
-## True while the mouse pointer is the crosshair; every change, oldest first, as
-## "crosshair" or "arrow (<why>)"; and every call made to Input.set_custom_mouse_cursor
-## as [texture (null: the arrow), shape, hotspot] (tests read them).
+## True while the mouse pointer is the crosshair (each change: cursor_changed).
 var crosshair_shown := false
-var cursor_log: Array[String] = []
-var cursor_calls: Array[Array] = []
 
 var _game: GameState
 var _next_spawn := 0
@@ -73,8 +75,7 @@ var _spawned := 0
 var _over := false
 ## Draws the pitch of each VARIED_SOUNDS sound (seeded in _start_run).
 var _pitch_rng := RandomNumberGenerator.new()
-## Seconds of hit stop still to run (0: none), and the stops so far (tests read them).
-var hit_stops := 0
+## Seconds of hit stop still to run (0: none).
 var _hit_stop_left := 0.0
 
 @onready var _world: Node2D = $World
@@ -471,7 +472,7 @@ func _start_hit_stop(target: Bird) -> void:
 		print("[Play] Hit stop for %s skipped: one is running (%.3f s left)" % [_bird_name(target), _hit_stop_left])
 		return
 	_hit_stop_left = time
-	hit_stops += 1
+	hit_stop_started.emit(time)
 	for child in _birds.get_children():
 		(child as Bird).hold(time)
 	print("[Play] Hit stop %.2f s on the kill of %s (%s%s)" % [time, _bird_name(target), _wave_at(), clock_note()])
@@ -564,7 +565,7 @@ func clock_note() -> String:
 ## Makes the mouse pointer the crosshair (`on`, the run is live) or the default arrow
 ## again (`why`: paused, the run is over, the rotate overlay, left the scene); while the
 ## rotate overlay is up it is always the arrow (the run is paused under it, whichever came
-## first). A change is logged and kept in cursor_log, a repeat does nothing.
+## first). A change is logged and emitted (cursor_changed), a repeat does nothing.
 func show_crosshair(on: bool, why := "") -> void:
 	if on and _game.screen.is_rotate_overlay_shown():
 		on = false
@@ -572,20 +573,13 @@ func show_crosshair(on: bool, why := "") -> void:
 	if on == crosshair_shown:
 		return
 	crosshair_shown = on
-	if on:
-		_set_cursor(CROSSHAIR, CROSSHAIR.get_size() / 2.0)
-	else:
-		_set_cursor(null, Vector2.ZERO)
-	var shown := "crosshair" if on else "arrow (%s)" % why
-	cursor_log.append(shown)
-	print("[Play] Cursor: %s" % shown)
-
-
-## The one place the pointer is set: Input.set_custom_mouse_cursor(texture, CURSOR_ARROW,
-## hotspot) (null: the default arrow), recorded in cursor_calls exactly as passed.
-func _set_cursor(texture: Texture2D, hotspot: Vector2) -> void:
+	var texture: Texture2D = CROSSHAIR if on else null
+	var hotspot := CROSSHAIR.get_size() / 2.0 if on else Vector2.ZERO
+	# The one place the pointer is set.
 	Input.set_custom_mouse_cursor(texture, Input.CURSOR_ARROW, hotspot)
-	cursor_calls.append([texture, Input.CURSOR_ARROW, hotspot])
+	var shown := "crosshair" if on else "arrow (%s)" % why
+	print("[Play] Cursor: %s" % shown)
+	cursor_changed.emit(shown, texture, Input.CURSOR_ARROW, hotspot)
 
 
 ## A bird's art first showed above the grass line: it gives its call (its spec's call at its
