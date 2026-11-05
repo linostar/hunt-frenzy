@@ -1,6 +1,6 @@
 class_name ScreenShake
 extends Node
-## Play/Shaker: shakes the World (never the HUD) for an event (Play.TUNING.shakes: amplitude and time per
+## Play/Shaker: shakes the World (never the HUD) for an event (Game.tuning.shakes: amplitude and time per
 ## cause, decaying to exactly no offset). A weaker shake never cuts a stronger one short; with
 ## reduce motion on nothing shakes. Play drives it from its _process (update) and places the
 ## World through it (set_origin), so the offset is always from where _fit put it.
@@ -16,6 +16,7 @@ var _age := 0.0
 ## Where Play._fit puts the World; the shake offsets it from here.
 var _origin := Vector2.ZERO
 
+@onready var _game := get_node(GameState.AUTOLOAD_PATH) as GameState
 @onready var _world: Node2D = $"../World"
 
 
@@ -25,14 +26,14 @@ func set_origin(origin: Vector2) -> void:
 	_world.position = origin
 
 
-## Shakes the world for `cause` (a Play.TUNING.shakes key): its amplitude and time, from now. A weaker
+## Shakes the world for `cause` (a Game.tuning.shakes key): its amplitude and time, from now. A weaker
 ## shake never cuts a stronger one short. With reduce motion on nothing shakes. Logged.
 func shake(cause: String) -> void:
-	if (get_node(GameState.AUTOLOAD_PATH) as GameState).save.reduce_motion:
+	if _game.save.reduce_motion:
 		print("[Play] Shake (%s) skipped: reduce motion" % cause)
 		return
-	var amplitude: float = Play.TUNING.shakes[cause][0]
-	var time: float = Play.TUNING.shakes[cause][1]
+	var amplitude: float = _game.tuning.shakes[cause][0]
+	var time: float = _game.tuning.shakes[cause][1]
 	if shake_strength() > amplitude:
 		print("[Play] Shake (%s) skipped: a stronger one (%s) is running" % [cause, _cause])
 		return
@@ -64,7 +65,7 @@ func update(delta: float) -> void:
 	if _age >= _time:
 		stop()
 		return
-	var swing := TAU * Play.TUNING.shake_hz * _age
+	var swing := TAU * _game.tuning.shake_hz * _age
 	_world.position = _origin + Vector2(sin(swing), sin(swing * 1.37 + 1.1)).limit_length(1.0) * shake_strength()
 
 

@@ -1014,7 +1014,7 @@ func _i20_sim(plan_of: Callable) -> Dictionary:
 						late[key].append(index)
 				# No player can end a wave before its last bird spawns, so a timed run
 				# reaches at most the waves that start before time_limit at this pace.
-				start += Play.TUNING.wave_lead + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
+				start += (load(Tuning.PATH) as Tuning).wave_lead + (plan.spawns.back().time if not plan.spawns.is_empty() else 0.0)
 				previous = plan
 				index += 1
 	var problems: Array[String] = []

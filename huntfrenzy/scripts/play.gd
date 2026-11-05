@@ -94,7 +94,8 @@ const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
 ## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning). One shared object for
 ## the whole process (every reader and both test scripts): a test that changes a value puts
-## it back, as _test_tuning_values (run first and last) checks.
+## it back, as _test_tuning_values (run first and last) checks. Play's own alias of Game.tuning
+## (preload caches it: the same object); the controllers and every other script read Game.tuning.
 const TUNING: Tuning = preload("res://data/tuning.tres")
 ## The mouse pointer while the run is live (64x64 at most; its hotspot is its centre).
 const CROSSHAIR := preload("res://art/crosshair.svg")
@@ -639,6 +640,16 @@ func escapes() -> String:
 ## on escapes.
 func escape_limit_reached() -> bool:
 	return mode != null and not mode.is_timed() and escaped >= mode.escape_limit
+
+
+## Counts one more bird lost (the rival's steal; Play counts its own escapes).
+func count_escape() -> void:
+	escaped += 1
+
+
+## "wave 3 at t 4.20" in the log lines of the run and its controllers.
+func wave_note() -> String:
+	return "wave %d at t %.2f" % [wave.index, wave_clock]
 
 
 ## ", 42.10 s left" in a timed run's log lines, "" in any other.

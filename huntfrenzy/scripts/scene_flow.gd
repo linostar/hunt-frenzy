@@ -22,11 +22,6 @@ const SCENE_PATHS: Dictionary[Flow, String] = {
 	Flow.CREDITS: "res://scenes/credits.tscn",
 	Flow.TOP_SCORES: "res://scenes/top_scores.tscn",
 }
-## Seconds the plain fade (reduce motion) takes to cover the screen, and again to clear it.
-const FADE_TIME := 0.15
-## Seconds the marsh-grass wipe (Wipe) takes to rise over the screen, and again to sink
-## away (at most 0.4 each: plan AC 3).
-const WIPE_TIME := 0.35
 
 ## Paths per flow state; tests swap one to check the missing-scene path.
 var scene_paths: Dictionary[Flow, String] = SCENE_PATHS.duplicate()
@@ -62,9 +57,9 @@ func announce_main_scene() -> void:
 
 
 ## Changes to the scene of `new_state`, passing `args` through flow_args: the marsh-grass
-## wipe rises over the screen (WIPE_TIME), the scene changes, then it sinks away
-## (WIPE_TIME), and transition_finished fires; with reduce motion on a plain fade does the
-## same (FADE_TIME each way). Logged with the style. Touches are blocked until then. Ignored (with a log
+## wipe rises over the screen (Game.tuning.wipe_time), the scene changes, then it sinks away
+## (wipe_time), and transition_finished fires; with reduce motion on a plain fade does the
+## same (Game.tuning.fade_time each way). Logged with the style. Touches are blocked until then. Ignored (with a log
 ## line) while a transition is running. A scene that does not exist, or that needs a file
 ## that does not exist (ResourceCheck.missing_dependencies: checked before anything is
 ## loaded), is reported with the file named and nothing changes.
@@ -156,12 +151,12 @@ func _start_cover() -> void:
 		_cover.self_modulate.a = 0.0
 		_wipe.progress = 0.0
 		_wipe.show()
-		print("[Game] Transition: marsh-grass wipe, %.2f s in and %.2f s out" % [WIPE_TIME, WIPE_TIME])
+		print("[Game] Transition: marsh-grass wipe, %.2f s in and %.2f s out" % [_game.tuning.wipe_time, _game.tuning.wipe_time])
 	else:
 		_cover.modulate.a = 0.0
 		_cover.self_modulate.a = 1.0
 		_wipe.hide()
-		print("[Game] Transition: plain fade, %.2f s in and %.2f s out (reduce motion)" % [FADE_TIME, FADE_TIME])
+		print("[Game] Transition: plain fade, %.2f s in and %.2f s out (reduce motion)" % [_game.tuning.fade_time, _game.tuning.fade_time])
 
 
 ## Covers the screen (`amount` 1) or clears it (0): the wipe rises or sinks away, the fade
@@ -169,9 +164,9 @@ func _start_cover() -> void:
 func _fade_to(amount: float) -> void:
 	var tween := create_tween()
 	if _transition_style == "wipe":
-		tween.tween_property(_wipe, "progress", 1.0 if amount > 0.0 else 2.0, WIPE_TIME)
+		tween.tween_property(_wipe, "progress", 1.0 if amount > 0.0 else 2.0, _game.tuning.wipe_time)
 	else:
-		tween.tween_property(_cover, "modulate:a", amount, FADE_TIME)
+		tween.tween_property(_cover, "modulate:a", amount, _game.tuning.fade_time)
 	await tween.finished
 
 

@@ -28,7 +28,7 @@ const MUSIC_TOGGLE_TEXT := "Music: %s"
 const SFX_TOGGLE_TEXT := "SFX: %s"
 const REDUCE_MOTION_TEXT := "Reduce motion: %s"
 ## The overlay's dim layer over the paused run (the screen's own background is opaque).
-const OVERLAY_DIM := Color(0.067, 0.059, 0.094, 0.85)
+const OVERLAY_DIM := Color(Palette.INK_DEEP, 0.85)
 ## Game.flow.flow_args "focus" the title reads to focus its Settings button again.
 const TITLE_FOCUS := "settings"
 

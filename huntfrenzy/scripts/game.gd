@@ -10,6 +10,7 @@ extends Node
 ## - screen (ScreenFit, Game/Screen): the visible and safe rects, the window fit and the
 ##   rotate overlay;
 ## - web (WebPersist, Game/Web): the web build's browser-storage checks and page visibility.
+## It also holds the feel tuning (tuning: data/tuning.tres) every scene reads.
 ## Game itself starts them in order (_ready), checks the UI theme at start (ResourceCheck)
 ## and owns the error label every service reports through (report_error).
 
@@ -18,6 +19,9 @@ const AUTOLOAD_PATH := ^"/root/Game"
 ## The Endless and Time Attack modes' ids in data/modes.json.
 const ENDLESS_MODE := "endless"
 const TIME_ATTACK_MODE := "time_attack"
+
+## The feel tuning (Tuning.PATH): Play, its controllers, the title, the feathers and the wipe read it here.
+var tuning: Tuning = load(Tuning.PATH) as Tuning
 
 ## Tests set this to keep expected errors out of the log; they are still recorded
 ## and shown on the error label.

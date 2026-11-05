@@ -10,7 +10,8 @@ extends Node
 ## their bus at once (saved). Its Settings button opens the settings screen over the paused run
 ## (open_settings: the tree stays paused, the sounds held and the music ducked); its Back (or
 ## Escape) closes it and focuses Settings again, and the menu's toggles follow whatever it
-## changed.
+## changed. Of Play (its parent) it uses only is_over(), restart(), quit(),
+## show_crosshair(), wave_note(), clock_note() and the score (scoring.score) for its logs.
 
 const SETTINGS_SCENE := preload("res://scenes/settings.tscn")
 ## The pause menu's mute toggles: the bus and whether it is on.
@@ -82,7 +83,7 @@ func open_pause(cause: String) -> void:
 	_game.audio.play_sfx(&"pause")
 	_resume_button.grab_focus(true)
 	pause_log.append(cause)
-	print("[Play] Paused (%s): wave %d at t %.2f, score %d%s" % [cause, _play.wave.index, _play.wave_clock, _play.scoring.score, _play.clock_note()])
+	print("[Play] Paused (%s): %s, score %d%s" % [cause, _play.wave_note(), _play.scoring.score, _play.clock_note()])
 
 
 ## Closes the pause menu and continues the run where it stopped (`cause`: "Resume" for
@@ -98,7 +99,7 @@ func resume(cause := "Resume") -> void:
 	get_tree().paused = false
 	_game.audio.sync_audio_pause()
 	_play.show_crosshair(true)
-	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, _play.wave.index, _play.wave_clock, _play.scoring.score, _play.clock_note()])
+	print("[Play] Resumed (%s): %s, score %d%s" % [cause, _play.wave_note(), _play.scoring.score, _play.clock_note()])
 
 
 func is_paused() -> bool:
@@ -129,7 +130,7 @@ func open_settings() -> void:
 	# The menu's dim stays (it is the pause itself); its panel hides under the settings.
 	_pause_panel.hide()
 	_pause_layer.add_child(_settings)
-	print("[Play] Settings opened over the paused run (wave %d at t %.2f%s)" % [_play.wave.index, _play.wave_clock, _play.clock_note()])
+	print("[Play] Settings opened over the paused run (%s%s)" % [_play.wave_note(), _play.clock_note()])
 
 
 ## Closes the settings opened over the pause menu and focuses its Settings button again;
