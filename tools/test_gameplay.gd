@@ -316,7 +316,7 @@ func _run() -> void:
 		quit(1)
 
 
-## Every feel value Play.TUNING ships with (data/tuning.tres over scripts/tuning.gd's defaults),
+## Every feel value Game.tuning ships with (data/tuning.tres over scripts/tuning.gd's defaults),
 ## so an editor save that drops a line, a changed default or an inspector slip fails here; run
 ## first and last, so a test that changed a value and did not put it back fails too. A
 ## deliberate tuning change updates this list.
@@ -330,13 +330,13 @@ func _test_tuning_values() -> void:
 		"shake_hz": 18.0, "heckle_time": 2.5, "rival_reaction_time": 1.2, "rival_aim_gap": 1.5, "rival_laugh_delay": 0.3,
 	}
 	var names: Array[String] = []
-	for property in Play.TUNING.get_property_list():
+	for property in _game.tuning.get_property_list():
 		if property["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
 			names.append(property["name"])
 	_check(names.size() == expected.size(), "the test lists every Tuning property", ", ".join(names))
 	for key: String in expected:
-		var value: Variant = Play.TUNING.get(key)
-		_check(value == expected[key], "Play.TUNING.%s is %s" % [key, expected[key]], str(value))
+		var value: Variant = _game.tuning.get(key)
+		_check(value == expected[key], "Game.tuning.%s is %s" % [key, expected[key]], str(value))
 
 
 ## project.godot: landscape 960x540 base, canvas_items + expand, linear filtering, the
@@ -1794,7 +1794,7 @@ func _test_time_attack_waves_on_clear() -> void:
 		await process_frame
 		frames += 1
 	# The last kill's hit stop holds everything, the wave's end included, for its own time.
-	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1 + ceili(Play.TUNING.hit_stop_time / FRAME), "the next wave starts as soon as the last one is cleared (after the last kill's hit stop)", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
+	_check(play.scoring.kills == 3 and play.wave.index == 2 and frames <= 1 + ceili(_game.tuning.hit_stop_time / FRAME), "the next wave starts as soon as the last one is cleared (after the last kill's hit stop)", "%d kills, wave %d after %d frames" % [play.scoring.kills, play.wave.index, frames])
 	_check(play.ammo.shells == play.wave.shells and play.wave.shells == Wave.for_mode(play.mode, 2, 54).shells and play.wave.shells > 0, "the new wave has a full pool of its own shells", "%d of %d" % [play.ammo.shells, play.wave.shells])
 	_check_logged(from, "^\\[Play\\] Wave 2 start: 4 birds \\([a-z, ]+\\), %d shells, speed x1\\.06, [\\d.]+ s left$" % play.wave.shells, "the wave start is logged with its shells and the time left")
 	var score := play.scoring.score
@@ -1833,7 +1833,7 @@ func _test_time_attack_lost_wave_starts_next_at_once() -> void:
 	var grass := _global(play, Vector2(480, Layout.GRASS_Y + 40.0))
 	for i in play.wave.shells:
 		await _touch(grass)
-	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.wave.shells > 0 and play.wave_clock <= -Play.TUNING.wave_lead + 2.0 * FRAME + 0.0001, "the next wave starts with a full pool as soon as the pool runs out", "wave %d, %d of %d shells, wave clock %.4f" % [play.wave.index, play.ammo.shells, play.wave.shells, play.wave_clock])
+	_check(play.wave.index == 2 and play.ammo.shells == play.wave.shells and play.wave.shells > 0 and play.wave_clock <= -_game.tuning.wave_lead + 2.0 * FRAME + 0.0001, "the next wave starts with a full pool as soon as the pool runs out", "wave %d, %d of %d shells, wave clock %.4f" % [play.wave.index, play.ammo.shells, play.wave.shells, play.wave_clock])
 	var out := RegEx.create_from_string("^\\[Play\\] Out of shells: 1 flying birds flee, 2 still to spawn are skipped \\(wave 1, ([\\d.]+) s left\\)$")
 	var lost := RegEx.create_from_string("^\\[Play\\] Wave 1 lost \\(no shells\\): 2 birds still to spawn skipped, 2 of them counted as escaped \\(2 escaped\\), 1 flying flee, ([\\d.]+) s left$")
 	var started := RegEx.create_from_string("^\\[Play\\] Wave 2 start: .*, ([\\d.]+) s left$")
@@ -1931,7 +1931,7 @@ func _test_time_attack_leftover_overlaps_next_wave() -> void:
 	while play.wave.index == 2 and frames < 10:
 		await process_frame
 		frames += 1
-	_check(play.wave.index == 3 and frames <= 1 + ceili(Play.TUNING.hit_stop_heavy_time / FRAME) and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
+	_check(play.wave.index == 3 and frames <= 1 + ceili(_game.tuning.hit_stop_heavy_time / FRAME) and leftover.is_flying(), "a wave ends on its own birds: a lost wave's leftover does not hold up the next", "wave %d after %d frames, leftover flying %s" % [play.wave.index, frames, leftover.is_flying()])
 	var score := play.scoring.score
 	var from := _log.size()
 	leftover.set_process(true)
@@ -2906,7 +2906,7 @@ func _test_rival_pause_freezes_cue() -> void:
 	var age := goose.age
 	var clock := play.run_clock
 	play.pause.open_pause("test")
-	for i in roundi(Play.TUNING.heckle_time * 60.0) + 30:
+	for i in roundi(_game.tuning.heckle_time * 60.0) + 30:
 		await process_frame
 	_check(goose.is_cued() and goose.is_flying() and goose.age == age and play.run_clock == clock and play.rival.stolen == 0, "a pause freezes the cue and the heckle cooldown clock", "age %.3f -> %.3f, clock %.3f -> %.3f, stolen %d" % [age, goose.age, clock, play.run_clock, play.rival.stolen])
 	_check(heckle != "" and play.rival.heckle_shown() == heckle, "a pause keeps the heckle on screen", "'%s'" % play.rival.heckle_shown())
@@ -2973,7 +2973,7 @@ func _test_rival_heckle_cooldown() -> void:
 			break
 		await process_frame
 	var lasted := play.run_clock - shown_at
-	_check(play.rival.heckle_shown() == "" and absf(lasted - Play.TUNING.heckle_time) <= 2.0 * FRAME, "a heckle shows for Tuning.heckle_time", "%.3f s" % lasted)
+	_check(play.rival.heckle_shown() == "" and absf(lasted - _game.tuning.heckle_time) <= 2.0 * FRAME, "a heckle shows for Tuning.heckle_time", "%.3f s" % lasted)
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
 		if play.run_clock - shown_at >= lines.cooldown:
@@ -3110,16 +3110,16 @@ func _test_rival_poses() -> void:
 	_check(play.scoring.kills == 1 and play.rival.rival_pose() == "sulk", "a scored kill makes the rival sulk", "%d kills, %s" % [play.scoring.kills, play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival sulks at the 100 points on goose #%d \\(wave 1 at t -?[\\d.]+\\)$" % goose.number, "the sulk is logged with the points and the bird")
 	var since := play.run_clock
-	for i in roundi(Play.TUNING.rival_reaction_time * 60.0) + 10:
+	for i in roundi(_game.tuning.rival_reaction_time * 60.0) + 10:
 		if play.rival.rival_pose() != "sulk":
 			break
 		await process_frame
 	var lasted := play.run_clock - since
-	_check(play.rival.rival_pose() == "idle" and absf(lasted - Play.TUNING.rival_reaction_time) <= 2.0 * FRAME, "the sulk lasts Tuning.rival_reaction_time, then he stands idle", "%s after %.3f s" % [play.rival.rival_pose(), lasted])
+	_check(play.rival.rival_pose() == "idle" and absf(lasted - _game.tuning.rival_reaction_time) <= 2.0 * FRAME, "the sulk lasts Tuning.rival_reaction_time, then he stands idle", "%s after %.3f s" % [play.rival.rival_pose(), lasted])
 	await _touch(_global(play, SKY_POINTS[0]))
 	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()) and play.rival.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.rival.heckle_shown(), play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival brags after the miss \\(wave 1 at t -?[\\d.]+\\)$", "the brag is logged")
-	for i in roundi(Play.TUNING.rival_reaction_time * 60.0) + 10:
+	for i in roundi(_game.tuning.rival_reaction_time * 60.0) + 10:
 		if play.rival.rival_pose() == "idle":
 			break
 		await process_frame
@@ -3220,12 +3220,12 @@ func _test_backdrop_cycle_and_fade() -> void:
 			first_spawn = play.run_clock - started_at
 			break
 	var backdrops := play.get_node("World").get_children().filter(func(node: Node) -> bool: return node is Backdrop)
-	_check(faded_at <= Play.TUNING.wave_lead and backdrops.size() == 1 and (backdrops[0] as Backdrop).id == "noon" and is_equal_approx((backdrops[0] as CanvasItem).modulate.a, 1.0), "the cross-fade ends within the lead-in, leaving only the noon backdrop", "faded %.3f s into the wave, %d backdrops" % [faded_at, backdrops.size()])
+	_check(faded_at <= _game.tuning.wave_lead and backdrops.size() == 1 and (backdrops[0] as Backdrop).id == "noon" and is_equal_approx((backdrops[0] as CanvasItem).modulate.a, 1.0), "the cross-fade ends within the lead-in, leaving only the noon backdrop", "faded %.3f s into the wave, %d backdrops" % [faded_at, backdrops.size()])
 	_check(mid != Backdrop.rival_tint("dawn") and mid != Backdrop.rival_tint("noon") and mid.r >= Backdrop.rival_tint("dawn").r - 0.001 and mid.b >= Backdrop.rival_tint("dawn").b - 0.001,
 		"the rival's light moves from dawn's toward noon's with the cross-fade", "%s" % mid)
 	_check(rival.modulate.is_equal_approx(Backdrop.rival_tint("noon")), "once the fade ends the rival is lit for noon", "%s" % rival.modulate)
 	_check_logged(from, "^\\[Play\\] Rival lit for backdrop noon: tint #ffffff$", "the rival's new light is logged")
-	_check(is_equal_approx(lead_clock, -Play.TUNING.wave_lead) and first_spawn >= Play.TUNING.wave_lead - 0.001 and first_spawn <= Play.TUNING.wave_lead + FRAME + 0.001, "the wave's first bird spawns on time (the fade delays nothing)", "wave clock %.3f at its start, first spawn %.3f s of run time after it" % [lead_clock, first_spawn])
+	_check(is_equal_approx(lead_clock, -_game.tuning.wave_lead) and first_spawn >= _game.tuning.wave_lead - 0.001 and first_spawn <= _game.tuning.wave_lead + FRAME + 0.001, "the wave's first bird spawns on time (the fade delays nothing)", "wave clock %.3f at its start, first spawn %.3f s of run time after it" % [lead_clock, first_spawn])
 	play.mode.rival_steals = true
 	var timed := await _start_run(75, GameState.TIME_ATTACK_MODE)
 	_check(timed.backdrop_id() == "noon" and timed.weather().id == "wind", "Time Attack shows the noon backdrop with wind", "%s, %s" % [timed.backdrop_id(), timed.weather().id])
@@ -4780,7 +4780,7 @@ func _test_audio_every_event_sound() -> void:
 		await process_frame
 		waited += 1
 	_check(was_stolen and _game.audio.sfx_log.count(&"rival_steal") == 1 and _game.audio.sfx_log.count(&"rival_laugh") == 1 and _game.audio.sfx_log.find(&"rival_steal") < _game.audio.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.audio.sfx_log))
-	_check(absi(waited - roundi(Play.TUNING.rival_laugh_delay / FRAME)) <= 2, "the laugh starts Tuning.rival_laugh_delay after the shot", "%d frames" % waited)
+	_check(absi(waited - roundi(_game.tuning.rival_laugh_delay / FRAME)) <= 2, "the laugh starts Tuning.rival_laugh_delay after the shot", "%d frames" % waited)
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
@@ -4870,10 +4870,10 @@ func _test_time_attack_countdown() -> void:
 			play.pause.resume()
 	Engine.time_scale = 1.0
 	Content.mode(GameState.TIME_ATTACK_MODE).time_limit = limit
-	_check(ticks.size() == Play.TUNING.countdown_seconds and _game.audio.sfx_log.count(&"countdown_tick") == Play.TUNING.countdown_seconds, "the last 10 s tick 10 times", "%d ticks at %s, %d sounds" % [ticks.size(), ticks, _game.audio.sfx_log.count(&"countdown_tick")])
+	_check(ticks.size() == _game.tuning.countdown_seconds and _game.audio.sfx_log.count(&"countdown_tick") == _game.tuning.countdown_seconds, "the last 10 s tick 10 times", "%d ticks at %s, %d sounds" % [ticks.size(), ticks, _game.audio.sfx_log.count(&"countdown_tick")])
 	for k in ticks.size():
-		var due := 13.0 - (Play.TUNING.countdown_seconds - k)
-		_check(ticks[k] >= due - 0.001 and ticks[k] < due + 4.0 * FRAME + 0.001, "tick %d sounds as %d s are left" % [k + 1, Play.TUNING.countdown_seconds - k], "at run clock %.3f, due %.3f" % [ticks[k], due])
+		var due := 13.0 - (_game.tuning.countdown_seconds - k)
+		_check(ticks[k] >= due - 0.001 and ticks[k] < due + 4.0 * FRAME + 0.001, "tick %d sounds as %d s are left" % [k + 1, _game.tuning.countdown_seconds - k], "at run clock %.3f, due %.3f" % [ticks[k], due])
 	_check(_game.audio.sfx_log.count(&"time_up") == 1 and _game.audio.sfx_log.find(&"time_up") > _game.audio.sfx_log.rfind(&"countdown_tick"), "time running out sounds the buzzer once, after the last tick", str(_game.audio.sfx_log.count(&"time_up")))
 	await _game.flow.transition_finished
 	_game.flow.goto(SceneFlow.Flow.TITLE)
@@ -5096,8 +5096,8 @@ func _test_audio_unloadable_files_reported() -> void:
 ## The shot, the plain hit and the escape each play at a pitch within Tuning.sound_pitch_spread of
 ## 1, not all the same, and the same run seed gives the same pitches.
 func _test_frequent_sounds_vary_in_pitch() -> void:
-	var low := 1.0 - Play.TUNING.sound_pitch_spread
-	var high := 1.0 + Play.TUNING.sound_pitch_spread
+	var low := 1.0 - _game.tuning.sound_pitch_spread
+	var high := 1.0 + _game.tuning.sound_pitch_spread
 	var runs: Array[Array] = []
 	for attempt in 2:
 		var play := await _start_run(97)
@@ -5925,7 +5925,7 @@ func _test_hit_stop() -> void:
 	var from := _log.size()
 	var shot_input := play.get_node("ShotInput") as ShotInput
 	shot_input.shot.emit(_global(play, victim.transform * LOCAL_BODY))
-	_check(is_equal_approx(play.hit_stop_left(), Play.TUNING.hit_stop_time) and Play.TUNING.hit_stop_time <= 0.06 and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop (at most 0.06) that holds the other birds" % Play.TUNING.hit_stop_time, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
+	_check(is_equal_approx(play.hit_stop_left(), _game.tuning.hit_stop_time) and _game.tuning.hit_stop_time <= 0.06 and play.hit_stops == 1 and watcher.is_held(), "a goose kill starts a %.2f s hit stop (at most 0.06) that holds the other birds" % _game.tuning.hit_stop_time, "left %.3f, stops %d" % [play.hit_stop_left(), play.hit_stops])
 	_check_logged(from, "^\\[Play\\] Hit stop 0\\.05 s on the kill of goose #%d " % victim.number, "the hit stop is logged")
 	await process_frame
 	shot_input.shot.emit(_global(play, second.transform * LOCAL_BODY))
@@ -5943,7 +5943,7 @@ func _test_hit_stop() -> void:
 		await process_frame
 		frames += 1
 	var lost := frames * FRAME - (play.run_clock - clock)
-	_check(absf(lost - Play.TUNING.hit_stop_time) < 1e-6 and absf((frames * FRAME - (play.wave_clock - wave_clock)) - Play.TUNING.hit_stop_time) < 1e-6, "run_clock and wave_clock lose exactly the stop's time", "lost %.6f s over %d frames" % [lost, frames])
+	_check(absf(lost - _game.tuning.hit_stop_time) < 1e-6 and absf((frames * FRAME - (play.wave_clock - wave_clock)) - _game.tuning.hit_stop_time) < 1e-6, "run_clock and wave_clock lose exactly the stop's time", "lost %.6f s over %d frames" % [lost, frames])
 	_check(absf((watcher.age - play.run_clock) - offset) < 1e-6 and watcher.position != where, "a bird loses exactly the same time (its age keeps its offset from run_clock) and flies on", "offset %.6f -> %.6f" % [offset, watcher.age - play.run_clock])
 	# A splitter's goslings, launched by the kill that starts a stop, wait it out too.
 	while play.hit_stop_left() > 0.0:
@@ -5967,13 +5967,13 @@ func _test_hit_stop() -> void:
 		var heavy_clock := play.run_clock
 		var heavy_offset := heavy_watcher.age - play.run_clock
 		shot_input.shot.emit(_global(play, heavy.transform * LOCAL_BODY))
-		_check(not heavy.is_flying() and is_equal_approx(play.hit_stop_left(), Play.TUNING.hit_stop_heavy_time) and Play.TUNING.hit_stop_heavy_time <= 0.1, "a %s kill stops the world longer, %.2f s (at most 0.1)" % [bird_id, Play.TUNING.hit_stop_heavy_time], "left %.3f" % play.hit_stop_left())
+		_check(not heavy.is_flying() and is_equal_approx(play.hit_stop_left(), _game.tuning.hit_stop_heavy_time) and _game.tuning.hit_stop_heavy_time <= 0.1, "a %s kill stops the world longer, %.2f s (at most 0.1)" % [bird_id, _game.tuning.hit_stop_heavy_time], "left %.3f" % play.hit_stop_left())
 		var heavy_frames := 0
 		for i in 12:
 			await process_frame
 			heavy_frames += 1
 		var heavy_lost := heavy_frames * FRAME - (play.run_clock - heavy_clock)
-		_check(absf(heavy_lost - Play.TUNING.hit_stop_heavy_time) < 1e-6, "after a %s kill run_clock loses exactly %.2f s (not whole frames)" % [bird_id, Play.TUNING.hit_stop_heavy_time], "lost %.6f s over %d frames" % [heavy_lost, heavy_frames])
+		_check(absf(heavy_lost - _game.tuning.hit_stop_heavy_time) < 1e-6, "after a %s kill run_clock loses exactly %.2f s (not whole frames)" % [bird_id, _game.tuning.hit_stop_heavy_time], "lost %.6f s over %d frames" % [heavy_lost, heavy_frames])
 		_check(is_instance_valid(heavy_watcher) and absf((heavy_watcher.age - play.run_clock) - heavy_offset) < 1e-6, "after a %s kill a watching bird loses exactly the same time" % bird_id, "offset %.6f -> %.6f" % [heavy_offset, heavy_watcher.age - play.run_clock] if is_instance_valid(heavy_watcher) else "gone")
 		if is_instance_valid(heavy_watcher):
 			heavy_watcher.queue_free()
@@ -5990,7 +5990,7 @@ func _test_hit_stop() -> void:
 	for i in 10:
 		await process_frame
 		frames += 1
-	_check(absf((left - play.time_left()) - (frames * FRAME - Play.TUNING.hit_stop_time)) < 1e-6, "the Time Attack clock loses exactly the stop's time", "%.4f -> %.4f over %d frames" % [left, play.time_left(), frames])
+	_check(absf((left - play.time_left()) - (frames * FRAME - _game.tuning.hit_stop_time)) < 1e-6, "the Time Attack clock loses exactly the stop's time", "%.4f -> %.4f over %d frames" % [left, play.time_left(), frames])
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
 
@@ -6064,18 +6064,18 @@ func _test_feathers() -> void:
 ## where it was (offset zero) after their time; the HUD never moves; a weaker shake does
 ## not cut a stronger one short (plan AC 6).
 func _test_screen_shake() -> void:
-	_check(Play.TUNING.resource_path == "res://data/tuning.tres", "the feel tuning is data/tuning.tres", Play.TUNING.resource_path)
-	for cause: String in Play.TUNING.shakes:
-		var reach: float = Play.TUNING.shakes[cause][0]
+	_check(_game.tuning.resource_path == "res://data/tuning.tres", "the feel tuning is data/tuning.tres", _game.tuning.resource_path)
+	for cause: String in _game.tuning.shakes:
+		var reach: float = _game.tuning.shakes[cause][0]
 		_check(reach <= ScreenShake.SHAKE_MARGIN, "the %s shake stays within the backdrop's margin" % cause, "%.1f > %.1f" % [reach, ScreenShake.SHAKE_MARGIN])
 	var play := await _start_run(64)
 	var world := play.get_node("World") as Node2D
 	var bar := play.get_node("Hud/Bar") as Control
 	var bar_at := bar.global_position
 	var origin := world.position
-	for cause: String in Play.TUNING.shakes:
-		var amplitude: float = Play.TUNING.shakes[cause][0]
-		var time: float = Play.TUNING.shakes[cause][1]
+	for cause: String in _game.tuning.shakes:
+		var amplitude: float = _game.tuning.shakes[cause][0]
+		var time: float = _game.tuning.shakes[cause][1]
 		play.shaker.shake(cause)
 		var largest := 0.0
 		var moved_bar := false
@@ -6145,7 +6145,7 @@ func _test_popup_motion() -> void:
 		var label := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
 		var largest := 0.0
 		var outside := false
-		for i in roundi(Play.TUNING.popup_bounce_time / FRAME) + 6:
+		for i in roundi(_game.tuning.popup_bounce_time / FRAME) + 6:
 			largest = maxf(largest, label.scale.x)
 			var box := label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
 			outside = outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
@@ -6157,17 +6157,17 @@ func _test_popup_motion() -> void:
 		_check(not outside, "pop-up %d stays inside the visible area" % (n + 1), "outside")
 		while play.hit_stop_left() > 0.0:
 			await process_frame
-	_check(scales[0] == 1.0 and scales[1] > scales[0] and scales[2] > scales[1] and is_equal_approx(scales[2], 1.0 + 2 * Play.TUNING.popup_combo_growth), "combo pop-ups grow with the multiplier", str(scales))
+	_check(scales[0] == 1.0 and scales[1] > scales[0] and scales[2] > scales[1] and is_equal_approx(scales[2], 1.0 + 2 * _game.tuning.popup_combo_growth), "combo pop-ups grow with the multiplier", str(scales))
 	var decoy := await _spawn_flying(play, 40, IN_FIELD_AGE, "decoy")
 	# Shot synchronously, so the pop-up's resting x is read before it starts shaking.
 	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, decoy.transform * LOCAL_BODY))
 	var penalty := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
 	var x0 := penalty.position.x
 	var swing := 0.0
-	for i in roundi(Play.TUNING.popup_shake_time / FRAME) + 4:
+	for i in roundi(_game.tuning.popup_shake_time / FRAME) + 4:
 		swing = maxf(swing, absf(penalty.position.x - x0))
 		await process_frame
-	_check(penalty.text.begins_with("-") and penalty.get_theme_color(&"font_color") == PENALTY_COLOR and swing > Play.TUNING.popup_shake * 0.5 and is_equal_approx(penalty.position.x, x0) and penalty.scale == Vector2.ONE, "the penalty pop-up shakes side to side and comes to rest, in the penalty colour", "swing %.2f, x %.2f -> %.2f" % [swing, x0, penalty.position.x])
+	_check(penalty.text.begins_with("-") and penalty.get_theme_color(&"font_color") == PENALTY_COLOR and swing > _game.tuning.popup_shake * 0.5 and is_equal_approx(penalty.position.x, x0) and penalty.scale == Vector2.ONE, "the penalty pop-up shakes side to side and comes to rest, in the penalty colour", "swing %.2f, x %.2f -> %.2f" % [swing, x0, penalty.position.x])
 	# A hit at the very top of the field: the pop-up is moved in, not cut off.
 	var high := play.spawn_bird("goose", 41)
 	high.set_process(false)
@@ -6179,7 +6179,7 @@ func _test_popup_motion() -> void:
 	_check(not high.is_flying(), "the goose at the top left edge is hit", "still flying")
 	var top := popups.get_children().filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).back() as Label
 	var top_outside := false
-	for i in roundi(Play.TUNING.popup_time / FRAME) - 2:
+	for i in roundi(_game.tuning.popup_time / FRAME) - 2:
 		var box := top.get_global_transform() * Rect2(Vector2.ZERO, top.size)
 		top_outside = top_outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
 		await process_frame
@@ -6434,7 +6434,7 @@ func _test_rival_one_cue_at_a_time() -> void:
 			break
 	_check(older.stolen and most_cues == 1 and not younger_cued, "with two geese eligible the rival aims only at the one flown longest, and steals it", "stolen %s, at most %d cues at once, the younger cued %s" % [older.stolen, most_cues, younger_cued])
 	var steal_clock := play.run_clock
-	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < Play.TUNING.rival_aim_gap - 2.0 * FRAME:
+	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < _game.tuning.rival_aim_gap - 2.0 * FRAME:
 		younger_cued = younger_cued or younger.is_cued()
 		await process_frame
 	_check(not younger_cued, "after a steal no new cue starts during the aim gap", "the younger goose was cued %.2f s after the steal" % (play.run_clock - steal_clock))
@@ -6473,11 +6473,11 @@ func _test_rival_aim_gap() -> void:
 			play.pause.resume()
 		await process_frame
 		frames += 1
-		if waiting.is_cued() and play.run_clock - cancel_clock < Play.TUNING.rival_aim_gap:
+		if waiting.is_cued() and play.run_clock - cancel_clock < _game.tuning.rival_aim_gap:
 			early = true
 	var waited := play.run_clock - cancel_clock
-	_check(waiting.is_cued() and not early and waited < Play.TUNING.rival_aim_gap + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % Play.TUNING.rival_aim_gap, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
-	_check(frames + paused_frames > roundi(Play.TUNING.rival_aim_gap / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
+	_check(waiting.is_cued() and not early and waited < _game.tuning.rival_aim_gap + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % _game.tuning.rival_aim_gap, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
+	_check(frames + paused_frames > roundi(_game.tuning.rival_aim_gap / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; 1\\.5\\d s since the last cue ended, aim gap 1\\.50 s\\) " % waiting.number, "the cue after the gap logs the time since the last cue and the gap")
 	await _open_title()
 
@@ -6623,7 +6623,7 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 	while not &"rival_laugh" in _game.audio.sfx_log and after < 120:
 		await process_frame
 		after += 1
-	var rest := roundi(Play.TUNING.rival_laugh_delay / FRAME) - before
+	var rest := roundi(_game.tuning.rival_laugh_delay / FRAME) - before
 	_check(absi(after - rest) <= 2 and _game.audio.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
 	await _open_title()
 

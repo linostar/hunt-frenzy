@@ -1,11 +1,16 @@
 class_name Tuning
 extends Resource
-## The run's feel tuning: res://data/tuning.tres (Play.TUNING), edited in the inspector. The
+## The run's feel tuning: res://data/tuning.tres (Game.tuning), edited in the inspector. The
 ## birds, modes and levels are data/*.json; these are the timings and sizes of how a run
 ## feels, read by Play, RivalController, ScreenShake and the title. The defaults here are the
 ## shipped values; the .tres lists them too, but the editor drops a line equal to its default
 ## when it saves, so the .tres may hold only what differs. test_gameplay's
 ## _test_tuning_values pins every value, so a deliberate change updates it there as well.
+
+## The shipped tuning, loaded once by the Game autoload (Game.tuning: one shared object for
+## the whole process, every reader and both test scripts; a test that changes a value puts it
+## back, as _test_tuning_values, run first and last, checks).
+const PATH := "res://data/tuning.tres"
 
 @export_group("Run")
 ## Seconds between a wave's start and its first spawn.
