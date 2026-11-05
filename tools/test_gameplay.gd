@@ -6070,6 +6070,7 @@ func _test_feathers() -> void:
 ## not cut a stronger one short (plan AC 6).
 func _test_screen_shake() -> void:
 	_check(_game.tuning.resource_path == "res://data/tuning.tres", "the feel tuning is data/tuning.tres", _game.tuning.resource_path)
+	_check(Play.TUNING == _game.tuning, "Play's preloaded TUNING is the same object as Game.tuning", "%s vs %s" % [Play.TUNING, _game.tuning])
 	for cause: String in _game.tuning.shakes:
 		var reach: float = _game.tuning.shakes[cause][0]
 		_check(reach <= ScreenShake.SHAKE_MARGIN, "the %s shake stays within the backdrop's margin" % cause, "%.1f > %.1f" % [reach, ScreenShake.SHAKE_MARGIN])
