@@ -1,6 +1,6 @@
 class_name Results
 extends Control
-## Results screen of a finished run, from Game.flow_args (the stats Play passes: score,
+## Results screen of a finished run, from Game.flow.flow_args (the stats Play passes: score,
 ## shots, hits, kills, pigeons, escaped, stolen, rival_score, rival_line, rival_steals,
 ## best, new_best, save_error; a mode's run adds mode, a campaign level adds level, stars,
 ## best_stars and next_level).
@@ -118,7 +118,7 @@ func _ready() -> void:
 	_retry_button.pressed.connect(_on_retry_pressed)
 	_levels_button.pressed.connect(_on_levels_pressed)
 	_game.save.save_failed.connect(_show_save_error)
-	_show_stats(_game.flow_args)
+	_show_stats(_game.flow.flow_args)
 
 
 ## "75%" for 3 hits in 4 shots; NO_VALUE with no shots.
@@ -341,12 +341,12 @@ func _place_heading() -> void:
 
 func _on_play_again_pressed() -> void:
 	print("[Results] Play again pressed")
-	_game.start_endless()
+	_game.flow.start_endless()
 
 
 func _on_title_pressed() -> void:
 	print("[Results] Title pressed")
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 
 
 func _on_next_pressed() -> void:
@@ -355,18 +355,18 @@ func _on_next_pressed() -> void:
 		_game.report_error("Next pressed after %s, but no next level is open" % _level.id)
 		return
 	print("[Results] Next pressed: starting %s" % next.id)
-	_game.start_level(next.id)
+	_game.flow.start_level(next.id)
 
 
 func _on_retry_pressed() -> void:
 	if _level == null:
 		print("[Results] Retry pressed: starting %s again" % _mode.id)
-		_game.start_mode(_mode.id)
+		_game.flow.start_mode(_mode.id)
 		return
 	print("[Results] Retry pressed: starting %s again" % _level.id)
-	_game.start_level(_level.id)
+	_game.flow.start_level(_level.id)
 
 
 func _on_levels_pressed() -> void:
 	print("[Results] Levels pressed: opening chapter %s" % _level.chapter)
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": _level.chapter, "level": _level.id})
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": _level.chapter, "level": _level.id})

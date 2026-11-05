@@ -5,11 +5,11 @@ extends Control
 ## Top Scores, Settings and Credits, laid out in the safe area (Game ScreenFit) and refitted
 ## whenever it changes. Campaign is focused on arrival (without drawing the focus ring
 ## until the player navigates by keyboard), so Enter presses it; coming back from Top
-## Scores, Settings or Credits (Game.flow_args {"focus": "top_scores" | "settings" |
+## Scores, Settings or Credits (Game.flow.flow_args {"focus": "top_scores" | "settings" |
 ## "credits"}) focuses that button instead. Left/right cycle along a row, up/down move
 ## between the rows, Tab runs through all six. Campaign opens the chapter select, Endless
-## starts an Endless run (Game.start_endless), Time Attack a Time Attack run
-## (Game.start_time_attack), Top Scores the top scores screen, Settings the settings
+## starts an Endless run (Game.flow.start_endless), Time Attack a Time Attack run
+## (Game.flow.start_time_attack), Top Scores the top scores screen, Settings the settings
 ## screen, Credits the credits screen. When Content reports errors in data/*.json, the
 ## ContentErrorBanner says so and Campaign, Endless, Time Attack, Top Scores and Settings
 ## are disabled (the save is left unread then, so there are no scores to show, and saving
@@ -120,7 +120,7 @@ func _ready() -> void:
 		_time_attack_button.disabled = true
 		_top_scores_button.disabled = true
 		_settings_button.disabled = true
-	match str(_game.flow_args.get("focus", "")):
+	match str(_game.flow.flow_args.get("focus", "")):
 		Settings.TITLE_FOCUS:
 			_settings_button.grab_focus(true)
 		Credits.TITLE_FOCUS:
@@ -213,7 +213,7 @@ func _spawn_goose() -> void:
 ## A tap below the top bar that no button took: a shot. A goose under it falls with a
 ## feather burst and a rival reaction; nothing is scored or saved.
 func _on_shot(at: Vector2) -> void:
-	if _game.is_transitioning():
+	if _game.flow.is_transitioning():
 		return
 	var point := _scenery.to_local(at)
 	_game.audio.play_sfx(&"shot")
@@ -292,34 +292,34 @@ func _log_layout() -> void:
 func _on_campaign_pressed() -> void:
 	campaign_presses += 1
 	print("[Title] Campaign pressed (%d); opening the chapter select" % campaign_presses)
-	_game.goto(GameState.Flow.CHAPTER_SELECT)
+	_game.flow.goto(SceneFlow.Flow.CHAPTER_SELECT)
 
 
 func _on_endless_pressed() -> void:
 	endless_presses += 1
 	print("[Title] Endless pressed (%d); starting Endless" % endless_presses)
-	_game.start_endless()
+	_game.flow.start_endless()
 
 
 func _on_time_attack_pressed() -> void:
 	time_attack_presses += 1
 	print("[Title] Time Attack pressed (%d); starting Time Attack" % time_attack_presses)
-	_game.start_time_attack()
+	_game.flow.start_time_attack()
 
 
 func _on_settings_pressed() -> void:
 	settings_presses += 1
 	print("[Title] Settings pressed (%d); opening the settings" % settings_presses)
-	_game.goto(GameState.Flow.SETTINGS)
+	_game.flow.goto(SceneFlow.Flow.SETTINGS)
 
 
 func _on_credits_pressed() -> void:
 	credits_presses += 1
 	print("[Title] Credits pressed (%d); opening the credits" % credits_presses)
-	_game.goto(GameState.Flow.CREDITS)
+	_game.flow.goto(SceneFlow.Flow.CREDITS)
 
 
 func _on_top_scores_pressed() -> void:
 	top_scores_presses += 1
 	print("[Title] Top Scores pressed (%d); opening the top scores" % top_scores_presses)
-	_game.goto(GameState.Flow.TOP_SCORES)
+	_game.flow.goto(SceneFlow.Flow.TOP_SCORES)

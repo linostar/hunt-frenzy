@@ -14,7 +14,7 @@ const STARS_TEXT := "%d/%d"
 ## A chapter panel's width and its star image's side.
 const CHAPTER_PANEL_WIDTH := 200.0
 const STAR_SIDE := 34.0
-## Game.flow_args "focus" the title reads to focus its Top Scores button again.
+## Game.flow.flow_args "focus" the title reads to focus its Top Scores button again.
 const TITLE_FOCUS := "top_scores"
 
 var _game: GameState
@@ -100,4 +100,4 @@ func _log_layout() -> void:
 
 func _on_back_pressed() -> void:
 	print("[TopScores] Back pressed; returning to the title")
-	_game.goto(GameState.Flow.TITLE, {"focus": TITLE_FOCUS})
+	_game.flow.goto(SceneFlow.Flow.TITLE, {"focus": TITLE_FOCUS})

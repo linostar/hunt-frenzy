@@ -6,7 +6,7 @@ extends Control
 ## stars earned in it out of its levels x 3 ("12/18"); a chapter whose level 1 is still
 ## locked shows its name over a lock icon, its sky dimmed, and its button is disabled, so
 ## neither a touch, a click nor Enter starts it. A chapter opens its level select; Back goes to the
-## title. On arrival the chapter just left (Game.flow_args {"chapter": id}, from the level
+## title. On arrival the chapter just left (Game.flow.flow_args {"chapter": id}, from the level
 ## select's Back) is focused when it is open, else the last unlocked chapter (ring hidden
 ## until keyboard navigation). Laid out in the safe area; every refit logs each button's
 ## rect (base units), which the smoke test taps.
@@ -37,7 +37,7 @@ func _ready() -> void:
 	if _chapters.size() != _buttons.size():
 		_game.report_error("Chapter select has %d chapter buttons for %d chapters" % [_buttons.size(), _chapters.size()])
 	var focus := _back_button
-	var left := str(_game.flow_args.get("chapter", ""))
+	var left := str(_game.flow.flow_args.get("chapter", ""))
 	var returned: Button = null
 	for i in _buttons.size():
 		var button := _buttons[i]
@@ -98,9 +98,9 @@ func _on_chapter_pressed(chapter_id: String) -> void:
 		print("[ChapterSelect] Chapter %s is locked; nothing starts" % chapter_id)
 		return
 	print("[ChapterSelect] Chapter %s pressed; opening its levels" % chapter_id)
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": chapter_id})
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": chapter_id})
 
 
 func _on_back_pressed() -> void:
 	print("[ChapterSelect] Back pressed")
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)

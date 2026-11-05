@@ -1,6 +1,6 @@
 class_name Play
 extends Node2D
-## The play scene: one run of a mode (Endless or Time Attack: Game.flow_args {"mode": id,
+## The play scene: one run of a mode (Endless or Time Attack: Game.flow.flow_args {"mode": id,
 ## "seed": run seed}) or of a campaign level ({"level": id}: the level's fixed seed).
 ## Waves follow one another (Wave.for_mode, Wave.campaign): each starts WAVE_LEAD seconds before its
 ## first spawn with a fresh shell pool (Ammo). Every pressed touch on the ShotInput
@@ -463,9 +463,9 @@ func time_left() -> float:
 func open_pause(cause: String) -> void:
 	if _over:
 		return
-	if _game.is_transitioning():
+	if _game.flow.is_transitioning():
 		print("[Play] Pause (%s) waits for the transition to finish" % cause)
-		_game.transition_finished.connect(open_pause.bind(cause).unbind(1), CONNECT_ONE_SHOT)
+		_game.flow.transition_finished.connect(open_pause.bind(cause).unbind(1), CONNECT_ONE_SHOT)
 		return
 	get_tree().paused = true
 	# The run's sounds are held before the menu's own sound starts.
@@ -573,7 +573,7 @@ func heckle_shown() -> String:
 
 
 func _start_run() -> void:
-	var args := _game.flow_args
+	var args := _game.flow.flow_args
 	if not args.has("mode") and not args.has("level"):
 		# Opened without a goto (the project check, the editor's Run Current Scene).
 		args = {"mode": GameState.ENDLESS_MODE, "seed": randi()}
@@ -712,7 +712,7 @@ func set_shell_pool(count: int) -> void:
 
 
 func _on_shot(at: Vector2) -> void:
-	if _over or get_tree().paused or _game.is_transitioning():
+	if _over or get_tree().paused or _game.flow.is_transitioning():
 		return
 	var point := _world.to_local(at)
 	if not ammo.use():
@@ -1135,7 +1135,7 @@ func _end_run() -> void:
 			best_note = " (new best, not saved: %s)" % save_error if save_error != "" else " (new best)"
 		var time_used := ", time used %.2f of %.2f s" % [run_clock, mode.time_limit] if mode.is_timed() else ""
 		print("[Play] Run end: mode %s, seed %d, wave %d%s, %s, best %d%s" % [mode.id, run_seed, wave.index, time_used, shots, _game.save.best(mode.id), best_note])
-	_game.goto(GameState.Flow.RESULTS, stats)
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
 
 
 ## Ends the run here: the world freezes, the menu closes and the tree runs again (the
@@ -1153,14 +1153,14 @@ func _stop() -> void:
 func _restart() -> void:
 	_leave("Restart")
 	if level != null:
-		_game.start_level(level.id)
+		_game.flow.start_level(level.id)
 	else:
-		_game.start_mode(mode.id)
+		_game.flow.start_mode(mode.id)
 
 
 func _quit() -> void:
 	_leave("Quit to title")
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 
 
 func _leave(cause: String) -> void:

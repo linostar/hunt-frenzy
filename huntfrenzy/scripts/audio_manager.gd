@@ -465,9 +465,9 @@ func sync_audio_pause() -> void:
 ## The loop of flow state `to` entered with `args`: the title's for the title, the
 ## selects, the settings, the credits and the top scores, the chapter's (a campaign level) or the mode's in a run, the results'; "" for a
 ## run that cannot start (an unknown level or mode: the music stays as it is).
-static func track_for(to: GameState.Flow, args: Dictionary) -> String:
+static func track_for(to: SceneFlow.Flow, args: Dictionary) -> String:
 	match to:
-		GameState.Flow.PLAY:
+		SceneFlow.Flow.PLAY:
 			if args.has("level"):
 				var level_id := str(args["level"])
 				return Content.chapter(Content.level(level_id).chapter).music if Content.has_level(level_id) else ""
@@ -476,7 +476,7 @@ static func track_for(to: GameState.Flow, args: Dictionary) -> String:
 				if spec.id == mode_id:
 					return spec.music
 			return ""
-		GameState.Flow.RESULTS:
+		SceneFlow.Flow.RESULTS:
 			return RESULTS_TRACK
 	return TITLE_TRACK
 

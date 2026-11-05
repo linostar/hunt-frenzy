@@ -23,8 +23,8 @@ func _run() -> void:
 		printerr("run_main: FAILED: Game autoload not found")
 		quit(1)
 		return
-	var at := str(GameState.Flow.keys()[game.state])
-	if current_scene == null or current_scene.scene_file_path != game.scene_paths[game.state]:
+	var at := str(SceneFlow.Flow.keys()[game.flow.state])
+	if current_scene == null or current_scene.scene_file_path != game.flow.scene_paths[game.flow.state]:
 		printerr("run_main: FAILED: flow at %s but the running scene is %s" % [at, current_scene.scene_file_path if current_scene != null else "none"])
 		quit(1)
 		return

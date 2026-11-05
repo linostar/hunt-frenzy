@@ -10,7 +10,7 @@ extends Control
 ## the screen closing, another touch), so the final value is never lost. The toggles and
 ## Back tap as every button does. It follows the settings whoever changes them
 ## (the pause menu's mutes), through Game.audio.audio_settings_changed and reduce_motion_changed.
-## It opens two ways: as a screen from the title's Settings button (Game.goto(SETTINGS));
+## It opens two ways: as a screen from the title's Settings button (Game.flow.goto(SETTINGS));
 ## Back or Escape returns to the title with its Settings button focused); or over the
 ## paused run (`overlay`, set by Play before adding it: a dim layer over the run, the pause
 ## menu's panel hidden under it, the run frozen and its sounds held and ducked; Back emits
@@ -29,7 +29,7 @@ const SFX_TOGGLE_TEXT := "SFX: %s"
 const REDUCE_MOTION_TEXT := "Reduce motion: %s"
 ## The overlay's dim layer over the paused run (the screen's own background is opaque).
 const OVERLAY_DIM := Color(0.067, 0.059, 0.094, 0.85)
-## Game.flow_args "focus" the title reads to focus its Settings button again.
+## Game.flow.flow_args "focus" the title reads to focus its Settings button again.
 const TITLE_FOCUS := "settings"
 
 ## True when it is opened over the paused run (set before it enters the tree).
@@ -163,7 +163,7 @@ func _on_back_pressed() -> void:
 		closed.emit()
 		return
 	print("[Settings] Back pressed; returning to the title")
-	_game.goto(GameState.Flow.TITLE, {"focus": TITLE_FOCUS})
+	_game.flow.goto(SceneFlow.Flow.TITLE, {"focus": TITLE_FOCUS})
 
 
 func _fit() -> void:

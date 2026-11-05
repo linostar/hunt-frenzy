@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://scripts/game.gd" id="1_game"]
 [ext_resource type="Script" path="res://scripts/wipe.gd" id="2_wipe"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/web_persist.gd" id="4_web_persist"]
 [ext_resource type="Script" path="res://scripts/save_store.gd" id="5_save_store"]
 [ext_resource type="Script" path="res://scripts/audio_manager.gd" id="6_audio_manager"]
+[ext_resource type="Script" path="res://scripts/scene_flow.gd" id="7_scene_flow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_error"]
 content_margin_left = 8.0
@@ -95,3 +96,6 @@ script = ExtResource("5_save_store")
 
 [node name="Audio" type="Node" parent="."]
 script = ExtResource("6_audio_manager")
+
+[node name="Flow" type="Node" parent="."]
+script = ExtResource("7_scene_flow")

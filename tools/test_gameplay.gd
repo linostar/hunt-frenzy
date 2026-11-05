@@ -4,7 +4,7 @@ extends SceneTree
 ## Prints "test_gameplay: OK" when every test passes; exits 1 otherwise.
 ## To add a test: write a `_test_*` func (it may await) that reports through _check(),
 ## and append it to the list in _tests(). Tests run in that order on one SceneTree, so
-## each one restores whatever it changes (window size, Game.scene_paths, quiet_errors,
+## each one restores whatever it changes (window size, Game.flow.scene_paths, quiet_errors,
 ## Content, pause, Engine.time_scale, the tool save).
 
 const TITLE_PATH := "res://scenes/title.tscn"
@@ -356,45 +356,45 @@ func _test_web_export_preset() -> void:
 
 
 func _test_goto_logs_transition() -> void:
-	var logged := _game.transition_log.size()
-	_game.goto(GameState.Flow.TITLE, {"from": "test"})
+	var logged := _game.flow.transition_log.size()
+	_game.flow.goto(SceneFlow.Flow.TITLE, {"from": "test"})
 	await process_frame
 	var cover := _game.get_node("Fade/Cover") as ColorRect
-	_check(_game.is_transitioning() and cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_STOP, "goto's cover blocks touches during the transition", "visible %s, filter %d" % [cover.visible, cover.mouse_filter])
-	await _game.transition_finished
-	_check(_game.transition_log.size() == logged + 1, "goto logs transition", "log grew by %d" % (_game.transition_log.size() - logged))
-	_check(_game.transition_log.back().begins_with("TITLE -> TITLE (%s)" % TITLE_PATH), "goto log entry", str(_game.transition_log.back()))
+	_check(_game.flow.is_transitioning() and cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_STOP, "goto's cover blocks touches during the transition", "visible %s, filter %d" % [cover.visible, cover.mouse_filter])
+	await _game.flow.transition_finished
+	_check(_game.flow.transition_log.size() == logged + 1, "goto logs transition", "log grew by %d" % (_game.flow.transition_log.size() - logged))
+	_check(_game.flow.transition_log.back().begins_with("TITLE -> TITLE (%s)" % TITLE_PATH), "goto log entry", str(_game.flow.transition_log.back()))
 	_check(current_scene != null and current_scene.scene_file_path == TITLE_PATH, "goto swaps scene", str(current_scene))
-	_check(_game.state == GameState.Flow.TITLE and _game.flow_args.get("from") == "test", "goto sets state and args", "%s %s" % [_game.state, _game.flow_args])
-	_check(is_zero_approx(_game.cover_progress()) and not cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_IGNORE, "goto's cover clears and lets touches through", "progress %.2f, visible %s" % [_game.cover_progress(), cover.visible])
-	_check(not _game.is_transitioning(), "goto finished", "still transitioning")
+	_check(_game.flow.state == SceneFlow.Flow.TITLE and _game.flow.flow_args.get("from") == "test", "goto sets state and args", "%s %s" % [_game.flow.state, _game.flow.flow_args])
+	_check(is_zero_approx(_game.flow.cover_progress()) and not cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_IGNORE, "goto's cover clears and lets touches through", "progress %.2f, visible %s" % [_game.flow.cover_progress(), cover.visible])
+	_check(not _game.flow.is_transitioning(), "goto finished", "still transitioning")
 
 
 func _test_goto_missing_scene_shows_error() -> void:
-	var real_path: String = _game.scene_paths[GameState.Flow.TITLE]
-	_game.scene_paths[GameState.Flow.TITLE] = "res://scenes/does_not_exist.tscn"
+	var real_path: String = _game.flow.scene_paths[SceneFlow.Flow.TITLE]
+	_game.flow.scene_paths[SceneFlow.Flow.TITLE] = "res://scenes/does_not_exist.tscn"
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
-	var logged := _game.transition_log.size()
+	var logged := _game.flow.transition_log.size()
 	var scene_before := current_scene
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await process_frame
 	_game.quiet_errors = false
-	_game.scene_paths[GameState.Flow.TITLE] = real_path
+	_game.flow.scene_paths[SceneFlow.Flow.TITLE] = real_path
 	var error_label := _game.get_node("Fade/ErrorLabel") as Label
 	_check(_game.reported_errors.size() == errors + 1, "missing scene reports error", "%d new errors" % (_game.reported_errors.size() - errors))
 	_check(error_label.visible and "does_not_exist" in error_label.text, "missing scene shows error label", error_label.text)
 	_check(current_scene == scene_before, "missing scene keeps current scene", str(current_scene))
-	_check(_game.transition_log.size() == logged and not _game.is_transitioning(), "missing scene is not a transition", "log %d" % (_game.transition_log.size() - logged))
+	_check(_game.flow.transition_log.size() == logged and not _game.flow.is_transitioning(), "missing scene is not a transition", "log %d" % (_game.flow.transition_log.size() - logged))
 	error_label.hide()
 
 
 func _test_goto_ignored_during_transition() -> void:
-	var logged := _game.transition_log.size()
-	_game.goto(GameState.Flow.TITLE)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
-	_check(_game.transition_log.size() == logged + 1, "goto during transition is ignored", "log grew by %d" % (_game.transition_log.size() - logged))
+	var logged := _game.flow.transition_log.size()
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
+	_check(_game.flow.transition_log.size() == logged + 1, "goto during transition is ignored", "log grew by %d" % (_game.flow.transition_log.size() - logged))
 
 
 ## On 16:9, 19.5:9 and 4:3 the visible rect holds the whole 960x540 base (never cropped),
@@ -544,32 +544,32 @@ func _test_title_button_tap_and_enter() -> void:
 	var title := current_scene as Title
 	await _tap(title.get_node("Safe/EndlessButton") as Control)
 	_check(title.endless_presses == 1 and title.campaign_presses == 0, "a tap presses Endless", "%d presses" % title.endless_presses)
-	_check(_game.is_transitioning() and _game.transition_log.back().begins_with("TITLE -> PLAY (%s)" % PLAY_PATH), "Endless goes to the play scene through goto", str(_game.transition_log.back()))
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Endless starts a run", "%s %s" % [_game.state, current_scene])
-	_check(_game.flow_args.get("mode") == GameState.ENDLESS_MODE and _game.flow_args.get("seed") is int, "the run is Endless with a seed", str(_game.flow_args))
-	var first_seed: int = _game.flow_args["seed"]
+	_check(_game.flow.is_transitioning() and _game.flow.transition_log.back().begins_with("TITLE -> PLAY (%s)" % PLAY_PATH), "Endless goes to the play scene through goto", str(_game.flow.transition_log.back()))
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.PLAY and current_scene is Play, "Endless starts a run", "%s %s" % [_game.flow.state, current_scene])
+	_check(_game.flow.flow_args.get("mode") == GameState.ENDLESS_MODE and _game.flow.flow_args.get("seed") is int, "the run is Endless with a seed", str(_game.flow.flow_args))
+	var first_seed: int = _game.flow.flow_args["seed"]
 	await _open_title()
 	title = current_scene as Title
 	await _tap(title.get_node("Safe/EndlessButton") as Control)
-	await _game.transition_finished
-	_check(current_scene is Play and _game.flow_args.get("seed") != first_seed, "each run gets a fresh seed", "seeds %d and %s" % [first_seed, _game.flow_args.get("seed")])
+	await _game.flow.transition_finished
+	_check(current_scene is Play and _game.flow.flow_args.get("seed") != first_seed, "each run gets a fresh seed", "seeds %d and %s" % [first_seed, _game.flow.flow_args.get("seed")])
 	await _open_title()
 	title = current_scene as Title
 	var from := _log.size()
 	await _tap(title.get_node("Safe/TimeAttackButton") as Control)
 	_check(title.time_attack_presses == 1 and title.endless_presses == 0 and title.campaign_presses == 0, "a tap presses Time Attack", "%d presses" % title.time_attack_presses)
 	_check_logged(from, "^\\[Title\\] Time Attack pressed \\(1\\); starting Time Attack$", "the Time Attack press is logged")
-	if _game.is_transitioning():
-		await _game.transition_finished
-	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow_args.get("seed") is int and _game.flow_args.get("seed") != first_seed, "Time Attack starts a timed run with a fresh seed", str(_game.flow_args))
+	if _game.flow.is_transitioning():
+		await _game.flow.transition_finished
+	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow.flow_args.get("seed") is int and _game.flow.flow_args.get("seed") != first_seed, "Time Attack starts a timed run with a fresh seed", str(_game.flow.flow_args))
 	await _open_title()
 	title = current_scene as Title
 	await _key(KEY_ENTER)
 	_check(title.campaign_presses == 1 and title.endless_presses == 0, "Enter presses the focused Campaign", "%d presses" % title.campaign_presses)
-	_check(_game.transition_log.back().begins_with("TITLE -> CHAPTER_SELECT (%s)" % CHAPTER_SELECT_PATH), "Campaign opens the chapter select through goto", str(_game.transition_log.back()))
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.CHAPTER_SELECT and current_scene is ChapterSelect, "Campaign shows the chapter select", "%s %s" % [_game.state, current_scene])
+	_check(_game.flow.transition_log.back().begins_with("TITLE -> CHAPTER_SELECT (%s)" % CHAPTER_SELECT_PATH), "Campaign opens the chapter select through goto", str(_game.flow.transition_log.back()))
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.CHAPTER_SELECT and current_scene is ChapterSelect, "Campaign shows the chapter select", "%s %s" % [_game.flow.state, current_scene])
 
 
 ## A portrait window shows the rotate overlay over the whole screen and pauses the tree;
@@ -614,7 +614,7 @@ func _test_rotate_overlay_blocks_input() -> void:
 	await process_frame
 	await _key(KEY_ENTER)
 	_check(title.campaign_presses == 1, "Campaign works again after rotating back", "%d presses" % title.campaign_presses)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 
 
 ## A tree already paused before the overlay showed stays paused after it hides.
@@ -643,7 +643,7 @@ func _test_title_content_error_banner() -> void:
 	_check(buttons.all(func(button: Button) -> bool: return button.disabled) and (title.get_node("Safe/TopScoresButton") as Button).disabled, "content errors disable Campaign, Endless, Time Attack and Top Scores", "enabled")
 	for button in buttons:
 		await _tap(button)
-	_check(title.campaign_presses == 0 and title.endless_presses == 0 and title.time_attack_presses == 0 and not _game.is_transitioning(), "a disabled Campaign, Endless or Time Attack starts nothing", "%d, %d, %d presses" % [title.campaign_presses, title.endless_presses, title.time_attack_presses])
+	_check(title.campaign_presses == 0 and title.endless_presses == 0 and title.time_attack_presses == 0 and not _game.flow.is_transitioning(), "a disabled Campaign, Endless or Time Attack starts nothing", "%d, %d, %d presses" % [title.campaign_presses, title.endless_presses, title.time_attack_presses])
 	Content.quiet_errors = false
 	Content.reload()
 	await _open_title()
@@ -1234,18 +1234,18 @@ func _test_pause_touches_are_not_shots() -> void:
 	_check(not play.is_paused() and play.scoring.shots() == 0, "a touch on Resume resumes and is not a shot", "%d shots" % play.scoring.shots())
 	await _touch(_global(play, SKY_POINTS[0]))
 	_check(play.scoring.shots() == 1, "after resuming a touch is a shot again", "%d shots" % play.scoring.shots())
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await process_frame
 	await _touch(_global(play, SKY_POINTS[1]))
 	_check(play.scoring.shots() == 1, "no shots while a transition runs", "%d shots" % play.scoring.shots())
-	await _game.transition_finished
-	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 36})
+	await _game.flow.transition_finished
+	_game.flow.goto(SceneFlow.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 36})
 	await scene_changed
 	var arriving := current_scene as Play
-	_check(arriving != null and _game.is_transitioning(), "the run is on screen while the fade still runs", str(current_scene))
+	_check(arriving != null and _game.flow.is_transitioning(), "the run is on screen while the fade still runs", str(current_scene))
 	arriving.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
 	_check(not arriving.is_paused() and not paused, "a pause during the transition waits for it", "paused early")
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	_check(arriving.is_paused() and paused and arriving.pause_log.back() == "window lost focus", "the pause opens once the transition is done", str(arriving.pause_log))
 	arriving.resume()
 
@@ -1285,17 +1285,17 @@ func _test_pause_restart_and_quit() -> void:
 	var play := await _start_run(35)
 	play.open_pause("test")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	var restarted := current_scene as Play
-	_check(restarted != null and restarted != play and _game.state == GameState.Flow.PLAY and not paused, "Restart starts a new run", "%s paused %s" % [current_scene, paused])
-	_check(restarted != null and restarted.run_seed == _game.flow_args["seed"] and restarted.run_seed != 35 and _game.flow_args["mode"] == GameState.ENDLESS_MODE, "the new run is Endless with a fresh seed", str(_game.flow_args))
+	_check(restarted != null and restarted != play and _game.flow.state == SceneFlow.Flow.PLAY and not paused, "Restart starts a new run", "%s paused %s" % [current_scene, paused])
+	_check(restarted != null and restarted.run_seed == _game.flow.flow_args["seed"] and restarted.run_seed != 35 and _game.flow.flow_args["mode"] == GameState.ENDLESS_MODE, "the new run is Endless with a fresh seed", str(_game.flow.flow_args))
 	restarted.open_pause("test")
 	await process_frame
 	(restarted.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Button).grab_focus()
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE and current_scene is Title and not paused, "Quit to title goes to the title", "%s paused %s" % [current_scene, paused])
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.TITLE and current_scene is Title and not paused, "Quit to title goes to the title", "%s paused %s" % [current_scene, paused])
 
 
 ## 10 escapes end the run on the results screen with its stats; the new best is saved and
@@ -1308,16 +1308,16 @@ func _test_run_ends_on_results() -> void:
 	_check(play.scoring.score == 100, "the run scores one hit first", str(play.scoring.score))
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 6000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
 	await process_frame
 	var results := current_scene as Results
-	_check(results != null and _game.state == GameState.Flow.RESULTS, "10 escapes end the run on the results screen", "%s at %s" % [current_scene, _game.state])
+	_check(results != null and _game.flow.state == SceneFlow.Flow.RESULTS, "10 escapes end the run on the results screen", "%s at %s" % [current_scene, _game.flow.state])
 	if results == null:
 		return
-	var stats := _game.flow_args
+	var stats := _game.flow.flow_args
 	_check(stats.get("escaped") == 10 and stats.get("score") == 100 and stats.get("hits") == 1 and stats.get("kills") == 1 and stats.get("shots") == 1 and stats.get("pigeons") == 0 and stats.get("new_best") == true and stats.get("save_error") == "", "the results get the run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Endless best: 100 \\(was 0\\)$", "the new best is logged")
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 100, Time Attack best 0, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the save is logged")
@@ -1351,20 +1351,20 @@ func _test_run_ends_on_results() -> void:
 	_check(_game.save.best(GameState.ENDLESS_MODE) == 100, "the new best survives a save and reload", str(_game.save.bests))
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == results.get_node("Safe/TitleButton"), "Tab reaches Title", str(root.gui_get_focus_owner()))
-	var gotos := _game.transition_log.size()
+	var gotos := _game.flow.transition_log.size()
 	await _key(KEY_ESCAPE)
 	await process_frame
-	_check(_game.state == GameState.Flow.RESULTS and current_scene == results and _game.transition_log.size() == gotos and not _game.is_transitioning(), "Escape on the results screen starts nothing", "%s, %d new gotos" % [current_scene, _game.transition_log.size() - gotos])
+	_check(_game.flow.state == SceneFlow.Flow.RESULTS and current_scene == results and _game.flow.transition_log.size() == gotos and not _game.flow.is_transitioning(), "Escape on the results screen starts nothing", "%s, %d new gotos" % [current_scene, _game.flow.transition_log.size() - gotos])
 	await _key(KEY_TAB)
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
-	_game.goto(GameState.Flow.RESULTS, {"mode": "endless", "score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 100, "new_best": false, "save_error": ""})
-	await _game.transition_finished
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.PLAY and current_scene is Play, "Play again starts a new run", str(current_scene))
+	_game.flow.goto(SceneFlow.Flow.RESULTS, {"mode": "endless", "score": 40, "shots": 0, "hits": 0, "kills": 0, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 100, "new_best": false, "save_error": ""})
+	await _game.flow.transition_finished
 	_check(not (current_scene.get_node("%NewBest") as Label).visible and _results_texts(current_scene as Results, ["Accuracy", "Shots"]) == [Results.NO_VALUE, "no shots"], "a run below the best shows no New best!, and a dash for no shots", str(_results_texts(current_scene as Results, ["Accuracy", "Shots"])))
 	await _tap(current_scene.get_node("Safe/TitleButton") as Control)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE, "Title goes to the title", str(_game.state))
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.TITLE, "Title goes to the title", str(_game.flow.state))
 	_clear_tool_save()
 
 
@@ -1450,8 +1450,8 @@ func _test_save_web_persist_reporting() -> void:
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(not _game.web.storage_persistent and "Browser storage (IndexedDB) is unavailable" in reported and error_label.visible and error_label.text == reported, "browser storage missing at start is reported at once", reported)
 	_game.web.check_storage(true)
-	_game.goto(GameState.Flow.RESULTS, {"mode": "endless", "score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 500, "new_best": true, "save_error": ""})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS, {"mode": "endless", "score": 500, "shots": 5, "hits": 5, "kills": 5, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": true, "best": 500, "new_best": true, "save_error": ""})
+	await _game.flow.transition_finished
 	var results := current_scene as Results
 	var notice := results.get_node("Safe/SaveError") as Label
 	_check(not notice.visible, "no save notice before a save fails", notice.text)
@@ -1557,12 +1557,12 @@ func _test_pause_escape_toggles() -> void:
 ## tree paused, and the run clock does not move behind it.
 func _test_pause_after_overlay_during_transition_in() -> void:
 	await _open_title()
-	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 37})
+	_game.flow.goto(SceneFlow.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 37})
 	await process_frame
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.screen.is_rotate_overlay_shown() and paused and _game.is_transitioning() and not (current_scene is Play), "the overlay shows during the fade into a run", "overlay %s, scene %s" % [_game.screen.is_rotate_overlay_shown(), current_scene])
-	await _game.transition_finished
+	_check(_game.screen.is_rotate_overlay_shown() and paused and _game.flow.is_transitioning() and not (current_scene is Play), "the overlay shows during the fade into a run", "overlay %s, scene %s" % [_game.screen.is_rotate_overlay_shown(), current_scene])
+	await _game.flow.transition_finished
 	await process_frame
 	var play := current_scene as Play
 	play.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
@@ -1594,7 +1594,7 @@ func _test_run_end_save_failure() -> void:
 	play.escaped = play.mode.escape_limit - 1
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 6000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
@@ -1605,8 +1605,8 @@ func _test_run_end_save_failure() -> void:
 	_check(results != null, "the run ends on the results screen", str(current_scene))
 	if results == null:
 		return
-	var reason: String = _game.flow_args.get("save_error", "")
-	_check(_game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file"), "the results get the new best and why it was not saved", str(_game.flow_args))
+	var reason: String = _game.flow.flow_args.get("save_error", "")
+	_check(_game.flow.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file"), "the results get the new best and why it was not saved", str(_game.flow.flow_args))
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(UNWRITABLE_SAVE_PATH in reported, "the save failure is reported with the save path", reported)
 	var notice := results.get_node("Safe/SaveError") as Label
@@ -1686,12 +1686,12 @@ func _test_time_attack_clock_ends_exactly() -> void:
 	var clocks: Array[float] = []
 	var shown: Array[String] = []
 	for i in 400:
-		if _game.is_transitioning():
+		if _game.flow.is_transitioning():
 			break
 		clocks.append(play.run_clock)
 		shown.append(_text(play, "Time"))
 		await process_frame
-	_check(_game.is_transitioning() and play.run_clock == 3.0 and play.time_left() == 0.0, "the clock stops exactly at the time limit and the run ends", "clock %.6f, transitioning %s" % [play.run_clock, _game.is_transitioning()])
+	_check(_game.flow.is_transitioning() and play.run_clock == 3.0 and play.time_left() == 0.0, "the clock stops exactly at the time limit and the run ends", "clock %.6f, transitioning %s" % [play.run_clock, _game.flow.is_transitioning()])
 	time_attack.time_limit = 60.0
 	# 180 frames of 1/60 s sum to a hair under 3 s in floats: the run must still end on that
 	# frame, not one later, and the clock runs at game speed (one frame per frame).
@@ -1702,7 +1702,7 @@ func _test_time_attack_clock_ends_exactly() -> void:
 	_check(not clocks.is_empty() and is_equal_approx(clocks.back(), 3.0 - FRAME), "the run ends on the first frame that reaches the time limit", "last clock before the end %.15f" % (clocks.back() if not clocks.is_empty() else -1.0))
 	_check(shown.has("3") and shown.has("2") and shown.has("1") and _text(play, "Time") == "0", "the HUD counts the seconds down to 0", "%s ... %s" % [shown.slice(0, 2), _text(play, "Time")])
 	_check_logged(from, "^\\[Play\\] Run end: mode time_attack, seed 52, wave \\d+, time used 3\\.00 of 3\\.00 s, score 0, ", "the run end is logged with the waves and the time used")
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	_check(current_scene is Results and (current_scene.get_node("Safe/Heading") as Label).text == Results.TIMED_HEADING, "the results open when the time is up", str(current_scene))
 	_clear_tool_save()
 
@@ -1781,12 +1781,12 @@ func _test_time_attack_waves_on_clear() -> void:
 	# The bird of wave 2 that was up flees; its escape is past any escape limit.
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
-		if fled.all(func(bird: Variant) -> bool: return not is_instance_valid(bird)) or _game.is_transitioning():
+		if fled.all(func(bird: Variant) -> bool: return not is_instance_valid(bird)) or _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
 	_check(play.wave.index >= 3 and play.ammo.shells == play.wave.shells and play.wave.shells > 0, "a lost wave is followed by the next with a full pool", "wave %d, %d of %d shells" % [play.wave.index, play.ammo.shells, play.wave.shells])
-	_check(not fled.is_empty() and play.escaped > 100 and not _game.is_transitioning() and current_scene == play and play.scoring.score == score, "escapes have no limit and cost no points in Time Attack", "%d escaped, transitioning %s, score %d -> %d" % [play.escaped, _game.is_transitioning(), score, play.scoring.score])
+	_check(not fled.is_empty() and play.escaped > 100 and not _game.flow.is_transitioning() and current_scene == play and play.scoring.score == score, "escapes have no limit and cost no points in Time Attack", "%d escaped, transitioning %s, score %d -> %d" % [play.escaped, _game.flow.is_transitioning(), score, play.scoring.score])
 
 
 ## A Time Attack wave is lost the moment its pool runs out: on the frame of the last shot
@@ -1944,7 +1944,7 @@ func _test_endless_empty_pool_waits_for_the_wave() -> void:
 	var done_before := false
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 900:
-		if play.wave.index == 2 or _game.is_transitioning():
+		if play.wave.index == 2 or _game.flow.is_transitioning():
 			break
 		done_before = play.flying_birds().is_empty() and play.wave_clock >= play.wave.spawns.back().time
 		await process_frame
@@ -1986,7 +1986,7 @@ func _test_time_attack_results() -> void:
 	var from := _log.size()
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 3000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
@@ -1995,7 +1995,7 @@ func _test_time_attack_results() -> void:
 	_check(results != null, "the time limit ends the run on the results screen", str(current_scene))
 	if results == null:
 		return
-	var stats := _game.flow_args
+	var stats := _game.flow.flow_args
 	_check(stats.get("mode") == GameState.TIME_ATTACK_MODE and stats.get("score") == 100 and stats.get("best") == 100 and stats.get("new_best") == true and stats.get("rival_steals") == false and stats.get("stolen") == 0 and stats.get("save_error") == "", "the results get the Time Attack run's stats", str(stats))
 	_check_logged(from, "^\\[Game\\] New Time Attack best: 100 \\(was 0\\)$", "the new Time Attack best is logged")
 	_check_logged(from, "^\\[Game\\] Saved to user://tool_save\\.json: version 4, Endless best 0, Time Attack best 100, 0 levels finished \\(0 stars\\), music 70, sfx 80$", "the new best is saved at once")
@@ -2017,10 +2017,10 @@ func _test_time_attack_results() -> void:
 	_check(title_button.has_focus(), "Tab reaches Title", str(root.gui_get_focus_owner()))
 	await _key(KEY_TAB)
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow_args.get("seed") != 56, "Retry starts a new Time Attack run", str(_game.flow_args))
-	_game.goto(GameState.Flow.TOP_SCORES)
-	await _game.transition_finished
+	await _game.flow.transition_finished
+	_check(current_scene is Play and (current_scene as Play).is_timed() and _game.flow.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and _game.flow.flow_args.get("seed") != 56, "Retry starts a new Time Attack run", str(_game.flow.flow_args))
+	_game.flow.goto(SceneFlow.Flow.TOP_SCORES)
+	await _game.flow.transition_finished
 	await process_frame
 	_check(current_scene is TopScores and (current_scene.get_node("%TimeAttackBest") as Label).text == "100", "the top scores show the new Time Attack best", (current_scene.get_node("%TimeAttackBest") as Label).text if current_scene is TopScores else str(current_scene))
 	_clear_tool_save()
@@ -2033,18 +2033,18 @@ func _test_time_attack_quit_saves_nothing() -> void:
 	var play := await _start_run(57, GameState.TIME_ATTACK_MODE)
 	play.open_pause("pause button")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	play = current_scene as Play
-	_check(play != null and play.is_timed() and _game.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and not paused, "Restart starts a new Time Attack run", str(_game.flow_args))
+	_check(play != null and play.is_timed() and _game.flow.flow_args.get("mode") == GameState.TIME_ATTACK_MODE and not paused, "Restart starts a new Time Attack run", str(_game.flow.flow_args))
 	var bird := await _spawn_flying(play, 12)
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	_check(play.scoring.score == 100, "the run has a score to lose", str(play.scoring.score))
 	var from := _log.size()
 	play.open_pause("pause button")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Control)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE and _game.save.best(GameState.TIME_ATTACK_MODE) == 0 and not FileAccess.file_exists(_game.save.save_path), "quitting to the title records and saves nothing", "%s, bests %s, save %s" % [_game.state, _game.save.bests, FileAccess.file_exists(_game.save.save_path)])
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.TITLE and _game.save.best(GameState.TIME_ATTACK_MODE) == 0 and not FileAccess.file_exists(_game.save.save_path), "quitting to the title records and saves nothing", "%s, bests %s, save %s" % [_game.flow.state, _game.save.bests, FileAccess.file_exists(_game.save.save_path)])
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved") or line.contains("best:")), "nothing logs a best or a save", "a save line")
 	_check_logged(from, "^\\[Play\\] Left the run \\(Quit to title\\): mode time_attack, seed \\d+, wave 1, score 100, 0 escaped, [\\d.]+ s left; nothing recorded$", "leaving the run is logged with the time left")
 	_clear_tool_save()
@@ -2065,7 +2065,7 @@ func _test_time_attack_save_failure() -> void:
 	_game.save.save_path = UNWRITABLE_SAVE_PATH
 	_game.quiet_errors = true
 	for i in 400:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	_game.quiet_errors = false
@@ -2073,8 +2073,8 @@ func _test_time_attack_save_failure() -> void:
 	_game.save.save_failed.disconnect(record)
 	time_attack.time_limit = 60.0
 	var results := current_scene as Results
-	var reason: String = _game.flow_args.get("save_error", "")
-	_check(results != null and _game.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file") and _game.save.save_error == reason and failed == [reason], "an unsaved Time Attack best sets save_error and emits save_failed", "%s / %s" % [_game.flow_args, failed])
+	var reason: String = _game.flow.flow_args.get("save_error", "")
+	_check(results != null and _game.flow.flow_args.get("new_best") == true and reason.begins_with("cannot open the save file") and _game.save.save_error == reason and failed == [reason], "an unsaved Time Attack best sets save_error and emits save_failed", "%s / %s" % [_game.flow.flow_args, failed])
 	if results != null:
 		var notice := results.get_node("Safe/SaveError") as Label
 		_check((results.get_node("%NewBest") as Label).visible and notice.visible and notice.text == Results.SAVE_ERROR_TEXT % reason, "the Time Attack results say New best! and that it could not be saved", notice.text)
@@ -2530,13 +2530,13 @@ func _test_play_armored_takes_two_hits() -> void:
 	play.escaped = play.mode.escape_limit - 1
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 6000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
 	await process_frame
 	var results := current_scene as Results
-	_check(results != null and _game.flow_args.get("kills") == 3 and _game.flow_args.get("hits") == 4 and _game.flow_args.get("shots") == 4, "the run passes 3 birds killed of 4 hits to the results", str(_game.flow_args))
+	_check(results != null and _game.flow.flow_args.get("kills") == 3 and _game.flow.flow_args.get("hits") == 4 and _game.flow.flow_args.get("shots") == 4, "the run passes 3 birds killed of 4 hits to the results", str(_game.flow.flow_args))
 	if results != null:
 		var shown := _results_texts(results, ["Hits", "Accuracy", "Shots"])
 		_check(shown == ["3", "100%", "4 of 4 shots"], "the results count the armored goose once in Birds hit, and both its hits in the accuracy", str(shown))
@@ -2647,13 +2647,13 @@ func _test_play_decoy_penalty() -> void:
 	play.escaped = play.mode.escape_limit - 1
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 6000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
 	await process_frame
 	var results := current_scene as Results
-	_check(results != null and _game.flow_args.get("pigeons") == 2, "the run passes the pigeons hit to the results", str(_game.flow_args))
+	_check(results != null and _game.flow.flow_args.get("pigeons") == 2, "the run passes the pigeons hit to the results", str(_game.flow.flow_args))
 	if results != null:
 		_check_logged(from, "^\\[Results\\] Score \\d+, accuracy 50% \\(2 of 4 shots\\), .*, 2 pigeons hit, ", "the results log the pigeons hit (no longer on screen)")
 		_check(_results_texts(results, ["Accuracy", "Shots"]) == ["50%", "2 of 4 shots"], "pigeon hits are shots but not hits (2 of 4)", str(_results_texts(results, ["Accuracy", "Shots"])))
@@ -2797,12 +2797,12 @@ func _test_rival_steal_ends_run() -> void:
 		await process_frame
 	_check(splitter.stolen and play.flying_birds().all(func(bird: Bird) -> bool: return bird.spec.id != "gosling") and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Split")), "a stolen splitter launches no goslings", "stolen %s" % splitter.stolen)
 	for i in 120:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	await process_frame
 	var results := current_scene as Results
-	var stats := _game.flow_args
+	var stats := _game.flow.flow_args
 	_check(results != null and stats.get("escaped") == 10 and stats.get("stolen") == 1 and stats.get("rival_score") == 120, "a steal at escape_limit - 1 ends the run, and the results get it", str(stats))
 	_check_logged(from, "^\\[Play\\] Run end: .*, 10 escaped \\(1 stolen\\), rival score 120, best ", "the run end logs the birds stolen and the rival's score")
 	_check_logged(from, "^\\[Play\\] Heckle \\(results\\) #\\d+: \".+\" ", "the results line is logged")
@@ -3163,7 +3163,7 @@ func _test_backdrop_cycle_and_fade() -> void:
 	var from := _log.size()
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 6000:
-		if play.wave.index >= 4 or _game.state != GameState.Flow.PLAY:
+		if play.wave.index >= 4 or _game.flow.state != SceneFlow.Flow.PLAY:
 			break
 		await process_frame
 	Engine.time_scale = 1.0
@@ -3289,12 +3289,12 @@ func _test_menu_texts_fit_largest_values() -> void:
 		_game.save.bests[mode_id] = SaveStore.SAVE_SCORE_MAX
 	for level in Content.levels():
 		_game.save.progress[level.id] = Campaign.Record.new(Campaign.MAX_STARS, SaveStore.SAVE_SCORE_MAX)
-	var screens: Array[Array] = [[GameState.Flow.TITLE, {}, ["Safe/CampaignButton", "Safe/EndlessButton", "Safe/TimeAttackButton"]], [GameState.Flow.CHAPTER_SELECT, {}, ["Safe/Chapter1", "Safe/Chapter2", "Safe/Chapter3", "Safe/Chapter4", "Safe/BackButton"]]]
+	var screens: Array[Array] = [[SceneFlow.Flow.TITLE, {}, ["Safe/CampaignButton", "Safe/EndlessButton", "Safe/TimeAttackButton"]], [SceneFlow.Flow.CHAPTER_SELECT, {}, ["Safe/Chapter1", "Safe/Chapter2", "Safe/Chapter3", "Safe/Chapter4", "Safe/BackButton"]]]
 	for chapter_spec in Content.chapters():
-		screens.append([GameState.Flow.LEVEL_SELECT, {"chapter": chapter_spec.id}, ["Safe/Level1", "Safe/Level2", "Safe/Level3", "Safe/Level4", "Safe/Level5", "Safe/Level6", "Safe/BackButton"]])
+		screens.append([SceneFlow.Flow.LEVEL_SELECT, {"chapter": chapter_spec.id}, ["Safe/Level1", "Safe/Level2", "Safe/Level3", "Safe/Level4", "Safe/Level5", "Safe/Level6", "Safe/BackButton"]])
 	for screen: Array in screens:
-		_game.goto(screen[0], screen[1])
-		await _game.transition_finished
+		_game.flow.goto(screen[0], screen[1])
+		await _game.flow.transition_finished
 		await process_frame
 		for window: Vector2i in [LANDSCAPE_16_9, LANDSCAPE_4_3]:
 			root.size = window
@@ -3316,10 +3316,10 @@ func _test_menu_texts_fit_largest_values() -> void:
 				var row := current_scene.get_node(node_path).get_node_or_null("Detail") as Control
 				if row != null and row.get_combined_minimum_size().x > (current_scene.get_node(node_path) as Control).size.x - 12.0:
 					overflow.append("%s's star row needs %.0f" % [node_path, row.get_combined_minimum_size().x])
-			_check(overflow.is_empty(), "%s %dx%d: every button's text fits at the largest values (%s)" % [GameState.Flow.keys()[screen[0]], window.x, window.y, "; ".join(texts)], "; ".join(overflow))
+			_check(overflow.is_empty(), "%s %dx%d: every button's text fits at the largest values (%s)" % [SceneFlow.Flow.keys()[screen[0]], window.x, window.y, "; ".join(texts)], "; ".join(overflow))
 	# The bests now live on the top scores screen: the largest fit their panels on screen.
-	_game.goto(GameState.Flow.TOP_SCORES)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TOP_SCORES)
+	await _game.flow.transition_finished
 	await process_frame
 	for window: Vector2i in [LANDSCAPE_16_9, LANDSCAPE_4_3]:
 		root.size = window
@@ -3365,26 +3365,26 @@ func _test_load_errors_reach_the_screen() -> void:
 	file = FileAccess.open(scene, FileAccess.WRITE)
 	file.store_string('[gd_scene load_steps=2 format=3]\n\n[ext_resource type="Texture2D" path="res://art/no_such_bird.svg" id="1_art"]\n\n[node name="Broken" type="Sprite2D"]\ntexture = ExtResource("1_art")\n')
 	file.close()
-	var real_path: String = _game.scene_paths[GameState.Flow.TITLE]
-	_game.scene_paths[GameState.Flow.TITLE] = scene
+	var real_path: String = _game.flow.scene_paths[SceneFlow.Flow.TITLE]
+	_game.flow.scene_paths[SceneFlow.Flow.TITLE] = scene
 	_game.quiet_errors = true
 	var reported := _game.reported_errors.size()
-	var logged := _game.transition_log.size()
+	var logged := _game.flow.transition_log.size()
 	var scene_before := current_scene
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await process_frame
 	_game.quiet_errors = false
-	_game.scene_paths[GameState.Flow.TITLE] = real_path
-	var loading := _game.is_transitioning()
+	_game.flow.scene_paths[SceneFlow.Flow.TITLE] = real_path
+	var loading := _game.flow.is_transitioning()
 	if loading:
 		# The broken scene is being loaded (no check stopped it): let that transition end and
 		# go back to the real title, so this test fails on its own checks below.
-		await _game.transition_finished
+		await _game.flow.transition_finished
 		await _open_title()
 	var message: String = _game.reported_errors.back() if _game.reported_errors.size() > reported else ""
 	_check(_game.reported_errors.size() == reported + 1 and scene in message and "res://art/no_such_bird.svg" in message, "a scene that needs a missing file is reported with the scene and the file named", message)
 	_check(label.visible and label.text == message, "the missing scene file shows on the error label", label.text)
-	_check(not loading and current_scene == scene_before and _game.transition_log.size() == logged, "nothing is loaded or changed", str(current_scene))
+	_check(not loading and current_scene == scene_before and _game.flow.transition_log.size() == logged, "nothing is loaded or changed", str(current_scene))
 	label.hide()
 	DirAccess.remove_absolute(scene)
 
@@ -3781,7 +3781,7 @@ func _test_campaign_level_plays_all_waves() -> void:
 	var waves_seen: Array[int] = []
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 9000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		if current_scene == play and play.wave != null and not play.wave.index in waves_seen:
 			waves_seen.append(play.wave.index)
@@ -3789,7 +3789,7 @@ func _test_campaign_level_plays_all_waves() -> void:
 	Engine.time_scale = 1.0
 	await process_frame
 	var results := current_scene as Results
-	var stats := _game.flow_args
+	var stats := _game.flow.flow_args
 	_check(results != null and waves_seen == [1, 2, 3] and stats.get("level") == "dawn_2" and stats.get("escaped") == 12 and stats.get("stars") == 0, "the level plays all 3 waves, losing all 12 birds, and then ends on results", "waves %s, %s" % [waves_seen, stats])
 	_check_logged(from, "^\\[Play\\] Run end: level dawn_2, seed 102, wave 3 of 3, score 0, 0 shots .*, 12 escaped \\(\\d+ stolen\\), rival score \\d+, 0 stars, level best 0 \\(0 stars\\)$", "the level's end is logged with its stars and best")
 	_check_logged(from, "^\\[Game\\] Level dawn_2 finished: score 0, 0 stars \\(not passed\\); best 0 stars, score 0 \\(was never finished\\)$", "the finished level is recorded as not passed")
@@ -3807,8 +3807,8 @@ func _test_campaign_level_plays_all_waves() -> void:
 		_clear_tool_save()
 		return
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(current_scene is Play and _game.flow_args == {"level": "dawn_2"} and (current_scene as Play).level == Content.level("dawn_2"), "Retry plays the level again", str(_game.flow_args))
+	await _game.flow.transition_finished
+	_check(current_scene is Play and _game.flow.flow_args == {"level": "dawn_2"} and (current_scene as Play).level == Content.level("dawn_2"), "Retry plays the level again", str(_game.flow.flow_args))
 	_clear_tool_save()
 
 
@@ -3823,13 +3823,13 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	play.scoring.score = 1500
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 9000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
 	await process_frame
 	var results := current_scene as Results
-	var stats := _game.flow_args.duplicate()
+	var stats := _game.flow.flow_args.duplicate()
 	_check(results != null and stats.get("stars") == 2 and stats.get("best") == 1500 and stats.get("best_stars") == 2 and stats.get("new_best") == true and stats.get("next_level") == "dawn_2" and stats.get("save_error") == "", "a level passed with 2 stars opens dawn_2", str(stats))
 	if results == null:
 		return
@@ -3852,35 +3852,35 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	var after_two := root.gui_get_focus_owner()
 	await _key(KEY_TAB)
 	_check(after_tab == retry and after_two == levels and root.gui_get_focus_owner() == next, "Tab cycles Next, Retry and Levels", "%s %s %s" % [after_tab, after_two, root.gui_get_focus_owner()])
-	var gotos := _game.transition_log.size()
+	var gotos := _game.flow.transition_log.size()
 	await _key(KEY_ESCAPE)
 	await process_frame
-	_check(current_scene == results and _game.transition_log.size() == gotos, "Escape on the results screen starts nothing", str(current_scene))
+	_check(current_scene == results and _game.flow.transition_log.size() == gotos, "Escape on the results screen starts nothing", str(current_scene))
 	await _check_results_fit(results)
 	await _tap(levels)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	var select := current_scene as LevelSelect
-	_check(select != null and _game.flow_args == {"chapter": "dawn", "level": "dawn_1"} and (select.get_node("Safe/Level1") as Control).has_focus(), "Levels opens the chapter's level select on the level just played (not the last open one, dawn_2)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
+	_check(select != null and _game.flow.flow_args == {"chapter": "dawn", "level": "dawn_1"} and (select.get_node("Safe/Level1") as Control).has_focus(), "Levels opens the chapter's level select on the level just played (not the last open one, dawn_2)", "%s, focus %s" % [_game.flow.flow_args, root.gui_get_focus_owner()])
 	if select != null:
 		var stars_seen := [0, 1, 2].map(func(i: int) -> String: return "%s %d" % [(select.get_node("Safe/Level%d" % (i + 1)) as Button).text, select.stars_shown(i)])
 		_check(stars_seen == ["Level 1 2", "Level 2 0", "Level 3 -1"], "the level select shows the stars earned and the level it opened", str(stars_seen))
-	_game.goto(GameState.Flow.RESULTS, stats)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
+	await _game.flow.transition_finished
 	await _tap(current_scene.get_node("Safe/RetryButton") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	var again := current_scene as Play
-	_check(again != null and again.level == Content.level("dawn_1"), "Retry plays the level again", str(_game.flow_args))
+	_check(again != null and again.level == Content.level("dawn_1"), "Retry plays the level again", str(_game.flow.flow_args))
 	again.open_pause("test")
 	await _tap(again.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
-	_check(current_scene is Play and current_scene != again and (current_scene as Play).level == Content.level("dawn_1") and not paused, "Restart in a level plays the same level again", str(_game.flow_args))
-	_game.goto(GameState.Flow.RESULTS, stats)
-	await _game.transition_finished
+	_check(current_scene is Play and current_scene != again and (current_scene as Play).level == Content.level("dawn_1") and not paused, "Restart in a level plays the same level again", str(_game.flow.flow_args))
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
+	await _game.flow.transition_finished
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_2"), "Next plays the next level", str(_game.flow_args))
+	await _game.flow.transition_finished
+	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_2"), "Next plays the next level", str(_game.flow.flow_args))
 	_game.save.progress = {}
 	_game.save.load_game()
 	_check(_game.save.progress.has("dawn_1") and _game.save.progress["dawn_1"].stars == 2 and _game.save.progress["dawn_1"].score == 1500, "the level's progress survives a reload", str(_game.save.progress.keys()))
@@ -3903,7 +3903,7 @@ func _test_campaign_save_failure() -> void:
 	var from := _log.size()
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 9000:
-		if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+		if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	Engine.time_scale = 1.0
@@ -3912,8 +3912,8 @@ func _test_campaign_save_failure() -> void:
 	_game.save.save_path = SaveStore.TOOL_SAVE_PATH
 	_game.save.save_failed.disconnect(record)
 	var results := current_scene as Results
-	var reason: String = _game.flow_args.get("save_error", "")
-	_check(results != null and reason.begins_with("cannot open the save file") and failed == [reason] and _game.save.save_error == reason, "a failed level save sets save_error and emits save_failed", "%s / %s" % [failed, _game.flow_args])
+	var reason: String = _game.flow.flow_args.get("save_error", "")
+	_check(results != null and reason.begins_with("cannot open the save file") and failed == [reason] and _game.save.save_error == reason, "a failed level save sets save_error and emits save_failed", "%s / %s" % [failed, _game.flow.flow_args])
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(UNWRITABLE_SAVE_PATH in reported, "the failed level save is reported with the save path", reported)
 	if results != null:
@@ -3931,8 +3931,8 @@ func _test_campaign_save_failure() -> void:
 func _test_campaign_unknown_level() -> void:
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
-	_game.goto(GameState.Flow.PLAY, {"level": "dusk_9"})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.PLAY, {"level": "dusk_9"})
+	await _game.flow.transition_finished
 	await process_frame
 	_game.quiet_errors = false
 	var play := current_scene as Play
@@ -3940,8 +3940,8 @@ func _test_campaign_unknown_level() -> void:
 	_check(reported == "Cannot start level 'dusk_9': no such level in levels.json" and (_game.get_node("Fade/ErrorLabel") as Label).visible, "an unknown level is reported", reported)
 	_check(play != null and play.wave == null and play.is_paused() and (play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Button).has_focus(), "nothing runs; only Quit to title is offered", str(root.gui_get_focus_owner()))
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE and not paused, "Quit leaves the level that could not start", str(_game.state))
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.TITLE and not paused, "Quit leaves the level that could not start", str(_game.flow.state))
 	(_game.get_node("Fade/ErrorLabel") as Label).hide()
 
 
@@ -3978,13 +3978,13 @@ func _test_results_verdict() -> void:
 		"the verdict is a win, a loss or a tie", Results.verdict_text(200, 200))
 	var stats := {"mode": "endless", "score": 40, "shots": 2, "hits": 1, "kills": 1, "pigeons": 0, "escaped": 10, "stolen": 0, "rival_score": 0, "rival_line": "Not bad.", "rival_steals": false, "best": 100, "new_best": false, "save_error": ""}
 	var from := _log.size()
-	_game.goto(GameState.Flow.RESULTS, stats)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
+	await _game.flow.transition_finished
 	_check(not (current_scene.get_node("%RivalPanel") as Control).visible and not Array(_log.since(from)).any(func(l: String) -> bool: return l.begins_with("[Results] Verdict")), "a run without rival steals shows no Rival panel and logs no verdict", "shown or logged")
 	stats["rival_steals"] = true
 	from = _log.size()
-	_game.goto(GameState.Flow.RESULTS, stats)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
+	await _game.flow.transition_finished
 	_check((current_scene.get_node("%RivalPanel") as Control).visible, "a run with rival steals shows the Rival panel", "hidden")
 	_check_logged(from, "^\\[Results\\] Verdict: You 40 vs rival 0: you win!$", "a run with rival steals logs the verdict")
 	_check_results_hide_dropped_lines(current_scene as Results, "Not bad.")
@@ -4008,7 +4008,7 @@ func _test_results_stars_and_panels() -> void:
 			stats["stars"] = earned
 			stats["new_best"] = earned == Campaign.MAX_STARS
 			var from := _log.size()
-			_game.goto(GameState.Flow.RESULTS, stats)
+			_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
 			await scene_changed
 			var results := current_scene as Results
 			var start := _game.audio._clock
@@ -4030,7 +4030,7 @@ func _test_results_stars_and_panels() -> void:
 						star_peak = maxf(star_peak, full.scale.x)
 						star_low = minf(star_low, full.scale.x)
 				badge_peak = maxf(badge_peak, (results.get_node("%NewBest") as Control).scale.x)
-			while _game.is_transitioning():
+			while _game.flow.is_transitioning():
 				await process_frame
 			var slots := (results.get_node("%Stars") as Control).get_children()
 			var filled := slots.map(func(slot: Node) -> bool: return (slot.get_node("Full") as CanvasItem).visible)
@@ -4056,8 +4056,8 @@ func _test_results_stars_and_panels() -> void:
 				_check((badge_peak > 1.05) != reduce_motion, "%s: the New best! badge %s with its fanfare" % [label, "stays still" if reduce_motion else "bounces"], "peak scale %.2f" % badge_peak)
 	_game.save.set_reduce_motion(false)
 	var opened_from := _log.size()
-	_game.goto(GameState.Flow.RESULTS, {})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS, {})
+	await _game.flow.transition_finished
 	var empty := current_scene as Results
 	_check(_results_texts(empty, ["Score", "Accuracy", "Hits", "Best"]) == [Results.NO_VALUE, Results.NO_VALUE, Results.NO_VALUE, Results.best_text(0)] and not (empty.get_node("%RivalPanel") as Control).visible and not (empty.get_node("%Stars") as Control).visible,
 		"opened without run stats, the panels show dashes, no Rival panel, no stars", str(_results_texts(empty, ["Score", "Accuracy", "Hits", "Best"])))
@@ -4092,8 +4092,8 @@ func _check_results_hide_dropped_lines(results: Results, rival_line: String) -> 
 func _test_chapter_select() -> void:
 	_clear_tool_save()
 	var from := _log.size()
-	_game.goto(GameState.Flow.CHAPTER_SELECT)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.CHAPTER_SELECT)
+	await _game.flow.transition_finished
 	await process_frame
 	var screen := current_scene as ChapterSelect
 	var buttons: Array[Button] = []
@@ -4108,28 +4108,28 @@ func _test_chapter_select() -> void:
 	buttons.append(back)
 	await _check_select_layout(screen, buttons)
 	buttons.pop_back()
-	var gotos := _game.transition_log.size()
+	var gotos := _game.flow.transition_log.size()
 	await _tap(buttons[1])
 	buttons[3].grab_focus()
 	await _key(KEY_ENTER)
 	await process_frame
-	_check(_game.transition_log.size() == gotos and current_scene == screen, "a locked chapter cannot be started by a touch or Enter", str(_game.transition_log.slice(gotos)))
+	_check(_game.flow.transition_log.size() == gotos and current_scene == screen, "a locked chapter cannot be started by a touch or Enter", str(_game.flow.transition_log.slice(gotos)))
 	back.grab_focus()
 	await _key(KEY_ENTER)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.TITLE, "Back goes to the title", str(_game.state))
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.TITLE, "Back goes to the title", str(_game.flow.state))
 	for index in range(1, 7):
 		_game.save.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
-	_game.goto(GameState.Flow.CHAPTER_SELECT)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.CHAPTER_SELECT)
+	await _game.flow.transition_finished
 	await process_frame
 	screen = current_scene as ChapterSelect
 	var dawn := screen.get_node("Safe/Chapter1") as Button
 	var noon := screen.get_node("Safe/Chapter2") as Button
 	_check(screen.detail_text(0) == "18/18" and screen.detail_text(1) == "0/18" and not noon.disabled and noon.has_focus() and (screen.get_node("Safe/Chapter3") as Button).disabled, "passing dawn_6 opens noon, now focused", "%s %s / %s %s" % [dawn.text, screen.detail_text(0), noon.text, screen.detail_text(1)])
 	await _tap(dawn)
-	await _game.transition_finished
-	_check(current_scene is LevelSelect and _game.flow_args == {"chapter": "dawn"}, "a chapter opens its level select", str(_game.flow_args))
+	await _game.flow.transition_finished
+	_check(current_scene is LevelSelect and _game.flow.flow_args == {"chapter": "dawn"}, "a chapter opens its level select", str(_game.flow.flow_args))
 	_clear_tool_save()
 
 
@@ -4143,8 +4143,8 @@ func _test_chapter_select() -> void:
 func _test_level_select() -> void:
 	_clear_tool_save()
 	_game.save.progress["dawn_1"] = Campaign.Record.new(2, 1500)
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.flow.transition_finished
 	await process_frame
 	var screen := current_scene as LevelSelect
 	var buttons: Array[Button] = []
@@ -4170,23 +4170,23 @@ func _test_level_select() -> void:
 	buttons.append(back)
 	await _check_select_layout(screen, buttons)
 	buttons.pop_back()
-	var gotos := _game.transition_log.size()
+	var gotos := _game.flow.transition_log.size()
 	await _tap(buttons[2])
 	buttons[5].grab_focus()
 	await _key(KEY_ENTER)
 	await process_frame
-	_check(_game.transition_log.size() == gotos and current_scene == screen, "a locked level cannot be started by a touch or Enter", str(_game.transition_log.slice(gotos)))
+	_check(_game.flow.transition_log.size() == gotos and current_scene == screen, "a locked level cannot be started by a touch or Enter", str(_game.flow.transition_log.slice(gotos)))
 	await _tap(back)
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.CHAPTER_SELECT, "Back goes to the chapter select", str(_game.state))
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
-	await _game.transition_finished
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.CHAPTER_SELECT, "Back goes to the chapter select", str(_game.flow.state))
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.flow.transition_finished
 	await process_frame
 	var from := _log.size()
 	await _tap(current_scene.get_node("Safe/Level1") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
-	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_1") and _game.flow_args == {"level": "dawn_1"}, "a level starts it", str(_game.flow_args))
+	_check(current_scene is Play and (current_scene as Play).level == Content.level("dawn_1") and _game.flow.flow_args == {"level": "dawn_1"}, "a level starts it", str(_game.flow.flow_args))
 	_check_logged(from, "^\\[LevelSelect\\] Level dawn_1 pressed; starting it$", "the level press is logged")
 	_clear_tool_save()
 
@@ -4229,29 +4229,29 @@ func _test_select_focus_returns() -> void:
 	for index in range(1, 7):
 		_game.save.progress["dawn_%d" % index] = Campaign.Record.new(3, 20000)
 	_game.save.progress["noon_1"] = Campaign.Record.new(1, 3000)
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.flow.transition_finished
 	await process_frame
 	_check((current_scene.get_node("Safe/Level6") as Control).has_focus(), "without a level to return to, the last open level is focused", str(root.gui_get_focus_owner()))
 	await _tap(current_scene.get_node("Safe/BackButton") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
-	_check(_game.flow_args == {"chapter": "dawn"} and (current_scene.get_node("Safe/Chapter1") as Control).has_focus(), "Back focuses the chapter just left (dawn), not the last open one (noon)", "%s, focus %s" % [_game.flow_args, root.gui_get_focus_owner()])
+	_check(_game.flow.flow_args == {"chapter": "dawn"} and (current_scene.get_node("Safe/Chapter1") as Control).has_focus(), "Back focuses the chapter just left (dawn), not the last open one (noon)", "%s, focus %s" % [_game.flow.flow_args, root.gui_get_focus_owner()])
 	await _open_title()
 	await _key(KEY_ENTER)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
-	_check(_game.flow_args == {} and (current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "from the title the last open chapter is focused", str(root.gui_get_focus_owner()))
-	_game.goto(GameState.Flow.CHAPTER_SELECT, {"chapter": "sunset"})
-	await _game.transition_finished
+	_check(_game.flow.flow_args == {} and (current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "from the title the last open chapter is focused", str(root.gui_get_focus_owner()))
+	_game.flow.goto(SceneFlow.Flow.CHAPTER_SELECT, {"chapter": "sunset"})
+	await _game.flow.transition_finished
 	await process_frame
 	_check((current_scene.get_node("Safe/Chapter2") as Control).has_focus(), "returning to a locked chapter falls back to the last open one", str(root.gui_get_focus_owner()))
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn", "level": "dawn_3"})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "dawn", "level": "dawn_3"})
+	await _game.flow.transition_finished
 	await process_frame
 	_check((current_scene.get_node("Safe/Level3") as Control).has_focus(), "returning to an open level focuses it", str(root.gui_get_focus_owner()))
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "noon", "level": "noon_4"})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "noon", "level": "noon_4"})
+	await _game.flow.transition_finished
 	await process_frame
 	_check((current_scene.get_node("Safe/Level2") as Control).has_focus(), "returning to a locked level falls back to the last open one", str(root.gui_get_focus_owner()))
 	_clear_tool_save()
@@ -4350,8 +4350,8 @@ func _check_screen_layout(screen: Control, controls: Array[Control], labels: Arr
 
 ## Starts campaign level `level_id` and waits until it is on screen.
 func _start_level(level_id: String) -> Play:
-	_game.start_level(level_id)
-	await _game.transition_finished
+	_game.flow.start_level(level_id)
+	await _game.flow.transition_finished
 	await process_frame
 	return current_scene as Play
 
@@ -4410,8 +4410,8 @@ func _cued_bird(play: Play, bird_seed: int, bird_id: String) -> Bird:
 ## Starts a run of `mode_id` (Endless unless it says otherwise) with `run_seed` and waits
 ## until it is on screen.
 func _start_run(run_seed: int, mode_id := GameState.ENDLESS_MODE) -> Play:
-	_game.goto(GameState.Flow.PLAY, {"mode": mode_id, "seed": run_seed})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.PLAY, {"mode": mode_id, "seed": run_seed})
+	await _game.flow.transition_finished
 	await process_frame
 	return current_scene as Play
 
@@ -4518,8 +4518,8 @@ func _title_buttons(title: Title) -> Array[Button]:
 
 ## Goes to a fresh title screen and waits for the transition to finish.
 func _open_title() -> void:
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	await process_frame
 
 
@@ -4649,19 +4649,19 @@ func _test_audio_files_match_ids() -> void:
 ## restarted), the chapter's in a level, the mode's in Endless and Time Attack, the
 ## results' on results; each change crossfades and is logged (plan AC 7).
 func _test_audio_music_per_screen() -> void:
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	_check(_game.audio.music_track == AudioManager.TITLE_TRACK and _game.audio.music_player().stream.resource_path == Content.music_path("title"), "the title plays the title loop", _game.audio.music_track)
 	var title_player := _game.audio.music_player()
 	var changes := _game.audio.music_changes
-	_game.goto(GameState.Flow.CHAPTER_SELECT)
-	await _game.transition_finished
-	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.CHAPTER_SELECT)
+	await _game.flow.transition_finished
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.flow.transition_finished
 	_check(_game.audio.music_track == AudioManager.TITLE_TRACK and _game.audio.music_changes == changes and _game.audio.music_player() == title_player and is_equal_approx(title_player.volume_linear, 1.0),
 		"the chapter and level selects keep the title loop playing untouched", "%s, %d changes" % [_game.audio.music_track, _game.audio.music_changes - changes])
 	var from := _log.size()
-	_game.start_level("dawn_1")
+	_game.flow.start_level("dawn_1")
 	await process_frame
 	var fading_in := _game.audio.music_player()
 	_check(_game.audio.music_track == "campaign_dawn" and fading_in != title_player and fading_in.volume_linear < 1.0, "a dawn level crossfades to the dawn loop", "%s, %.2f" % [_game.audio.music_track, fading_in.volume_linear])
@@ -4669,30 +4669,30 @@ func _test_audio_music_per_screen() -> void:
 	for i in ceili(AudioManager.CROSSFADE_TIME / FRAME) + 2:
 		await process_frame
 	_check(is_equal_approx(fading_in.volume_linear, 1.0) and is_zero_approx(title_player.volume_linear), "the crossfade is over within CROSSFADE_TIME", "%.2f in, %.2f out" % [fading_in.volume_linear, title_player.volume_linear])
-	while _game.is_transitioning():
+	while _game.flow.is_transitioning():
 		await process_frame
 	var expected := {"noon_1": "campaign_noon", "sunset_1": "campaign_sunset", "night_1": "campaign_night"}
 	for level_id: String in expected:
-		_game.start_level(level_id)
-		await _game.transition_finished
+		_game.flow.start_level(level_id)
+		await _game.flow.transition_finished
 		_check(_game.audio.music_track == expected[level_id], "level %s plays %s" % [level_id, expected[level_id]], _game.audio.music_track)
-	_game.goto(GameState.Flow.RESULTS)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS)
+	await _game.flow.transition_finished
 	_check(_game.audio.music_track == AudioManager.RESULTS_TRACK, "results play the results loop", _game.audio.music_track)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	_check(_game.audio.music_track == AudioManager.TITLE_TRACK, "back on the title the title loop plays", _game.audio.music_track)
 	await _start_run(83)
 	_check(_game.audio.music_track == "endless", "Endless plays its loop", _game.audio.music_track)
 	changes = _game.audio.music_changes
 	(current_scene as Play).open_pause("test")
 	(current_scene.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).pressed.emit()
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	_check(_game.audio.music_track == "endless" and _game.audio.music_changes == changes, "restarting Endless keeps its loop playing", "%s, %d changes" % [_game.audio.music_track, _game.audio.music_changes - changes])
 	await _start_run(84, GameState.TIME_ATTACK_MODE)
 	_check(_game.audio.music_track == "time_attack", "Time Attack plays its loop", _game.audio.music_track)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Every game event plays its sound through Game.audio.play_sfx, exactly as listed (plan AC 8):
@@ -4794,26 +4794,26 @@ func _test_audio_every_event_sound() -> void:
 		"the shot that uses the last shell plays out_of_shells", str(last_shot))
 	_check(last_shot.count(&"wave_lost") == 1 and play.wave.index == 2, "a lost Time Attack wave plays wave_lost", str(last_shot))
 	# A button press plays the tap; the results play the rival's blurt, a sound per star and the new best.
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	await process_frame
 	_game.audio.sfx_log.clear()
 	var chapters := (current_scene as Title).get_node("Safe/CampaignButton") as Button
 	await _tap(chapters)
 	_check(_game.audio.sfx_log == [&"ui_tap"], "a button press plays ui_tap", str(_game.audio.sfx_log))
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	var level := Content.level("dawn_1")
 	var stats := {"seed": 1, "score": level.stars[1], "shots": 4, "hits": 3, "kills": 3, "pigeons": 0, "escaped": 0, "stolen": 0, "rival_score": 0,
 		"rival_line": "Beginner's luck, kid.", "rival_steals": true, "best": level.stars[1], "new_best": true, "save_error": "", "level": "dawn_1", "stars": 2,
 		"best_stars": 2, "next_level": "dawn_2"}
 	_game.audio.sfx_log.clear()
-	_game.goto(GameState.Flow.RESULTS, stats)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.RESULTS, stats)
+	await _game.flow.transition_finished
 	for i in ceili(4 * Results.STAR_SOUND_GAP / FRAME) + 2:
 		await process_frame
 	_check(_game.audio.sfx_log == _heckle_sounds("results") + [&"star", &"star", &"new_best"], "the results play the rival's blurt (silent while HECKLE_BLURTS is off), one sound per star and the new best", str(_game.audio.sfx_log))
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## A heckle's blurt: one syllable per word (at most BLURT_SYLLABLES_MAX), the same line
@@ -4871,8 +4871,8 @@ func _test_audio_heckle_blurts() -> void:
 		await process_frame
 	_check(_game.audio.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.audio.blurt_syllables_waiting())
 	_game.audio.heckle_blurts = AudioManager.HECKLE_BLURTS
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Time Attack's last 10 s tick once each and the end sounds the buzzer once; a pause stops
@@ -4910,9 +4910,9 @@ func _test_time_attack_countdown() -> void:
 		var due := 13.0 - (Play.COUNTDOWN_SECONDS - k)
 		_check(ticks[k] >= due - 0.001 and ticks[k] < due + 4.0 * FRAME + 0.001, "tick %d sounds as %d s are left" % [k + 1, Play.COUNTDOWN_SECONDS - k], "at run clock %.3f, due %.3f" % [ticks[k], due])
 	_check(_game.audio.sfx_log.count(&"time_up") == 1 and _game.audio.sfx_log.find(&"time_up") > _game.audio.sfx_log.rfind(&"countdown_tick"), "time running out sounds the buzzer once, after the last tick", str(_game.audio.sfx_log.count(&"time_up")))
-	await _game.transition_finished
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	await _game.flow.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## The pause menu's Music and SFX toggles: focusable, at least 44x44 and inside the safe
@@ -4959,8 +4959,8 @@ func _test_pause_menu_mutes() -> void:
 		await _tap(toggle)
 		_check(not (_game.save.music_muted if i == 0 else _game.save.sfx_muted) and not AudioServer.is_bus_mute(bus) and toggle.button_pressed and toggle.text.ends_with(": on"), "a second press on %s unmutes it" % toggle.name, toggle.text)
 	play.resume()
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Pausing holds the sounds in flight (the pause's own sound plays) and ducks the music;
@@ -4999,8 +4999,8 @@ func _test_pause_holds_sounds_and_ducks_music() -> void:
 	_check(play.is_paused() and _game.audio.audio_paused and absf(AudioServer.get_bus_volume_db(music_bus) - (full + AudioManager.PAUSE_DUCK_DB)) < 0.01, "back in landscape the menu keeps the audio paused", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
 	play.resume()
 	_check(not _game.audio.audio_paused and _game.audio.held_sounds == 0 and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming after the overlay restores the audio", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## A missing or unknown sound, a missing loop and a screen whose loop is missing are each
@@ -5030,11 +5030,11 @@ func _test_audio_missing_files_reported() -> void:
 	dawn.music = "campaign_dusk"
 	errors = _game.reported_errors.size()
 	var scene := current_scene
-	_game.start_level("dawn_1")
+	_game.flow.start_level("dawn_1")
 	await process_frame
 	dawn.music = real
 	_check(_game.reported_errors.slice(errors) == ["Cannot go to PLAY: scene 'res://scenes/play.tscn' needs res://audio/music/campaign_dusk.mp3, which is missing"]
-		and current_scene == scene and not _game.is_transitioning() and _game.state == GameState.Flow.TITLE, "goto refuses a screen whose loop is missing and names it", str(_game.reported_errors.slice(errors)))
+		and current_scene == scene and not _game.flow.is_transitioning() and _game.flow.state == SceneFlow.Flow.TITLE, "goto refuses a screen whose loop is missing and names it", str(_game.reported_errors.slice(errors)))
 	_check(_game.audio.check_audio(), "with every file back the audio check passes", "")
 	_game.quiet_errors = false
 	label.hide()
@@ -5046,12 +5046,12 @@ func _test_audio_missing_files_reported() -> void:
 ## "empty_click" and count no shot (the pause button's tap is _test_audio_every_event_sound's).
 func _test_dropped_taps_are_silent() -> void:
 	var play := await _start_run(94)
-	_game.goto(GameState.Flow.TITLE)
+	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await process_frame
-	_check(_game.is_transitioning(), "a transition is running", "")
+	_check(_game.flow.is_transitioning(), "a transition is running", "")
 	await _check_dropped_taps(play, "during a transition")
-	_check(_game.is_transitioning(), "the taps were all made during the transition", "it finished first")
-	await _game.transition_finished
+	_check(_game.flow.is_transitioning(), "the taps were all made during the transition", "it finished first")
+	await _game.flow.transition_finished
 	play = await _start_run(95)
 	play.open_pause("test")
 	await process_frame
@@ -5064,8 +5064,8 @@ func _test_dropped_taps_are_silent() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	play.resume()
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## With all SFX_VOICES pool voices sounding as the pause opens, every one is held and none
@@ -5090,8 +5090,8 @@ func _test_pause_keeps_every_held_sound() -> void:
 	play.resume()
 	_check(_game.audio.held_players().is_empty() and _game.audio.sounds_in_flight() == AudioManager.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
 		"on resuming every held sound continues", "%d in flight" % _game.audio.sounds_in_flight())
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## A sound or loop file that exists but is not audio (a resource of another type) is reported
@@ -5160,8 +5160,8 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 		var escapes := _pitches_of(&"escape")
 		_check(not escapes.is_empty() and escapes.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high and pitch != 1.0), "an escape plays at a varied pitch within the band", str(escapes))
 	_check(runs[0] == runs[1], "the same run seed gives the same shot pitches", "%s vs %s" % runs)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Every bird type gives its call (spec.call_sound at spec.call_pitch) exactly once, the
@@ -5276,8 +5276,8 @@ func _test_bird_calls_on_appearing() -> void:
 	await process_frame
 	_check(later[0] == 0 and _all_freed(goslings), "the goslings never call again, fleeing until they escape", "%d more calls" % later[0])
 	play.mode.rival_steals = true
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## True when every bird of `birds` has been freed (read by index: a freed bird cannot be
@@ -5411,12 +5411,12 @@ func _test_settings_screen() -> void:
 	var title := current_scene as Title
 	var from := _log.size()
 	await _tap(title.get_node("Safe/SettingsButton") as Control)
-	_check(title.settings_presses == 1 and _game.transition_log.back().begins_with("TITLE -> SETTINGS (res://scenes/settings.tscn)"), "a tap on Settings opens the settings through goto", str(_game.transition_log.back()))
+	_check(title.settings_presses == 1 and _game.flow.transition_log.back().begins_with("TITLE -> SETTINGS (res://scenes/settings.tscn)"), "a tap on Settings opens the settings through goto", str(_game.flow.transition_log.back()))
 	_check_logged(from, "^\\[Title\\] Settings pressed \\(1\\); opening the settings$", "the Settings press is logged")
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	var settings := current_scene as Settings
-	_check(settings != null and _game.state == GameState.Flow.SETTINGS and not settings.overlay, "the settings screen shows", str(current_scene))
+	_check(settings != null and _game.flow.state == SceneFlow.Flow.SETTINGS and not settings.overlay, "the settings screen shows", str(current_scene))
 	if settings == null:
 		return
 	_check_logged(from, "^\\[Settings\\] Opened from the title: music 70, sfx 80, reduce motion off$", "the settings' arrival is logged with every setting")
@@ -5475,18 +5475,18 @@ func _test_settings_screen() -> void:
 	_check(reduce.text == "Reduce motion: off" and not reduce.button_pressed, "the screen follows a change made elsewhere", reduce.text)
 	back.grab_focus()
 	await _key(KEY_ENTER)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	title = current_scene as Title
 	_check(title != null and (title.get_node("Safe/SettingsButton") as Button).has_focus(), "Back returns to the title with Settings focused", str(root.gui_get_focus_owner()))
 	await _tap(title.get_node("Safe/SettingsButton") as Control)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	from = _log.size()
 	await _key(KEY_ESCAPE)
 	# Bounded: a dead Escape must fail here, not hang until the watchdog.
 	for i in 120:
-		if current_scene is Title and not _game.is_transitioning():
+		if current_scene is Title and not _game.flow.is_transitioning():
 			break
 		await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/SettingsButton") as Button).has_focus(), "Escape on the settings screen returns to the title too", str(current_scene))
@@ -5556,8 +5556,8 @@ func _test_settings_over_paused_run() -> void:
 	await process_frame
 	_check(play.settings_overlay() == null and not paused and not _game.audio.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
 	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	_clear_tool_save()
 
 
@@ -5572,12 +5572,12 @@ func _test_credits_screen() -> void:
 	var title := current_scene as Title
 	var from := _log.size()
 	await _tap(title.get_node("Safe/CreditsButton") as Control)
-	_check(title.credits_presses == 1 and _game.transition_log.back().begins_with("TITLE -> CREDITS (res://scenes/credits.tscn)"), "a tap on Credits opens the credits through goto", str(_game.transition_log.back()))
+	_check(title.credits_presses == 1 and _game.flow.transition_log.back().begins_with("TITLE -> CREDITS (res://scenes/credits.tscn)"), "a tap on Credits opens the credits through goto", str(_game.flow.transition_log.back()))
 	_check_logged(from, "^\\[Title\\] Credits pressed \\(1\\); opening the credits$", "the Credits press is logged")
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	var credits := current_scene as Credits
-	_check(credits != null and _game.state == GameState.Flow.CREDITS, "the credits screen shows", str(current_scene))
+	_check(credits != null and _game.flow.state == SceneFlow.Flow.CREDITS, "the credits screen shows", str(current_scene))
 	if credits == null:
 		return
 	var text := "%s\n%s" % [_text_of(credits, "MadeBy"), credits.lines_text()]
@@ -5623,15 +5623,15 @@ func _test_credits_screen() -> void:
 	await process_frame
 	from = _log.size()
 	await _key(KEY_ENTER)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Back returns to the title with Credits focused", str(root.gui_get_focus_owner()))
 	_check_logged(from, "^\\[Credits\\] Back pressed; returning to the title$", "Back is logged")
 	await _key(KEY_ENTER)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	await _key(KEY_ESCAPE)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/CreditsButton") as Button).has_focus(), "Escape on the credits returns to the title too", str(current_scene))
 
@@ -5652,12 +5652,12 @@ func _test_top_scores_screen() -> void:
 	var title := current_scene as Title
 	var from := _log.size()
 	await _tap(title.get_node("Safe/TopScoresButton") as Control)
-	_check(title.top_scores_presses == 1 and _game.transition_log.back().begins_with("TITLE -> TOP_SCORES (res://scenes/top_scores.tscn)"), "a tap on Top Scores opens the top scores through goto", str(_game.transition_log.back()))
+	_check(title.top_scores_presses == 1 and _game.flow.transition_log.back().begins_with("TITLE -> TOP_SCORES (res://scenes/top_scores.tscn)"), "a tap on Top Scores opens the top scores through goto", str(_game.flow.transition_log.back()))
 	_check_logged(from, "^\\[Title\\] Top Scores pressed \\(1\\); opening the top scores$", "the Top Scores press is logged")
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	var scores := current_scene as TopScores
-	_check(scores != null and _game.state == GameState.Flow.TOP_SCORES, "the top scores screen shows", str(current_scene))
+	_check(scores != null and _game.flow.state == SceneFlow.Flow.TOP_SCORES, "the top scores screen shows", str(current_scene))
 	if scores == null:
 		_clear_tool_save()
 		return
@@ -5693,15 +5693,15 @@ func _test_top_scores_screen() -> void:
 	await process_frame
 	from = _log.size()
 	await _key(KEY_ENTER)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/TopScoresButton") as Button).has_focus(), "Back returns to the title with Top Scores focused", str(root.gui_get_focus_owner()))
 	_check_logged(from, "^\\[TopScores\\] Back pressed; returning to the title$", "Back is logged")
 	await _key(KEY_ENTER)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	await _key(KEY_ESCAPE)
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/TopScoresButton") as Button).has_focus(), "Escape on the top scores returns to the title too", str(current_scene))
 	_clear_tool_save()
@@ -5867,7 +5867,7 @@ func _test_title_goose_shot() -> void:
 	sounds = _game.audio.sfx_log.size()
 	await _tap(title.get_node("Safe/CreditsButton") as Control)
 	_check(title.credits_presses == 1 and not &"shot" in _game.audio.sfx_log.slice(sounds) and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Title] Shot")), "a tap on a button only presses it", str(_game.audio.sfx_log.slice(sounds)))
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	_clear_tool_save()
 
 
@@ -5893,7 +5893,7 @@ func _test_transition_wipe_and_fade() -> void:
 	await _open_title()
 	var cover := _game.get_node("Fade/Cover") as ColorRect
 	var wipe := _game.get_node("Fade/Cover/Wipe") as Wipe
-	_check(GameState.WIPE_TIME <= 0.4 and GameState.WIPE_TIME > 0.0, "the wipe takes at most 0.4 s each way", str(GameState.WIPE_TIME))
+	_check(SceneFlow.WIPE_TIME <= 0.4 and SceneFlow.WIPE_TIME > 0.0, "the wipe takes at most 0.4 s each way", str(SceneFlow.WIPE_TIME))
 	for reduce: bool in [false, true]:
 		_game.save.reduce_motion = reduce
 		await _open_title()
@@ -5902,7 +5902,7 @@ func _test_transition_wipe_and_fade() -> void:
 		var changed := [false]
 		var on_change := func() -> void: changed[0] = true
 		scene_changed.connect(on_change, CONNECT_ONE_SHOT)
-		_game.goto(GameState.Flow.TITLE)
+		_game.flow.goto(SceneFlow.Flow.TITLE)
 		var in_frames := 0
 		var out_frames := 0
 		var coverage: Array[float] = []
@@ -5911,25 +5911,25 @@ func _test_transition_wipe_and_fade() -> void:
 		var wipe_shown := false
 		var mid_edge := -1.0
 		var first_edge := -1.0
-		while _game.is_transitioning():
+		while _game.flow.is_transitioning():
 			await process_frame
 			if changed[0]:
 				out_frames += 1
 			else:
 				in_frames += 1
-			coverage.append(_game.cover_progress())
-			styles.append(_game.transition_style())
+			coverage.append(_game.flow.cover_progress())
+			styles.append(_game.flow.transition_style())
 			blocked = blocked and (not cover.visible or cover.mouse_filter == Control.MOUSE_FILTER_STOP)
 			wipe_shown = wipe_shown or wipe.visible
 			if not reduce and not changed[0] and wipe.coverage() > 0.3 and wipe.coverage() < 0.7 and mid_edge < 0.0:
 				mid_edge = wipe.edge_y()
 			if not reduce and in_frames == 1:
 				first_edge = wipe.edge_y()
-		var time := GameState.FADE_TIME if reduce else GameState.WIPE_TIME
+		var time := SceneFlow.FADE_TIME if reduce else SceneFlow.WIPE_TIME
 		var label := "reduce motion: plain fade" if reduce else "the wipe"
 		var expected_frames := roundi(time / FRAME)
 		_check(in_frames >= expected_frames and in_frames <= expected_frames + 3 and out_frames >= expected_frames and out_frames <= expected_frames + 3, "%s covers in %.2f s and clears in %.2f s" % [label, time, time], "%d frames in, %d out (expected %d)" % [in_frames, out_frames, expected_frames])
-		_check(coverage.max() >= 0.999 and is_zero_approx(coverage.back()) and is_zero_approx(_game.cover_progress()), "%s covers the screen fully, then clears" % label, str(coverage))
+		_check(coverage.max() >= 0.999 and is_zero_approx(coverage.back()) and is_zero_approx(_game.flow.cover_progress()), "%s covers the screen fully, then clears" % label, str(coverage))
 		_check(styles.all(func(style: String) -> bool: return style == ("fade" if reduce else "wipe")), "%s is the transition style throughout" % label, str(styles.slice(0, 3)))
 		_check(blocked and not cover.visible and cover.mouse_filter == Control.MOUSE_FILTER_IGNORE, "%s blocks touches while it runs and lets them through after" % label, "blocked %s" % blocked)
 		_check(wipe_shown != reduce, "the grass wipe shows only without reduce motion", "wipe shown %s" % wipe_shown)
@@ -5943,12 +5943,12 @@ func _test_transition_wipe_and_fade() -> void:
 		_check_logged(from, "^\\[Game\\] Arrived at TITLE$", "goto still logs its arrival")
 		# A tap on a button during the transition presses nothing.
 		title = current_scene as Title
-		_game.goto(GameState.Flow.TITLE)
+		_game.flow.goto(SceneFlow.Flow.TITLE)
 		await process_frame
 		await process_frame
 		await _tap(title.get_node("Safe/CampaignButton") as Control)
 		_check(title.campaign_presses == 0, "%s: a tap during the transition presses nothing" % label, "%d presses" % title.campaign_presses)
-		await _game.transition_finished
+		await _game.flow.transition_finished
 	_game.save.reduce_motion = false
 
 
@@ -6040,8 +6040,8 @@ func _test_hit_stop() -> void:
 		await process_frame
 		frames += 1
 	_check(absf((left - play.time_left()) - (frames * FRAME - Play.HIT_STOP_TIME)) < 1e-6, "the Time Attack clock loses exactly the stop's time", "%.4f -> %.4f over %d frames" % [left, play.time_left(), frames])
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Feathers: a kill bursts FEATHERS_PER_BURST feathers in the bird's own colours at the hit
@@ -6104,8 +6104,8 @@ func _test_feathers() -> void:
 	_check(none == 0 and loose.live_count() == 0 and _game.reported_errors.size() == errors + 1 and _game.reported_errors.back().contains("'dragon'"), "a sprite without feather colours is reported once and bursts nothing", str(_game.reported_errors.slice(errors)))
 	(_game.get_node("Fade/ErrorLabel") as Label).hide()
 	loose.free()
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Screen shake: an armored kill, a golden kill, a decoy hit, a steal and a lost wave each
@@ -6172,8 +6172,8 @@ func _test_screen_shake() -> void:
 	for i in play.wave.shells:
 		await _touch(grass)
 	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\): 12 units over 0\\.40 s$", "a lost wave shakes")
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Pop-ups: a score pop-up bounces in past its size and settles; combo pop-ups are larger
@@ -6229,8 +6229,8 @@ func _test_popup_motion() -> void:
 		top_outside = top_outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
 		await process_frame
 	_check(not top_outside, "a pop-up for a hit at the top edge stays inside the visible area as it bounces and rises", "outside")
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 
 
 ## Reduce motion (saved) turns off the screen shake, the wipe (a plain fade), the pop-ups'
@@ -6242,7 +6242,7 @@ func _test_reduce_motion_everywhere() -> void:
 	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
 	_check(saved is Dictionary and (saved as Dictionary)["settings"]["reduce_motion"] == true, "reduce motion is saved", str(saved))
 	await _open_title()
-	_check(_game.transition_style() == "fade", "screens change by the plain fade", _game.transition_style())
+	_check(_game.flow.transition_style() == "fade", "screens change by the plain fade", _game.flow.transition_style())
 	var scenery := current_scene.get_node("Scenery") as Node2D
 	var drift := 0.0
 	for i in 240:
@@ -6289,9 +6289,9 @@ func _test_reduce_motion_everywhere() -> void:
 	await _touch(_global(play, Vector2(480, 200)))
 	_check(play.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
 	_game.save.set_reduce_motion(false)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
-	_check(_game.transition_style() == "wipe", "with reduce motion off the wipe is back", _game.transition_style())
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
+	_check(_game.flow.transition_style() == "wipe", "with reduce motion off the wipe is back", _game.flow.transition_style())
 	_clear_tool_save()
 
 
@@ -6383,8 +6383,8 @@ func _test_slider_hold_cut_short() -> void:
 	_game.save.load_game()
 	_game.save.save_game()
 	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path)) as Dictionary)["settings"]["music"]
-	_game.goto(GameState.Flow.SETTINGS)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.SETTINGS)
+	await _game.flow.transition_finished
 	await process_frame
 	var settings := current_scene as Settings
 	var slider := settings.music_slider()
@@ -6441,8 +6441,8 @@ func _test_slider_hold_cut_short() -> void:
 		if play.is_paused():
 			play.resume()
 	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	_clear_tool_save()
 
 
@@ -6553,14 +6553,14 @@ func _test_crosshair_cursor() -> void:
 	play._end_run()
 	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)" and play.cursor_calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	_check(play.cursor_calls.size() == 6, "every change made exactly one Input call", str(play.cursor_calls))
-	await _game.transition_finished
-	_check(_game.state == GameState.Flow.RESULTS, "the run ended on the results", str(_game.state))
+	await _game.flow.transition_finished
+	_check(_game.flow.state == SceneFlow.Flow.RESULTS, "the run ended on the results", str(_game.flow.state))
 	_check_logged(from, "^\\[Play\\] Cursor: arrow \\(the run is over\\)$", "the arrow is logged with its cause")
 	play = await _start_run(74)
 	_check(play.crosshair_shown, "a new run shows the crosshair", str(play.cursor_log))
 	var calls := play.cursor_calls
-	_game.goto(GameState.Flow.TITLE)
-	await _game.transition_finished
+	_game.flow.goto(SceneFlow.Flow.TITLE)
+	await _game.flow.transition_finished
 	_check(calls.back() == arrow_call, "leaving Play resets the pointer to the arrow", str(calls))
 
 
@@ -6573,11 +6573,11 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	var crosshair_call := [Play.CROSSHAIR, Input.CURSOR_ARROW, Play.CROSSHAIR.get_size() / 2.0]
 	var arrow_call := [null, Input.CURSOR_ARROW, Vector2.ZERO]
 	await _open_title()
-	_game.goto(GameState.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 77})
+	_game.flow.goto(SceneFlow.Flow.PLAY, {"mode": GameState.ENDLESS_MODE, "seed": 77})
 	await process_frame
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	await _game.transition_finished
+	await _game.flow.transition_finished
 	await process_frame
 	var play := current_scene as Play
 	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
@@ -6632,7 +6632,7 @@ func _test_rival_cues_always_finish() -> void:
 		var name := play.level.id if play.level != null else play.mode.id
 		Engine.time_scale = 8.0
 		for i in 3000:
-			if _game.state == GameState.Flow.RESULTS and not _game.is_transitioning():
+			if _game.flow.state == SceneFlow.Flow.RESULTS and not _game.flow.is_transitioning():
 				break
 			await process_frame
 		Engine.time_scale = 1.0
@@ -6640,7 +6640,7 @@ func _test_rival_cues_always_finish() -> void:
 		var cues := lines.filter(func(line: String) -> bool: return line.begins_with("[Play] Aim cue on ") and not line.contains(" cancelled ")).size()
 		var steals := lines.filter(func(line: String) -> bool: return line.begins_with("[Play] Stolen ")).size()
 		var fled := lines.filter(func(line: String) -> bool: return line.contains(" cancelled (fled)"))
-		_check(_game.state == GameState.Flow.RESULTS and steals >= 3 and cues == steals and fled.is_empty(), "%s: every cue started ends in a steal, none cancelled as fled" % name, "%d cues, %d steals, fled: %s" % [cues, steals, fled])
+		_check(_game.flow.state == SceneFlow.Flow.RESULTS and steals >= 3 and cues == steals and fled.is_empty(), "%s: every cue started ends in a steal, none cancelled as fled" % name, "%d cues, %d steals, fled: %s" % [cues, steals, fled])
 	await _open_title()
 
 
@@ -6716,7 +6716,7 @@ func _test_rival_laugh_before_results_blurt() -> void:
 			_check(laugh_on_results, "%s: the laugh plays after the change to the results screen" % label, "scene %s" % current_scene)
 		_check(blurt_clock >= laugh_clock + laugh_length - FRAME, "%s: the results' blurt starts once the laugh has finished" % label, "laugh at %.3f (%.2f s long), first syllable at %.3f" % [laugh_clock, laugh_length, blurt_clock])
 		_check_logged(from, "^\\[Audio\\] SFX heckle_results: \\d+ syllables \\(.*\\) for \".+\", starting in [\\d.]+ s once rival_laugh has finished$", "%s: the results blurt logs its wait for the laugh" % label)
-		while _game.is_transitioning():
+		while _game.flow.is_transitioning():
 			await process_frame
 		var results := current_scene as Results
 		_check(results != null and (results.get_node("%RivalPanel") as Control).visible, "%s: the results show at once, the rival's panel with them" % label, "scene %s" % current_scene)
