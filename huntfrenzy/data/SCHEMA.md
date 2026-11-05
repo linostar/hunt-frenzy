@@ -110,8 +110,8 @@ Exactly `Content.CHAPTER_COUNT` (4) chapters, in campaign order.
 | `wobble_hz` | float | 0..5 | Wobble frequency (title crossing only). |
 | `flee_time` | float | 0.1..60 | Seconds of flight before it climbs off the top. |
 | `linger_time` | float | 0.1..60 | Seconds of flight after which the rival starts aiming at it (modes with `rival_steals`). Required for every bird, the decoy too (never used for it); `linger_time + aim_time < flee_time` (I13). |
-| `call` | string | sound effect id (`GameState.SFX_IDS`) | The call it gives the first frame any of its opaque art shows above the grass line (`Bird.appeared`), once per bird; fleeing makes no sound. Today every rising bird meets this on its spawn frame (its climb tilt lifts the art above the line), a split child at its launch (I25). |
-| `call_pitch` | float | 0.5..2 | The pitch its call plays at (1 is the recording's own; `Game.play_sfx`). |
+| `call` | string | sound effect id (`AudioManager.SFX_IDS`) | The call it gives the first frame any of its opaque art shows above the grass line (`Bird.appeared`), once per bird; fleeing makes no sound. Today every rising bird meets this on its spawn frame (its climb tilt lifts the art above the line), a split child at its launch (I25). |
+| `call_pitch` | float | 0.5..2 | The pitch its call plays at (1 is the recording's own; `Game.audio.play_sfx`). |
 | `points` | int | 0..100000 | Points of a kill, before the multiplier. 0 only for a decoy (I6). |
 | `hp` | int | 1..5 | Hits to kill. `hp > 1` needs the damaged frames (I3). |
 | `sprite` | string | 1..26 chars | Art name (above); every frame must exist (I3). |
@@ -307,10 +307,10 @@ against a fallback value.
 - **I23** Every music track the data names (a chapter's `music`, a mode's `music`) is a snake_case id whose loop exists
   as `res://audio/music/<id>.mp3` (made by `tools/music.py`): `unknown music track '<id>' (no
   res://audio/music/<id>.mp3)`, a non-snake_case id `'<id>' is not a snake_case music track id`. The title and results
-  loops are the game's own (`GameState.TITLE_TRACK`, `RESULTS_TRACK`), checked when the game starts.
-- **I25** Every bird's `call` is one of the game's sound effects, `GameState.SFX_IDS` (each made by `tools/sfx.py`
+  loops are the game's own (`AudioManager.TITLE_TRACK`, `RESULTS_TRACK`), checked when the game starts.
+- **I25** Every bird's `call` is one of the game's sound effects, `AudioManager.SFX_IDS` (each made by `tools/sfx.py`
   as `res://audio/sfx/<id>.wav`; the game checks every file exists when it starts): `unknown sound effect '<id>' (I25: a
-  call must be one of GameState.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`Content.CALL_PITCH_MIN`..`MAX`, I2).
+  call must be one of AudioManager.SFX_IDS)`. Its `call_pitch` lies in 0.5..2 (`Content.CALL_PITCH_MIN`..`MAX`, I2).
 - **I26** Every backdrop the data shows (a chapter's `backdrop`, a mode's `backdrops[].backdrop`) has a rival tint in
   `Backdrop.RIVAL_TINTS` (palette colours: neutral at noon, warm at dawn and sunset, cool and moonlit at night), which
   Play and the title set as the rival's modulate over it: `backdrop '<id>' has no rival tint (I26: ...)`.

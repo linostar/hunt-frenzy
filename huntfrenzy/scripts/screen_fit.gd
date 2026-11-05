@@ -137,4 +137,4 @@ func _update_rotate_overlay() -> void:
 		_paused_by_rotate = false
 	rotate_overlay_changed.emit(portrait)
 	# After the signal: a run that re-pauses on it keeps its sounds held.
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()

@@ -1564,7 +1564,7 @@ func _i24_problems() -> Array[String]:
 	return ["Flight.SPEED_SPREAD_TOP_SCALE %.2f is not the highest speed scale in the content, %.2f" % [Flight.SPEED_SPREAD_TOP_SCALE, top]]
 
 
-## I25: every bird's call is one of the game's sound effects (GameState.SFX_IDS) with its
+## I25: every bird's call is one of the game's sound effects (AudioManager.SFX_IDS) with its
 ## file, played at a call_pitch in 0.5..2; the real data gives each type its own call and
 ## pitch. An unknown, mistyped or missing call and an out-of-range, mistyped or missing
 ## call_pitch are each reported alone.
@@ -1574,9 +1574,9 @@ func _test_i25_bird_calls() -> void:
 	for spec in Content.birds():
 		var want: Array = expected[spec.id]
 		_check(spec.call_sound == want[0] and is_equal_approx(spec.call_pitch, want[1]), "I25 %s calls %s at x%s" % [spec.id, want[0], want[1]], "%s x%s" % [spec.call_sound, spec.call_pitch])
-		_check(StringName(spec.call_sound) in GameState.SFX_IDS and ResourceLoader.exists(GameState.SFX_PATH % spec.call_sound), "I25 %s's call is a sound effect with its file" % spec.id, GameState.SFX_PATH % spec.call_sound)
+		_check(StringName(spec.call_sound) in AudioManager.SFX_IDS and ResourceLoader.exists(AudioManager.SFX_PATH % spec.call_sound), "I25 %s's call is a sound effect with its file" % spec.id, AudioManager.SFX_PATH % spec.call_sound)
 	_expect_load_errors("I25 an unknown call", _mutated("birds.json", func(data: Array) -> void: data[4]["call"] = "call_duck"),
-		["data/birds.json [zigzag] call: unknown sound effect 'call_duck' (I25: a call must be one of GameState.SFX_IDS)"])
+		["data/birds.json [zigzag] call: unknown sound effect 'call_duck' (I25: a call must be one of AudioManager.SFX_IDS)"])
 	_expect_load_errors("I25 a call that is not a string", _mutated("birds.json", func(data: Array) -> void: data[0]["call"] = 3),
 		["data/birds.json [goose] call: expected String, got float"])
 	_expect_load_errors("I25 a bird without a call", _mutated("birds.json", func(data: Array) -> void: (data[6] as Dictionary).erase("call")),

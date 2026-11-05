@@ -194,7 +194,7 @@ func save_summary() -> String:
 ## mutes are then applied to the buses.
 func load_game() -> void:
 	_read_save()
-	_game.apply_volumes()
+	_game.audio.apply_volumes()
 
 
 func _read_save() -> void:

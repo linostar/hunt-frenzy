@@ -83,7 +83,7 @@ extends Node2D
 ## goes to the title. The grass hides
 ## what is behind it: a shot on it (at or below GRASS_Y) hits no bird. Everything is logged with enough context
 ## (the run seed, wave times, shot positions) to replay the run.
-## Sound (Game.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
+## Sound (Game.audio.play_sfx): a shot with a shell plays "shot", then what it did ("hit", or for a
 ## kill of an armored bird "armored_kill", a splitter "split_pop", the run's golden bird
 ## "golden_chime"; "armored_clank" for a hit short of the bird's hp, "decoy_penalty" for the
 ## decoy, "combo_up" when the combo rises; nothing more for a miss; the shot, the plain hit
@@ -95,10 +95,10 @@ extends Node2D
 ## every rising bird on its spawn frame, a gosling at its launch; fleeing makes no sound), its call (its spec's call
 ## at its call_pitch); the rival's
 ## aim cue "rival_aim" and his steal "rival_steal"; each heckle shown his blurt
-## (Game.play_heckle; silent while Game.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
+## (Game.audio.play_heckle; silent while AudioManager.HECKLE_BLURTS is off). A timed run ticks ("countdown_tick") once at each of the last
 ## COUNTDOWN_SECONDS whole seconds left and sounds "time_up" when the time runs out; the
 ## countdown runs on run_clock, so a pause stops it. The pause menu plays "pause" and
-## "resume" and holds the run's sounds and ducks the music while open (Game.sync_audio_pause);
+## "resume" and holds the run's sounds and ducks the music while open (Game.audio.sync_audio_pause);
 ## its Music and SFX toggles mute their bus at once (saved). Its Settings button opens the
 ## settings screen over the paused run (open_settings: the tree stays paused, the sounds
 ## held and the music ducked); its Back (or Escape) closes it and focuses Settings again,
@@ -323,7 +323,7 @@ func _ready() -> void:
 	_settings_button.pressed.connect(open_settings)
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
-	_game.audio_settings_changed.connect(_show_audio_settings)
+	_game.audio.audio_settings_changed.connect(_show_audio_settings)
 	_show_audio_settings()
 	_fit()
 	_start_run()
@@ -374,14 +374,14 @@ func _process(frame_delta: float) -> void:
 		_time_label.text = "%d" % ceili(time_left())
 		_tick_countdown(left_before, time_left())
 		if time_left() <= 0.0:
-			_game.play_sfx(&"time_up")
+			_game.audio.play_sfx(&"time_up")
 			_end_run()
 			return
 	while _next_spawn < wave.spawns.size() and wave.spawns[_next_spawn].time <= wave_clock:
 		var spawn := wave.spawns[_next_spawn]
 		_next_spawn += 1
 		if _next_spawn == 1:
-			_game.play_sfx(&"wave_start")
+			_game.audio.play_sfx(&"wave_start")
 		var bird := spawn_bird(spawn.bird_id, spawn.bird_seed)
 		print("[Play] Spawned %s #%d (wave %d, seed %d, speed x%.3f) at t %.2f%s" % [spawn.bird_id, bird.number, wave.index, spawn.bird_seed, bird.speed_scale, wave_clock, ", fleeing (no shells)" if ammo.is_empty() else ""])
 	_update_steals()
@@ -392,7 +392,7 @@ func _process(frame_delta: float) -> void:
 		if level != null and wave.index >= level.waves:
 			_end_run()
 			return
-		_game.play_sfx(&"wave_clear")
+		_game.audio.play_sfx(&"wave_clear")
 		_heckle("wave_end")
 		_start_wave(wave.index + 1)
 
@@ -469,12 +469,12 @@ func open_pause(cause: String) -> void:
 		return
 	get_tree().paused = true
 	# The run's sounds are held before the menu's own sound starts.
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()
 	if _pause_menu.visible:
 		return
 	_pause_menu.show()
 	_show_crosshair(false, "paused")
-	_game.play_sfx(&"pause")
+	_game.audio.play_sfx(&"pause")
 	_resume_button.grab_focus(true)
 	pause_log.append(cause)
 	print("[Play] Paused (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
@@ -489,9 +489,9 @@ func resume(cause := "Resume") -> void:
 	close_settings()
 	_pause_menu.hide()
 	# On the menu voice, while the audio is still paused, so it never takes a held sound's voice.
-	_game.play_sfx(&"resume")
+	_game.audio.play_sfx(&"resume")
 	get_tree().paused = false
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()
 	_show_crosshair(true)
 	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
 
@@ -717,7 +717,7 @@ func _on_shot(at: Vector2) -> void:
 	var point := _world.to_local(at)
 	if not ammo.use():
 		refused += 1
-		_game.play_sfx(&"empty_click")
+		_game.audio.play_sfx(&"empty_click")
 		print("[Play] Shot refused at (%.1f, %.1f): no shells left (wave %d at t %.2f, %d refused)" % [at.x, at.y, wave.index, wave_clock, refused])
 		_show_empty_cue()
 		return
@@ -733,7 +733,7 @@ func _on_shot(at: Vector2) -> void:
 		if _heckle("miss"):
 			_react(RIVAL_BRAG, "brags after the miss")
 	if ammo.is_empty():
-		_game.play_sfx(&"out_of_shells")
+		_game.audio.play_sfx(&"out_of_shells")
 		var fleeing := flying_birds()
 		for bird in fleeing:
 			bird.flee()
@@ -753,7 +753,7 @@ func _lose_wave(waiting: int) -> void:
 		if Content.bird(wave.spawns[i].bird_id).escape_counts:
 			counted += 1
 	escaped += counted
-	_game.play_sfx(&"wave_lost")
+	_game.audio.play_sfx(&"wave_lost")
 	shake("lost wave")
 	print("[Play] Wave %d lost (no shells): %d birds still to spawn skipped, %d of them counted as escaped (%s escaped), %d flying flee%s" % [
 		wave.index, waiting, counted, _escapes(), _wave_birds_flying().size(), _clock_note()])
@@ -767,14 +767,14 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 	var multiplier := scoring.multiplier
 	if not target.hit():
 		scoring.damage()
-		_game.play_sfx(&"armored_clank")
+		_game.audio.play_sfx(&"armored_clank")
 		_popup(point, DAMAGE_TEXT, POPUP_COLOR, "damage")
 		print("[Play] Hit %s #%d (hit %d/%d) at (%.1f, %.1f): no points, combo x%d kept, score %d (wave %d at t %.2f, %d shells left)" % [target.spec.id, target.number, target.hits_taken, target.spec.hp, at.x, at.y, multiplier, scoring.score, wave.index, wave_clock, ammo.shells])
 		return
 	var awarded := scoring.hit(target.spec.points)
 	_play_sound(_kill_sound(target.spec))
 	if scoring.multiplier > multiplier:
-		_game.play_sfx(&"combo_up")
+		_game.audio.play_sfx(&"combo_up")
 	_start_hit_stop(target)
 	_feathers.burst(point, target.spec.sprite)
 	if target.spec.hp > 1:
@@ -795,7 +795,7 @@ func _hit_bird(target: Bird, point: Vector2, at: Vector2) -> void:
 ## Plays sound `id`, a VARIED_SOUNDS one at its next seeded pitch within SOUND_PITCH_SPREAD.
 func _play_sound(id: StringName) -> void:
 	var pitch := _pitch_rng.randf_range(1.0 - SOUND_PITCH_SPREAD, 1.0 + SOUND_PITCH_SPREAD) if id in VARIED_SOUNDS else 1.0
-	_game.play_sfx(id, pitch)
+	_game.audio.play_sfx(id, pitch)
 
 
 ## The sound of a kill: an armored bird's (hp above 1) last hit, a splitter bursting, the
@@ -906,7 +906,7 @@ func _split(parent: Bird, point: Vector2) -> void:
 func _hit_decoy(target: Bird, point: Vector2, at: Vector2) -> void:
 	target.hit()
 	var deducted := scoring.penalty(target.spec.penalty)
-	_game.play_sfx(&"decoy_penalty")
+	_game.audio.play_sfx(&"decoy_penalty")
 	_feathers.burst(point, target.spec.sprite)
 	shake("decoy hit")
 	_popup(point, "-%d" % deducted, PENALTY_COLOR, "penalty")
@@ -948,7 +948,7 @@ func _update_steals() -> void:
 func _start_cue(bird: Bird, eligible: int) -> void:
 	bird.set_cue(true)
 	_update_rival_pose()
-	_game.play_sfx(&"rival_aim")
+	_game.audio.play_sfx(&"rival_aim")
 	var since := "no cue before" if _last_cue_end == -INF else "%.2f s since the last cue ended" % (run_clock - _last_cue_end)
 	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (the longest flown of %d eligible; %s, aim gap %.2f s) (wave %d at t %.2f, rival score %d, %d stolen)" % [
 		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * linger_scale, rival_lines.aim_time, eligible, since, RIVAL_AIM_GAP, wave.index, wave_clock, rival_score, stolen])
@@ -969,8 +969,8 @@ func _steal(bird: Bird) -> void:
 	bird.steal()
 	_last_cue_end = run_clock
 	_update_rival_pose()
-	_game.play_sfx(&"rival_steal")
-	_game.play_sfx_later(&"rival_laugh", RIVAL_LAUGH_DELAY)
+	_game.audio.play_sfx(&"rival_steal")
+	_game.audio.play_sfx_later(&"rival_laugh", RIVAL_LAUGH_DELAY)
 	_feathers.burst(bird.position, bird.spec.sprite)
 	shake("steal")
 	stolen += 1
@@ -1076,7 +1076,7 @@ func _heckle(category: String, blurt := true) -> bool:
 	_bubble_tween.tween_interval(HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
 	if blurt:
-		_game.play_heckle(category, line)
+		_game.audio.play_heckle(category, line)
 	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)%s" % [category, heckles, line, wave.index, wave_clock, rival_score, stolen, "" if blurt else ", no blurt"])
 	return true
 
@@ -1086,7 +1086,7 @@ func _heckle(category: String, blurt := true) -> bool:
 func _on_bird_appeared(bird: Bird) -> void:
 	if _over:
 		return
-	_game.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
+	_game.audio.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
 	print("[Play] Call of %s #%d as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, wave %d at t %.2f%s)" % [bird.spec.id, bird.number, bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave.index, wave_clock, _clock_note()])
 
 
@@ -1147,7 +1147,7 @@ func _stop() -> void:
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
 	_pause_menu.hide()
 	get_tree().paused = false
-	_game.sync_audio_pause()
+	_game.audio.sync_audio_pause()
 
 
 func _restart() -> void:
@@ -1199,7 +1199,7 @@ func _tick_countdown(before: float, now: float) -> void:
 	for second in range(COUNTDOWN_SECONDS, 0, -1):
 		if now <= second and before > second:
 			countdown_ticks += 1
-			_game.play_sfx(&"countdown_tick")
+			_game.audio.play_sfx(&"countdown_tick")
 			print("[Play] Countdown tick %d: %d s left (%.2f s, wave %d)" % [countdown_ticks, second, now, wave.index])
 
 
@@ -1208,7 +1208,7 @@ func _on_music_toggled(on: bool) -> void:
 	if on == not _game.save.music_muted:
 		return
 	print("[Play] Music toggle pressed: music %s" % ("on" if on else "off"))
-	_game.set_music_muted(not on)
+	_game.audio.set_music_muted(not on)
 
 
 ## The pause menu's SFX toggle: on plays the sound effects, off mutes the SFX bus (saved).
@@ -1216,7 +1216,7 @@ func _on_sfx_toggled(on: bool) -> void:
 	if on == not _game.save.sfx_muted:
 		return
 	print("[Play] SFX toggle pressed: sound effects %s" % ("on" if on else "off"))
-	_game.set_sfx_muted(not on)
+	_game.audio.set_sfx_muted(not on)
 
 
 ## Shows the mutes on the pause menu's toggles (pressed = on), whoever changed them.

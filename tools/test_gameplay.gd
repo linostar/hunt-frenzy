@@ -4011,7 +4011,7 @@ func _test_results_stars_and_panels() -> void:
 			_game.goto(GameState.Flow.RESULTS, stats)
 			await scene_changed
 			var results := current_scene as Results
-			var start := _game._clock
+			var start := _game.audio._clock
 			var shown_at: Array[float] = []
 			var sound_at: Array[float] = []
 			var star_peak := 0.0
@@ -4020,10 +4020,10 @@ func _test_results_stars_and_panels() -> void:
 			for i in roundi((Results.STAR_SOUND_GAP * (earned + 2) + Results.STAR_POP_TIME) * 60.0):
 				await process_frame
 				while shown_at.size() < results.stars_shown():
-					shown_at.append(_game._clock)
+					shown_at.append(_game.audio._clock)
 				var sounds := Array(_log.since(from)).filter(func(l: String) -> bool: return l == "[Audio] SFX star").size()
 				while sound_at.size() < sounds:
-					sound_at.append(_game._clock)
+					sound_at.append(_game.audio._clock)
 				for slot: Control in (results.get_node("%Stars") as Control).get_children():
 					var full := slot.get_node("Full") as Control
 					if full.visible:
@@ -4562,35 +4562,35 @@ func _test_audio_buses_follow_settings() -> void:
 	for i in AudioServer.bus_count:
 		names.append(AudioServer.get_bus_name(i))
 	_check(names == ["Master", "Music", "SFX"], "the buses are Master, Music and SFX", str(names))
-	var music_bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
-	var sfx_bus := AudioServer.get_bus_index(GameState.SFX_BUS)
+	var music_bus := AudioServer.get_bus_index(AudioManager.MUSIC_BUS)
+	var sfx_bus := AudioServer.get_bus_index(AudioManager.SFX_BUS)
 	for bus: int in [music_bus, sfx_bus]:
 		_check(bus > 0 and AudioServer.get_bus_send(bus) == &"Master", "bus %s sends to Master" % AudioServer.get_bus_name(bus), str(AudioServer.get_bus_send(bus)))
-	_check(_game.sfx_players().size() == GameState.SFX_VOICES + 1 and _game.sfx_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.SFX_BUS),
-		"every sound effect player is on the SFX bus", str(_game.sfx_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
-	_check(_game.music_players().size() == 2 and _game.music_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == GameState.MUSIC_BUS),
-		"every music player is on the Music bus", str(_game.music_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
+	_check(_game.audio.sfx_players().size() == AudioManager.SFX_VOICES + 1 and _game.audio.sfx_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == AudioManager.SFX_BUS),
+		"every sound effect player is on the SFX bus", str(_game.audio.sfx_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
+	_check(_game.audio.music_players().size() == 2 and _game.audio.music_players().all(func(player: AudioStreamPlayer) -> bool: return player.bus == AudioManager.MUSIC_BUS),
+		"every music player is on the Music bus", str(_game.audio.music_players().map(func(player: AudioStreamPlayer) -> StringName: return player.bus)))
 	var kept := [_game.save.music_volume, _game.save.sfx_volume, _game.save.music_muted, _game.save.sfx_muted]
 	# Volume -> the bus level it must give: silent at 0, -6.02 dB at half, 0 dB at full.
-	var levels := {0: GameState.SILENT_VOLUME_DB, 50: -6.0206, SaveStore.VOLUME_MAX: 0.0}
+	var levels := {0: AudioManager.SILENT_VOLUME_DB, 50: -6.0206, SaveStore.VOLUME_MAX: 0.0}
 	for volume: int in levels:
-		_game.set_music_volume(volume)
-		_game.set_sfx_volume(volume)
+		_game.audio.set_music_volume(volume)
+		_game.audio.set_sfx_volume(volume)
 		for bus: int in [music_bus, sfx_bus]:
 			_check(absf(AudioServer.get_bus_volume_db(bus) - float(levels[volume])) < 0.01 and AudioServer.is_bus_mute(bus) == (volume == 0),
 				"volume %d sets bus %s to %.2f dB%s" % [volume, AudioServer.get_bus_name(bus), levels[volume], ", muted" if volume == 0 else ""],
 				"%.3f dB, mute %s" % [AudioServer.get_bus_volume_db(bus), AudioServer.is_bus_mute(bus)])
-	_game.set_music_volume(70)
-	_game.set_sfx_volume(80)
-	_game.set_music_muted(true)
-	_game.set_sfx_muted(true)
+	_game.audio.set_music_volume(70)
+	_game.audio.set_sfx_volume(80)
+	_game.audio.set_music_muted(true)
+	_game.audio.set_sfx_muted(true)
 	for bus: int in [music_bus, sfx_bus]:
 		var volume := 70 if bus == music_bus else 80
 		_check(AudioServer.is_bus_mute(bus) and absf(AudioServer.get_bus_volume_db(bus) - linear_to_db(volume / 100.0)) < 0.01,
 			"muting bus %s mutes it and keeps its volume" % AudioServer.get_bus_name(bus), "mute %s, %.3f dB" % [AudioServer.is_bus_mute(bus), AudioServer.get_bus_volume_db(bus)])
 	# A save's settings reach the buses on load (the game's start runs load_game).
-	_game.set_music_volume(30)
-	_game.set_sfx_muted(false)
+	_game.audio.set_music_volume(30)
+	_game.audio.set_sfx_muted(false)
 	for bus: int in [music_bus, sfx_bus]:
 		AudioServer.set_bus_volume_db(bus, 0.0)
 		AudioServer.set_bus_mute(bus, false)
@@ -4602,7 +4602,7 @@ func _test_audio_buses_follow_settings() -> void:
 	_game.save.music_volume = kept[0]
 	_game.save.sfx_volume = kept[1]
 	_game.save.music_muted = kept[2]
-	_game.set_sfx_muted(kept[3])
+	_game.audio.set_sfx_muted(kept[3])
 
 
 ## Every sound effect id and syllable has its WAV (and no other WAV exists), each loads
@@ -4611,7 +4611,7 @@ func _test_audio_buses_follow_settings() -> void:
 ## rival has a voice for every heckle category.
 func _test_audio_files_match_ids() -> void:
 	var expected: Array[String] = []
-	for id: StringName in GameState.SFX_IDS + GameState.blurt_ids():
+	for id: StringName in AudioManager.SFX_IDS + AudioManager.blurt_ids():
 		expected.append("%s.wav" % id)
 	expected.sort()
 	var found: Array[String] = []
@@ -4623,7 +4623,7 @@ func _test_audio_files_match_ids() -> void:
 	for file in found:
 		var stream := load("res://audio/sfx/" + file) as AudioStreamWAV
 		_check(stream != null and stream.loop_mode == AudioStreamWAV.LOOP_DISABLED and stream.get_length() > 0.0, "sound %s loads and does not loop" % file, str(stream))
-	var tracks: Array[String] = [GameState.TITLE_TRACK, GameState.RESULTS_TRACK]
+	var tracks: Array[String] = [AudioManager.TITLE_TRACK, AudioManager.RESULTS_TRACK]
 	for spec in Content.chapters():
 		tracks.append(spec.music)
 	for spec in Content.modes():
@@ -4638,11 +4638,11 @@ func _test_audio_files_match_ids() -> void:
 	for track in loops:
 		var stream := load(Content.music_path(track)) as AudioStreamMP3
 		_check(stream != null and stream.loop and stream.get_length() > 20.0, "loop %s loads and loops" % track, str(stream))
-	_check(GameState.CROSSFADE_TIME > 0.0 and GameState.CROSSFADE_TIME <= 0.5, "the crossfade takes at most 0.5 s", str(GameState.CROSSFADE_TIME))
+	_check(AudioManager.CROSSFADE_TIME > 0.0 and AudioManager.CROSSFADE_TIME <= 0.5, "the crossfade takes at most 0.5 s", str(AudioManager.CROSSFADE_TIME))
 	var categories: Array[String] = []
-	categories.assign(GameState.HECKLE_VOICES.keys())
-	_check(categories == RivalLines.CATEGORIES and GameState.HECKLE_VOICES.values().all(func(voice: Array) -> bool: return voice[0] in GameState.BLURT_TIMBRES),
-		"the rival has a voice for every heckle category", str(GameState.HECKLE_VOICES))
+	categories.assign(AudioManager.HECKLE_VOICES.keys())
+	_check(categories == RivalLines.CATEGORIES and AudioManager.HECKLE_VOICES.values().all(func(voice: Array) -> bool: return voice[0] in AudioManager.BLURT_TIMBRES),
+		"the rival has a voice for every heckle category", str(AudioManager.HECKLE_VOICES))
 
 
 ## The music per screen: the title loop on the title and both selects (left playing, never
@@ -4651,22 +4651,22 @@ func _test_audio_files_match_ids() -> void:
 func _test_audio_music_per_screen() -> void:
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
-	_check(_game.music_track == GameState.TITLE_TRACK and _game.music_player().stream.resource_path == Content.music_path("title"), "the title plays the title loop", _game.music_track)
-	var title_player := _game.music_player()
-	var changes := _game.music_changes
+	_check(_game.audio.music_track == AudioManager.TITLE_TRACK and _game.audio.music_player().stream.resource_path == Content.music_path("title"), "the title plays the title loop", _game.audio.music_track)
+	var title_player := _game.audio.music_player()
+	var changes := _game.audio.music_changes
 	_game.goto(GameState.Flow.CHAPTER_SELECT)
 	await _game.transition_finished
 	_game.goto(GameState.Flow.LEVEL_SELECT, {"chapter": "dawn"})
 	await _game.transition_finished
-	_check(_game.music_track == GameState.TITLE_TRACK and _game.music_changes == changes and _game.music_player() == title_player and is_equal_approx(title_player.volume_linear, 1.0),
-		"the chapter and level selects keep the title loop playing untouched", "%s, %d changes" % [_game.music_track, _game.music_changes - changes])
+	_check(_game.audio.music_track == AudioManager.TITLE_TRACK and _game.audio.music_changes == changes and _game.audio.music_player() == title_player and is_equal_approx(title_player.volume_linear, 1.0),
+		"the chapter and level selects keep the title loop playing untouched", "%s, %d changes" % [_game.audio.music_track, _game.audio.music_changes - changes])
 	var from := _log.size()
 	_game.start_level("dawn_1")
 	await process_frame
-	var fading_in := _game.music_player()
-	_check(_game.music_track == "campaign_dawn" and fading_in != title_player and fading_in.volume_linear < 1.0, "a dawn level crossfades to the dawn loop", "%s, %.2f" % [_game.music_track, fading_in.volume_linear])
+	var fading_in := _game.audio.music_player()
+	_check(_game.audio.music_track == "campaign_dawn" and fading_in != title_player and fading_in.volume_linear < 1.0, "a dawn level crossfades to the dawn loop", "%s, %.2f" % [_game.audio.music_track, fading_in.volume_linear])
 	_check_logged(from, "^\\[Audio\\] Music campaign_dawn \\(crossfading from title over 0\\.40 s\\)$", "the change of loop is logged")
-	for i in ceili(GameState.CROSSFADE_TIME / FRAME) + 2:
+	for i in ceili(AudioManager.CROSSFADE_TIME / FRAME) + 2:
 		await process_frame
 	_check(is_equal_approx(fading_in.volume_linear, 1.0) and is_zero_approx(title_player.volume_linear), "the crossfade is over within CROSSFADE_TIME", "%.2f in, %.2f out" % [fading_in.volume_linear, title_player.volume_linear])
 	while _game.is_transitioning():
@@ -4675,27 +4675,27 @@ func _test_audio_music_per_screen() -> void:
 	for level_id: String in expected:
 		_game.start_level(level_id)
 		await _game.transition_finished
-		_check(_game.music_track == expected[level_id], "level %s plays %s" % [level_id, expected[level_id]], _game.music_track)
+		_check(_game.audio.music_track == expected[level_id], "level %s plays %s" % [level_id, expected[level_id]], _game.audio.music_track)
 	_game.goto(GameState.Flow.RESULTS)
 	await _game.transition_finished
-	_check(_game.music_track == GameState.RESULTS_TRACK, "results play the results loop", _game.music_track)
+	_check(_game.audio.music_track == AudioManager.RESULTS_TRACK, "results play the results loop", _game.audio.music_track)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
-	_check(_game.music_track == GameState.TITLE_TRACK, "back on the title the title loop plays", _game.music_track)
+	_check(_game.audio.music_track == AudioManager.TITLE_TRACK, "back on the title the title loop plays", _game.audio.music_track)
 	await _start_run(83)
-	_check(_game.music_track == "endless", "Endless plays its loop", _game.music_track)
-	changes = _game.music_changes
+	_check(_game.audio.music_track == "endless", "Endless plays its loop", _game.audio.music_track)
+	changes = _game.audio.music_changes
 	(current_scene as Play).open_pause("test")
 	(current_scene.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).pressed.emit()
 	await _game.transition_finished
-	_check(_game.music_track == "endless" and _game.music_changes == changes, "restarting Endless keeps its loop playing", "%s, %d changes" % [_game.music_track, _game.music_changes - changes])
+	_check(_game.audio.music_track == "endless" and _game.audio.music_changes == changes, "restarting Endless keeps its loop playing", "%s, %d changes" % [_game.audio.music_track, _game.audio.music_changes - changes])
 	await _start_run(84, GameState.TIME_ATTACK_MODE)
-	_check(_game.music_track == "time_attack", "Time Attack plays its loop", _game.music_track)
+	_check(_game.audio.music_track == "time_attack", "Time Attack plays its loop", _game.audio.music_track)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
 
-## Every game event plays its sound through Game.play_sfx, exactly as listed (plan AC 8):
+## Every game event plays its sound through Game.audio.play_sfx, exactly as listed (plan AC 8):
 ## the shot and what it did, the empty click alone, the waves, the rival, the pause, the
 ## buttons, the results.
 func _test_audio_every_event_sound() -> void:
@@ -4705,15 +4705,15 @@ func _test_audio_every_event_sound() -> void:
 	play.rival_lines.cooldown = 1000.0
 	var heard: Array[StringName] = []
 	for i in 120:
-		_game.sfx_log.clear()
+		_game.audio.sfx_log.clear()
 		await process_frame
 		if not play.flying_birds().is_empty():
-			heard = _game.sfx_log.duplicate()
+			heard = _game.audio.sfx_log.duplicate()
 			break
 	_check(heard == [&"wave_start", &"call_quack"], "the wave's first spawn plays wave_start, then the goose's call as its art shows above the grass", str(heard))
 	var shot := (play.get_node("ShotInput") as ShotInput).shot
 	var from := _log.size()
-	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot"] + _heckle_sounds("miss"), "a miss plays the shot and the rival's miss heckle (silent while HECKLE_BLURTS is off)", str(_game.sfx_log))
+	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[0]))) == [&"shot"] + _heckle_sounds("miss"), "a miss plays the shot and the rival's miss heckle (silent while HECKLE_BLURTS is off)", str(_game.audio.sfx_log))
 	_check_logged(from, "^\\[Audio\\] SFX shot x[01]\\.\\d{3}$", "every sound is logged by the one entry point, with its varied pitch")
 	var cases := [["goose", [&"shot", &"hit", &"combo_up"]], ["armored", [&"shot", &"armored_clank"]], ["armored", [&"shot", &"armored_kill", &"combo_up"]],
 		["splitter", [&"shot", &"split_pop", &"combo_up", &"call_gosling", &"call_gosling"]], ["golden", [&"shot", &"golden_chime", &"combo_up"]], ["goose", [&"shot", &"hit"]], ["decoy", [&"shot", &"decoy_penalty"]]]
@@ -4727,20 +4727,20 @@ func _test_audio_every_event_sound() -> void:
 		bird.set_process(false)
 		play.set_shell_pool(5)
 		var at := _global(play, bird.transform * LOCAL_BODY)
-		_check(_sounds_of(func() -> void: shot.emit(at)) == entry[1], "a shot at a %s plays %s" % [entry[0], entry[1]], "%s (combo x%d)" % [_game.sfx_log, play.scoring.multiplier])
+		_check(_sounds_of(func() -> void: shot.emit(at)) == entry[1], "a shot at a %s plays %s" % [entry[0], entry[1]], "%s (combo x%d)" % [_game.audio.sfx_log, play.scoring.multiplier])
 		bird.set_process(true)
 	play.set_shell_pool(0)
-	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[1]))) == [&"empty_click"], "a shot with an empty pool plays the empty click and nothing else", str(_game.sfx_log))
+	_check(_sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[1]))) == [&"empty_click"], "a shot with an empty pool plays the empty click and nothing else", str(_game.audio.sfx_log))
 	play.set_shell_pool(5)
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	var escaping := await _spawn_flying(play, 47, Content.bird("goose").flee_time - 0.5)
 	var before := play.escaped
 	await _escape_counts(play, escaping)
-	_check(_game.sfx_log.count(&"escape") == play.escaped - before and play.escaped > before, "each counted escape plays escape", "%d escape sounds for %d escapes" % [_game.sfx_log.count(&"escape"), play.escaped - before])
-	_game.sfx_log.clear()
+	_check(_game.audio.sfx_log.count(&"escape") == play.escaped - before and play.escaped > before, "each counted escape plays escape", "%d escape sounds for %d escapes" % [_game.audio.sfx_log.count(&"escape"), play.escaped - before])
+	_game.audio.sfx_log.clear()
 	var cued := await _cued_bird(play, 48, "goose")
-	_check(cued.is_cued() and _game.sfx_log.count(&"rival_aim") >= 1, "the rival's aim cue plays rival_aim", str(_game.sfx_log))
-	_game.sfx_log.clear()
+	_check(cued.is_cued() and _game.audio.sfx_log.count(&"rival_aim") >= 1, "the rival's aim cue plays rival_aim", str(_game.audio.sfx_log))
+	_game.audio.sfx_log.clear()
 	var steal_from := _log.size()
 	for i in 120:
 		if cued.stolen:
@@ -4750,22 +4750,22 @@ func _test_audio_every_event_sound() -> void:
 	# The stolen bird falls off the screen and frees itself while the laugh is awaited.
 	var was_stolen := cued.stolen
 	var waited := 0
-	while not &"rival_laugh" in _game.sfx_log and waited < 120:
+	while not &"rival_laugh" in _game.audio.sfx_log and waited < 120:
 		await process_frame
 		waited += 1
-	_check(was_stolen and _game.sfx_log.count(&"rival_steal") == 1 and _game.sfx_log.count(&"rival_laugh") == 1 and _game.sfx_log.find(&"rival_steal") < _game.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.sfx_log))
+	_check(was_stolen and _game.audio.sfx_log.count(&"rival_steal") == 1 and _game.audio.sfx_log.count(&"rival_laugh") == 1 and _game.audio.sfx_log.find(&"rival_steal") < _game.audio.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.audio.sfx_log))
 	_check(absi(waited - roundi(Play.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
-	_check(line != "" and not &"heckle_steal" in _game.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.sfx_log])
+	_check(line != "" and not &"heckle_steal" in _game.audio.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.audio.sfx_log])
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
 	_check_logged(steal_from, "^\\[Play\\] Heckle \\(steal\\) #\\d+: \".+\" \\(.*\\), no blurt$", "the steal heckle is logged without a blurt")
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	await _tap(pause_button)
-	_check(_game.sfx_log.count(&"pause") == 1 and not &"ui_tap" in _game.sfx_log, "the pause button plays pause (no tap)", str(_game.sfx_log))
-	_game.sfx_log.clear()
+	_check(_game.audio.sfx_log.count(&"pause") == 1 and not &"ui_tap" in _game.audio.sfx_log, "the pause button plays pause (no tap)", str(_game.audio.sfx_log))
+	_game.audio.sfx_log.clear()
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Control)
-	_check(_game.sfx_log.count(&"resume") == 1 and not &"ui_tap" in _game.sfx_log, "Resume plays resume (no tap)", str(_game.sfx_log))
+	_check(_game.audio.sfx_log.count(&"resume") == 1 and not &"ui_tap" in _game.audio.sfx_log, "Resume plays resume (no tap)", str(_game.audio.sfx_log))
 	play.rival_lines.cooldown = cooldown
 	# A wave cleared: wave 1 of a new run, both geese shot as soon as they rise.
 	play = await _start_run(86)
@@ -4783,8 +4783,8 @@ func _test_audio_every_event_sound() -> void:
 		if play.wave.index == 2:
 			cleared = true
 			break
-		_game.sfx_log.clear()
-	_check(cleared and _game.sfx_log.count(&"wave_clear") == 1, "a cleared wave plays wave_clear", "%s, wave %d" % [_game.sfx_log, play.wave.index])
+		_game.audio.sfx_log.clear()
+	_check(cleared and _game.audio.sfx_log.count(&"wave_clear") == 1, "a cleared wave plays wave_clear", "%s, wave %d" % [_game.audio.sfx_log, play.wave.index])
 	# A Time Attack wave lost to an empty pool.
 	play = await _start_run(87, GameState.TIME_ATTACK_MODE)
 	play.set_shell_pool(1)
@@ -4797,21 +4797,21 @@ func _test_audio_every_event_sound() -> void:
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	await process_frame
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	var chapters := (current_scene as Title).get_node("Safe/CampaignButton") as Button
 	await _tap(chapters)
-	_check(_game.sfx_log == [&"ui_tap"], "a button press plays ui_tap", str(_game.sfx_log))
+	_check(_game.audio.sfx_log == [&"ui_tap"], "a button press plays ui_tap", str(_game.audio.sfx_log))
 	await _game.transition_finished
 	var level := Content.level("dawn_1")
 	var stats := {"seed": 1, "score": level.stars[1], "shots": 4, "hits": 3, "kills": 3, "pigeons": 0, "escaped": 0, "stolen": 0, "rival_score": 0,
 		"rival_line": "Beginner's luck, kid.", "rival_steals": true, "best": level.stars[1], "new_best": true, "save_error": "", "level": "dawn_1", "stars": 2,
 		"best_stars": 2, "next_level": "dawn_2"}
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	_game.goto(GameState.Flow.RESULTS, stats)
 	await _game.transition_finished
 	for i in ceili(4 * Results.STAR_SOUND_GAP / FRAME) + 2:
 		await process_frame
-	_check(_game.sfx_log == _heckle_sounds("results") + [&"star", &"star", &"new_best"], "the results play the rival's blurt (silent while HECKLE_BLURTS is off), one sound per star and the new best", str(_game.sfx_log))
+	_check(_game.audio.sfx_log == _heckle_sounds("results") + [&"star", &"star", &"new_best"], "the results play the rival's blurt (silent while HECKLE_BLURTS is off), one sound per star and the new best", str(_game.audio.sfx_log))
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -4821,56 +4821,56 @@ func _test_audio_every_event_sound() -> void:
 ## shown plays its blurt, whose syllables start one after another (plan AC 9).
 func _test_audio_heckle_blurts() -> void:
 	var line := "Nice shot... at the clouds!"
-	var plan := GameState.blurt_plan("miss", line)
-	var again := GameState.blurt_plan("miss", line)
+	var plan := AudioManager.blurt_plan("miss", line)
+	var again := AudioManager.blurt_plan("miss", line)
 	_check(plan.size() == 5 and _plan_text(plan) == _plan_text(again), "the same line always gives the same blurt, a syllable per word", _plan_text(plan))
-	_check(GameState.blurt_plan("miss", "Hey").size() == 1 and GameState.blurt_plan("miss", "one two three four five six seven eight nine").size() == GameState.BLURT_SYLLABLES_MAX,
-		"a blurt has one syllable per word, at most BLURT_SYLLABLES_MAX", "%d, %d" % [GameState.blurt_plan("miss", "Hey").size(), GameState.blurt_plan("miss", "one two three four five six seven eight nine").size()])
-	_check(_plan_text(plan) != _plan_text(GameState.blurt_plan("miss", "Nice shot... at the swans!")), "another line gives another blurt", _plan_text(plan))
+	_check(AudioManager.blurt_plan("miss", "Hey").size() == 1 and AudioManager.blurt_plan("miss", "one two three four five six seven eight nine").size() == AudioManager.BLURT_SYLLABLES_MAX,
+		"a blurt has one syllable per word, at most BLURT_SYLLABLES_MAX", "%d, %d" % [AudioManager.blurt_plan("miss", "Hey").size(), AudioManager.blurt_plan("miss", "one two three four five six seven eight nine").size()])
+	_check(_plan_text(plan) != _plan_text(AudioManager.blurt_plan("miss", "Nice shot... at the swans!")), "another line gives another blurt", _plan_text(plan))
 	var texts: Array[String] = []
 	for category in RivalLines.CATEGORIES:
-		var voiced := GameState.blurt_plan(category, line)
-		var voice: Array = GameState.HECKLE_VOICES[category]
-		_check(voiced.size() == plan.size() and voiced.all(func(syllable: GameState.Syllable) -> bool: return String(syllable.sound).begins_with("blurt_%s_" % voice[0]) and syllable.sound in GameState.blurt_ids()),
+		var voiced := AudioManager.blurt_plan(category, line)
+		var voice: Array = AudioManager.HECKLE_VOICES[category]
+		_check(voiced.size() == plan.size() and voiced.all(func(syllable: AudioManager.Syllable) -> bool: return String(syllable.sound).begins_with("blurt_%s_" % voice[0]) and syllable.sound in AudioManager.blurt_ids()),
 			"a %s heckle speaks in the %s voice" % [category, voice[0]], _plan_text(voiced))
 		for i in voiced.size():
-			if not is_equal_approx(voiced[i].pitch / float(voice[1]), plan[i].pitch / float(GameState.HECKLE_VOICES["miss"][1])) or voiced[i].at != plan[i].at:
+			if not is_equal_approx(voiced[i].pitch / float(voice[1]), plan[i].pitch / float(AudioManager.HECKLE_VOICES["miss"][1])) or voiced[i].at != plan[i].at:
 				_check(false, "a %s heckle keeps the line's rhythm and melody at its own pitch" % category, _plan_text(voiced))
 				break
 		texts.append(_plan_text(voiced))
 	_check(texts.size() == RivalLines.CATEGORIES.size() and texts.all(func(text: String) -> bool: return texts.count(text) == 1), "every category sounds different", str(texts))
-	_check(GameState.blurt_plan("whistle", line).is_empty(), "an unknown category has no blurt", "")
+	_check(AudioManager.blurt_plan("whistle", line).is_empty(), "an unknown category has no blurt", "")
 	# With HECKLE_BLURTS off (the experiment) a heckle shows its line but makes no sound,
 	# and the log says so.
-	_game.heckle_blurts = false
+	_game.audio.heckle_blurts = false
 	var muted := await _start_run(88)
 	var muted_from := _log.size()
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	(muted.get_node("ShotInput") as ShotInput).shot.emit(_global(muted, SKY_POINTS[0]))
 	var muted_line := muted.heckle_shown()
-	_check(muted_line != "" and _game.sfx_log == [&"shot"] and _game.blurt_syllables_waiting() == 0, "with blurts off a miss heckle shows its line and plays no blurt", "%s, %d waiting for \"%s\"" % [_game.sfx_log, _game.blurt_syllables_waiting(), muted_line])
+	_check(muted_line != "" and _game.audio.sfx_log == [&"shot"] and _game.audio.blurt_syllables_waiting() == 0, "with blurts off a miss heckle shows its line and plays no blurt", "%s, %d waiting for \"%s\"" % [_game.audio.sfx_log, _game.audio.blurt_syllables_waiting(), muted_line])
 	_check_logged(muted_from, "^\\[Audio\\] Heckle blurt muted \\(HECKLE_BLURTS off\\) for heckle_miss: \".+\"$", "the muted blurt is logged")
 	_check(not Array(_log.since(muted_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_")), "no heckle sound is logged with blurts off", "")
 	# The blurts themselves, switched on.
-	_game.heckle_blurts = true
+	_game.audio.heckle_blurts = true
 	var play := await _start_run(88)
 	var from := _log.size()
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, SKY_POINTS[0]))
 	var shown := play.heckle_shown()
-	var words := mini(shown.split(" ", false).size(), GameState.BLURT_SYLLABLES_MAX)
-	_check(shown != "" and &"heckle_miss" in _game.sfx_log and _game.blurt_syllables_waiting() == words, "a miss heckle plays its blurt, one syllable per word", "%s, %d waiting for \"%s\"" % [_game.sfx_log, _game.blurt_syllables_waiting(), shown])
+	var words := mini(shown.split(" ", false).size(), AudioManager.BLURT_SYLLABLES_MAX)
+	_check(shown != "" and &"heckle_miss" in _game.audio.sfx_log and _game.audio.blurt_syllables_waiting() == words, "a miss heckle plays its blurt, one syllable per word", "%s, %d waiting for \"%s\"" % [_game.audio.sfx_log, _game.audio.blurt_syllables_waiting(), shown])
 	var blurt_lines := Array(_log.since(from)).filter(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_miss: %d syllables (nasal_" % words) and entry.ends_with(" for \"%s\"" % shown))
 	_check(blurt_lines.size() == 1, "the blurt is logged with its syllables and line", str(blurt_lines))
 	play.open_pause("test")
 	for i in 30:
 		await process_frame
-	_check(_game.blurt_syllables_waiting() == words, "the blurt waits while the game is paused", "%d waiting" % _game.blurt_syllables_waiting())
+	_check(_game.audio.blurt_syllables_waiting() == words, "the blurt waits while the game is paused", "%d waiting" % _game.audio.blurt_syllables_waiting())
 	play.resume()
-	for i in ceili(GameState.BLURT_SYLLABLES_MAX * GameState.BLURT_GAP * 1.2 / FRAME) + 2:
+	for i in ceili(AudioManager.BLURT_SYLLABLES_MAX * AudioManager.BLURT_GAP * 1.2 / FRAME) + 2:
 		await process_frame
-	_check(_game.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.blurt_syllables_waiting())
-	_game.heckle_blurts = GameState.HECKLE_BLURTS
+	_check(_game.audio.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.audio.blurt_syllables_waiting())
+	_game.audio.heckle_blurts = AudioManager.HECKLE_BLURTS
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -4881,7 +4881,7 @@ func _test_time_attack_countdown() -> void:
 	var play := await _start_run(89, GameState.TIME_ATTACK_MODE)
 	var limit := play.mode.time_limit
 	play.mode.time_limit = 13.0
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	var ticks: Array[float] = []
 	var paused_ticks := -1
 	var paused_clock := -1.0
@@ -4905,11 +4905,11 @@ func _test_time_attack_countdown() -> void:
 			play.resume()
 	Engine.time_scale = 1.0
 	Content.mode(GameState.TIME_ATTACK_MODE).time_limit = limit
-	_check(ticks.size() == Play.COUNTDOWN_SECONDS and _game.sfx_log.count(&"countdown_tick") == Play.COUNTDOWN_SECONDS, "the last 10 s tick 10 times", "%d ticks at %s, %d sounds" % [ticks.size(), ticks, _game.sfx_log.count(&"countdown_tick")])
+	_check(ticks.size() == Play.COUNTDOWN_SECONDS and _game.audio.sfx_log.count(&"countdown_tick") == Play.COUNTDOWN_SECONDS, "the last 10 s tick 10 times", "%d ticks at %s, %d sounds" % [ticks.size(), ticks, _game.audio.sfx_log.count(&"countdown_tick")])
 	for k in ticks.size():
 		var due := 13.0 - (Play.COUNTDOWN_SECONDS - k)
 		_check(ticks[k] >= due - 0.001 and ticks[k] < due + 4.0 * FRAME + 0.001, "tick %d sounds as %d s are left" % [k + 1, Play.COUNTDOWN_SECONDS - k], "at run clock %.3f, due %.3f" % [ticks[k], due])
-	_check(_game.sfx_log.count(&"time_up") == 1 and _game.sfx_log.find(&"time_up") > _game.sfx_log.rfind(&"countdown_tick"), "time running out sounds the buzzer once, after the last tick", str(_game.sfx_log.count(&"time_up")))
+	_check(_game.audio.sfx_log.count(&"time_up") == 1 and _game.audio.sfx_log.find(&"time_up") > _game.audio.sfx_log.rfind(&"countdown_tick"), "time running out sounds the buzzer once, after the last tick", str(_game.audio.sfx_log.count(&"time_up")))
 	await _game.transition_finished
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
@@ -4942,7 +4942,7 @@ func _test_pause_menu_mutes() -> void:
 		var style := toggle.get_theme_stylebox(&"focus")
 		_check(toggle.toggle_mode and toggle.button_pressed and toggle.text.ends_with(": on") and toggle.focus_mode == Control.FOCUS_ALL and style != null and not (style is StyleBoxEmpty),
 			"%s shows it is on and is focusable with a visible focus style" % toggle.name, toggle.text)
-	var buses := [GameState.MUSIC_BUS, GameState.SFX_BUS]
+	var buses := [AudioManager.MUSIC_BUS, AudioManager.SFX_BUS]
 	for i in toggles.size():
 		var toggle := toggles[i]
 		var bus := AudioServer.get_bus_index(buses[i])
@@ -4967,38 +4967,38 @@ func _test_pause_menu_mutes() -> void:
 ## resuming restores both; the rotate overlay's pause does the same (plan AC 12).
 func _test_pause_holds_sounds_and_ducks_music() -> void:
 	var play := await _start_run(91)
-	var music_bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
+	var music_bus := AudioServer.get_bus_index(AudioManager.MUSIC_BUS)
 	var full := AudioServer.get_bus_volume_db(music_bus)
-	_game.play_sfx(&"time_up")
-	_check(_game.sounds_in_flight() >= 1 and not _game.audio_paused, "a sound is in flight while the run plays", str(_game.sounds_in_flight()))
+	_game.audio.play_sfx(&"time_up")
+	_check(_game.audio.sounds_in_flight() >= 1 and not _game.audio.audio_paused, "a sound is in flight while the run plays", str(_game.audio.sounds_in_flight()))
 	var from := _log.size()
 	play.open_pause("test")
-	var held := _game.held_players()
-	var pause_sound := _game.sfx_players().filter(func(player: AudioStreamPlayer) -> bool: return player.stream != null and player.stream.resource_path.ends_with("/pause.wav"))
-	_check(_game.audio_paused and _game.held_sounds >= 1 and held.size() == _game.held_sounds and held.any(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
-		"pausing holds the sound in flight", "held %d: %s" % [_game.held_sounds, held.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path)])
+	var held := _game.audio.held_players()
+	var pause_sound := _game.audio.sfx_players().filter(func(player: AudioStreamPlayer) -> bool: return player.stream != null and player.stream.resource_path.ends_with("/pause.wav"))
+	_check(_game.audio.audio_paused and _game.audio.held_sounds >= 1 and held.size() == _game.audio.held_sounds and held.any(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"pausing holds the sound in flight", "held %d: %s" % [_game.audio.held_sounds, held.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path)])
 	_check(pause_sound.size() == 1 and not pause_sound[0] in held, "the pause's own sound plays", str(pause_sound))
-	_check(absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01 and AudioServer.get_bus_volume_db(music_bus) <= full - 6.0 and _game.music_track == "endless",
+	_check(absf(AudioServer.get_bus_volume_db(music_bus) - (full + AudioManager.PAUSE_DUCK_DB)) < 0.01 and AudioServer.get_bus_volume_db(music_bus) <= full - 6.0 and _game.audio.music_track == "endless",
 		"pausing ducks the music (at least 6 dB quieter), which keeps playing",
-		"%.2f dB (full %.2f), %s" % [AudioServer.get_bus_volume_db(music_bus), full, _game.music_track])
+		"%.2f dB (full %.2f), %s" % [AudioServer.get_bus_volume_db(music_bus), full, _game.audio.music_track])
 	_check_logged(from, "^\\[Audio\\] Paused: \\d+ sounds held, \\d+ blurt syllables waiting, music ducked by 12 dB$", "the audio pause is logged")
 	for i in 60:
 		await process_frame
-	_check(_game.held_players() == held and _game.sounds_in_flight() >= held.size(), "the held sound stays held while paused", str(_game.sounds_in_flight()))
+	_check(_game.audio.held_players() == held and _game.audio.sounds_in_flight() >= held.size(), "the held sound stays held while paused", str(_game.audio.sounds_in_flight()))
 	play.resume()
-	_check(not _game.audio_paused and _game.held_players().is_empty() and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming continues the sound and the music",
+	_check(not _game.audio.audio_paused and _game.audio.held_players().is_empty() and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming continues the sound and the music",
 		"%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
 	_check_logged(from, "^\\[Audio\\] Resumed after [\\d.]+ s: \\d+ sounds continue, the music is back to full$", "the audio resume is logged")
-	_game.play_sfx(&"time_up")
+	_game.audio.play_sfx(&"time_up")
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.audio_paused and _game.held_sounds >= 1 and absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01, "the rotate overlay holds the sounds and ducks the music",
-		"held %d, %.2f dB" % [_game.held_sounds, AudioServer.get_bus_volume_db(music_bus)])
+	_check(_game.audio.audio_paused and _game.audio.held_sounds >= 1 and absf(AudioServer.get_bus_volume_db(music_bus) - (full + AudioManager.PAUSE_DUCK_DB)) < 0.01, "the rotate overlay holds the sounds and ducks the music",
+		"held %d, %.2f dB" % [_game.audio.held_sounds, AudioServer.get_bus_volume_db(music_bus)])
 	root.size = BASE_WINDOW
 	await process_frame
-	_check(play.is_paused() and _game.audio_paused and absf(AudioServer.get_bus_volume_db(music_bus) - (full + GameState.PAUSE_DUCK_DB)) < 0.01, "back in landscape the menu keeps the audio paused", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
+	_check(play.is_paused() and _game.audio.audio_paused and absf(AudioServer.get_bus_volume_db(music_bus) - (full + AudioManager.PAUSE_DUCK_DB)) < 0.01, "back in landscape the menu keeps the audio paused", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
 	play.resume()
-	_check(not _game.audio_paused and _game.held_sounds == 0 and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming after the overlay restores the audio", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
+	_check(not _game.audio.audio_paused and _game.audio.held_sounds == 0 and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming after the overlay restores the audio", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -5009,21 +5009,21 @@ func _test_audio_missing_files_reported() -> void:
 	var label := _game.get_node("Fade/ErrorLabel") as Label
 	_game.quiet_errors = true
 	var errors := _game.reported_errors.size()
-	_game.sfx_path = "res://audio/sfx/missing_%s.wav"
-	_game.sfx_log.clear()
-	_game.play_sfx(&"shot")
-	_check(_game.reported_errors.slice(errors) == ["Sound effect 'shot' is missing: res://audio/sfx/missing_shot.wav (run python3 tools/sfx.py)"] and label.visible and label.text.contains("missing_shot.wav") and _game.sfx_log.is_empty(),
+	_game.audio.sfx_path = "res://audio/sfx/missing_%s.wav"
+	_game.audio.sfx_log.clear()
+	_game.audio.play_sfx(&"shot")
+	_check(_game.reported_errors.slice(errors) == ["Sound effect 'shot' is missing: res://audio/sfx/missing_shot.wav (run python3 tools/sfx.py)"] and label.visible and label.text.contains("missing_shot.wav") and _game.audio.sfx_log.is_empty(),
 		"a missing sound effect is reported with its path, on screen", str(_game.reported_errors.slice(errors)))
 	errors = _game.reported_errors.size()
-	_check(not _game.check_audio() and _game.reported_errors.size() - errors == GameState.SFX_IDS.size() + GameState.blurt_ids().size(), "the start-up check reports every missing sound", str(_game.reported_errors.size() - errors))
-	_game.sfx_path = GameState.SFX_PATH
+	_check(not _game.audio.check_audio() and _game.reported_errors.size() - errors == AudioManager.SFX_IDS.size() + AudioManager.blurt_ids().size(), "the start-up check reports every missing sound", str(_game.reported_errors.size() - errors))
+	_game.audio.sfx_path = AudioManager.SFX_PATH
 	errors = _game.reported_errors.size()
-	_game.play_sfx(&"trumpet")
-	_check(_game.reported_errors.slice(errors) == ["Unknown sound effect 'trumpet' (not in GameState.SFX_IDS)"], "an unknown sound effect is reported", str(_game.reported_errors.slice(errors)))
+	_game.audio.play_sfx(&"trumpet")
+	_check(_game.reported_errors.slice(errors) == ["Unknown sound effect 'trumpet' (not in AudioManager.SFX_IDS)"], "an unknown sound effect is reported", str(_game.reported_errors.slice(errors)))
 	errors = _game.reported_errors.size()
-	var track := _game.music_track
-	_game.play_music("banjo_solo")
-	_check(_game.reported_errors.slice(errors) == ["Music track 'banjo_solo' is missing: res://audio/music/banjo_solo.mp3 (run python3 tools/music.py)"] and _game.music_track == track,
+	var track := _game.audio.music_track
+	_game.audio.play_music("banjo_solo")
+	_check(_game.reported_errors.slice(errors) == ["Music track 'banjo_solo' is missing: res://audio/music/banjo_solo.mp3 (run python3 tools/music.py)"] and _game.audio.music_track == track,
 		"a missing loop is reported with its path and the music stays", str(_game.reported_errors.slice(errors)))
 	var dawn := Content.chapter("dawn")
 	var real := dawn.music
@@ -5035,7 +5035,7 @@ func _test_audio_missing_files_reported() -> void:
 	dawn.music = real
 	_check(_game.reported_errors.slice(errors) == ["Cannot go to PLAY: scene 'res://scenes/play.tscn' needs res://audio/music/campaign_dusk.mp3, which is missing"]
 		and current_scene == scene and not _game.is_transitioning() and _game.state == GameState.Flow.TITLE, "goto refuses a screen whose loop is missing and names it", str(_game.reported_errors.slice(errors)))
-	_check(_game.check_audio(), "with every file back the audio check passes", "")
+	_check(_game.audio.check_audio(), "with every file back the audio check passes", "")
 	_game.quiet_errors = false
 	label.hide()
 
@@ -5073,23 +5073,23 @@ func _test_dropped_taps_are_silent() -> void:
 ## every held sound continues where it was.
 func _test_pause_keeps_every_held_sound() -> void:
 	var play := await _start_run(96)
-	for i in GameState.SFX_VOICES:
-		_game.play_sfx(&"time_up")
-	var pool := _game.sfx_players().slice(0, GameState.SFX_VOICES)
-	_check(_game.sounds_in_flight() == GameState.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
-		"every pool voice is sounding", str(_game.sounds_in_flight()))
+	for i in AudioManager.SFX_VOICES:
+		_game.audio.play_sfx(&"time_up")
+	var pool := _game.audio.sfx_players().slice(0, AudioManager.SFX_VOICES)
+	_check(_game.audio.sounds_in_flight() == AudioManager.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"every pool voice is sounding", str(_game.audio.sounds_in_flight()))
 	play.open_pause("test")
-	_game.play_sfx(&"ui_tap")
-	var menu := _game.sfx_players().back() as AudioStreamPlayer
-	_check(_game.held_players() == pool and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
-		"all %d held sounds keep their voices while the pause menu's sounds play" % GameState.SFX_VOICES, str(pool.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path.get_file())))
-	_check(menu.bus == GameState.SFX_BUS and menu.stream != null and menu.stream.resource_path.ends_with("/ui_tap.wav") and _game.sfx_log.slice(-2) == [&"pause", &"ui_tap"],
-		"the pause and the tap play on the menu voice", "%s, %s" % [menu.stream, _game.sfx_log.slice(-2)])
+	_game.audio.play_sfx(&"ui_tap")
+	var menu := _game.audio.sfx_players().back() as AudioStreamPlayer
+	_check(_game.audio.held_players() == pool and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"all %d held sounds keep their voices while the pause menu's sounds play" % AudioManager.SFX_VOICES, str(pool.map(func(player: AudioStreamPlayer) -> String: return player.stream.resource_path.get_file())))
+	_check(menu.bus == AudioManager.SFX_BUS and menu.stream != null and menu.stream.resource_path.ends_with("/ui_tap.wav") and _game.audio.sfx_log.slice(-2) == [&"pause", &"ui_tap"],
+		"the pause and the tap play on the menu voice", "%s, %s" % [menu.stream, _game.audio.sfx_log.slice(-2)])
 	for i in 30:
 		await process_frame
 	play.resume()
-	_check(_game.held_players().is_empty() and _game.sounds_in_flight() == GameState.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
-		"on resuming every held sound continues", "%d in flight" % _game.sounds_in_flight())
+	_check(_game.audio.held_players().is_empty() and _game.audio.sounds_in_flight() == AudioManager.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
+		"on resuming every held sound continues", "%d in flight" % _game.audio.sounds_in_flight())
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 
@@ -5098,7 +5098,7 @@ func _test_pause_keeps_every_held_sound() -> void:
 ## with its path, on the error label and in the reported errors (the log), and plays nothing;
 ## Game's loop files are the data's (MUSIC_PATH matches Content.music_path).
 func _test_audio_unloadable_files_reported() -> void:
-	_check(GameState.MUSIC_PATH % "title" == Content.music_path("title"), "Game and Content name the same loop files", GameState.MUSIC_PATH)
+	_check(AudioManager.MUSIC_PATH % "title" == Content.music_path("title"), "Game and Content name the same loop files", AudioManager.MUSIC_PATH)
 	var not_audio := "[gd_resource type=\"Gradient\" format=3]\n\n[resource]\n"
 	for path: String in ["user://not_audio_shot.tres", "user://not_audio_banjo_jam.tres"]:
 		var file := FileAccess.open(path, FileAccess.WRITE)
@@ -5106,22 +5106,22 @@ func _test_audio_unloadable_files_reported() -> void:
 		file.close()
 	var label := _game.get_node("Fade/ErrorLabel") as Label
 	_game.quiet_errors = true
-	_game.sfx_path = "user://not_audio_%s.tres"
-	_game.music_path = "user://not_audio_%s.tres"
+	_game.audio.sfx_path = "user://not_audio_%s.tres"
+	_game.audio.music_path = "user://not_audio_%s.tres"
 	var errors := _game.reported_errors.size()
-	_game.sfx_log.clear()
-	_game.play_sfx(&"shot")
+	_game.audio.sfx_log.clear()
+	_game.audio.play_sfx(&"shot")
 	var sfx_message := "Sound effect 'shot' at user://not_audio_shot.tres cannot be loaded as audio"
-	_check(_game.reported_errors.slice(errors) == [sfx_message] and label.visible and label.text == sfx_message and _game.sfx_log.is_empty(),
+	_check(_game.reported_errors.slice(errors) == [sfx_message] and label.visible and label.text == sfx_message and _game.audio.sfx_log.is_empty(),
 		"a sound effect file that is not audio is reported with its path, on screen, and plays nothing", str(_game.reported_errors.slice(errors)))
 	errors = _game.reported_errors.size()
-	var track := _game.music_track
-	_game.play_music("banjo_jam")
+	var track := _game.audio.music_track
+	_game.audio.play_music("banjo_jam")
 	var music_message := "Music track 'banjo_jam' at user://not_audio_banjo_jam.tres cannot be loaded as audio"
-	_check(_game.reported_errors.slice(errors) == [music_message] and label.visible and label.text == music_message and _game.music_track == track,
+	_check(_game.reported_errors.slice(errors) == [music_message] and label.visible and label.text == music_message and _game.audio.music_track == track,
 		"a loop file that is not audio is reported with its path, on screen, and the music stays", str(_game.reported_errors.slice(errors)))
-	_game.sfx_path = GameState.SFX_PATH
-	_game.music_path = GameState.MUSIC_PATH
+	_game.audio.sfx_path = AudioManager.SFX_PATH
+	_game.audio.music_path = AudioManager.MUSIC_PATH
 	_game.quiet_errors = false
 	label.hide()
 	for path: String in ["user://not_audio_shot.tres", "user://not_audio_banjo_jam.tres"]:
@@ -5138,7 +5138,7 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 		var play := await _start_run(97)
 		var shot := (play.get_node("ShotInput") as ShotInput).shot
 		play.set_shell_pool(30)
-		_game.sfx_log.clear()
+		_game.audio.sfx_log.clear()
 		for i in 12:
 			shot.emit(_global(play, SKY_POINTS[i % SKY_POINTS.size()]))
 		runs.append(_pitches_of(&"shot"))
@@ -5147,7 +5147,7 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 		var shots: Array[float] = runs[0]
 		_check(shots.size() == 12 and shots.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high) and shots.any(func(pitch: float) -> bool: return pitch != shots[0]),
 			"12 shots play at pitches within %.2f..%.2f, not all the same" % [low, high], str(shots))
-		_game.sfx_log.clear()
+		_game.audio.sfx_log.clear()
 		for i in 3:
 			var bird := await _spawn_flying(play, 60 + i)
 			bird.set_process(false)
@@ -5155,7 +5155,7 @@ func _test_frequent_sounds_vary_in_pitch() -> void:
 		var hits := _pitches_of(&"hit")
 		_check(hits.size() == 3 and hits.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high) and hits.any(func(pitch: float) -> bool: return pitch != hits[0]),
 			"3 hits play at pitches within the band, not all the same", str(hits))
-		_game.sfx_log.clear()
+		_game.audio.sfx_log.clear()
 		await _escape_counts(play, await _spawn_flying(play, 64, Content.bird("goose").flee_time - 0.5))
 		var escapes := _pitches_of(&"escape")
 		_check(not escapes.is_empty() and escapes.all(func(pitch: float) -> bool: return pitch >= low and pitch <= high and pitch != 1.0), "an escape plays at a varied pitch within the band", str(escapes))
@@ -5210,7 +5210,7 @@ func _test_bird_calls_on_appearing() -> void:
 				var last_shot := _sounds_of(func() -> void: shot.emit(_global(play, SKY_POINTS[2])))
 				_check(bird.is_fleeing() and &"out_of_shells" in last_shot and not last_shot.any(func(id: StringName) -> bool: return String(id).begins_with("call_")),
 					"%s: running out of shells makes it flee with no call" % spec.id, str(last_shot))
-			_check(_sounds_of(func() -> void: bird.flee()).is_empty(), "%s: being told to flee again makes no sound (%s)" % [spec.id, way], str(_game.sfx_log))
+			_check(_sounds_of(func() -> void: bird.flee()).is_empty(), "%s: being told to flee again makes no sound (%s)" % [spec.id, way], str(_game.audio.sfx_log))
 			Engine.time_scale = FAST_TIME_SCALE
 			for i in 600:
 				if not is_instance_valid(bird):
@@ -5322,7 +5322,7 @@ func _test_title_geese_never_call() -> void:
 	var title := current_scene as Title
 	var calls: Array[String] = []
 	var watched: Dictionary[Bird, bool] = {}
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	Engine.time_scale = 4.0
 	for i in 450:
 		for goose in title.flying_geese():
@@ -5332,7 +5332,7 @@ func _test_title_geese_never_call() -> void:
 		await process_frame
 	Engine.time_scale = 1.0
 	await process_frame
-	var heard := _game.sfx_log.filter(func(id: StringName) -> bool: return String(id).begins_with("call_"))
+	var heard := _game.audio.sfx_log.filter(func(id: StringName) -> bool: return String(id).begins_with("call_"))
 	_check(watched.size() >= 4 and calls.is_empty() and heard.is_empty(), "the title's geese never call (%d watched)" % watched.size(), "calls %s, sounds %s" % [calls, heard])
 	# A crossing goose watched from before it enters the tree, its band wholly above the grass.
 	var crossing := Play.BIRD_SCENE.instantiate() as Bird
@@ -5348,10 +5348,10 @@ func _test_title_geese_never_call() -> void:
 ## The pitches the sounds `id` in sfx_log played at, oldest first.
 func _pitches_of(id: StringName) -> Array[float]:
 	var pitches: Array[float] = []
-	var offset := _game.sfx_pitches.size() - _game.sfx_log.size()
-	for i in _game.sfx_log.size():
-		if _game.sfx_log[i] == id:
-			pitches.append(_game.sfx_pitches[offset + i])
+	var offset := _game.audio.sfx_pitches.size() - _game.audio.sfx_log.size()
+	for i in _game.audio.sfx_log.size():
+		if _game.audio.sfx_log[i] == id:
+			pitches.append(_game.audio.sfx_pitches[offset + i])
 	return pitches
 
 
@@ -5366,34 +5366,34 @@ func _check_dropped_taps(play: Play, where: String) -> void:
 	var at := _global(play, SKY_POINTS[0])
 	for pool: int in [shells, 0]:
 		play.set_shell_pool(pool)
-		_game.sfx_log.clear()
+		_game.audio.sfx_log.clear()
 		await _touch(at)
 		shot.emit(at)
-		var heard := _game.sfx_log.filter(func(id: StringName) -> bool: return id == &"shot" or id == &"empty_click")
+		var heard := _game.audio.sfx_log.filter(func(id: StringName) -> bool: return id == &"shot" or id == &"empty_click")
 		_check(heard.is_empty() and play.scoring.shots() == shots and play.refused == refused, "a tap %s plays no shot sound (%s)" % [where, "empty pool" if pool == 0 else "%d shells" % pool],
-			"%s, %d shots, %d refused" % [_game.sfx_log, play.scoring.shots() - shots, play.refused - refused])
+			"%s, %d shots, %d refused" % [_game.audio.sfx_log, play.scoring.shots() - shots, play.refused - refused])
 	play.set_shell_pool(shells)
 
 
 ## The sounds `action` plays, at once (it is called with sfx_log cleared).
 func _sounds_of(action: Callable) -> Array[StringName]:
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	action.call()
-	return _game.sfx_log.duplicate()
+	return _game.audio.sfx_log.duplicate()
 
 
 
 ## The sound a heckle of `category` logs: its blurt, or none while blurts are off
-## (GameState.HECKLE_BLURTS, the experiment muting the rival's voice).
+## (AudioManager.HECKLE_BLURTS, the experiment muting the rival's voice).
 func _heckle_sounds(category: String) -> Array[StringName]:
 	var sounds: Array[StringName] = []
-	if _game.heckle_blurts:
+	if _game.audio.heckle_blurts:
 		sounds.append(StringName("heckle_" + category))
 	return sounds
 
 ## "sound xpitch @at, ..." of a blurt, for comparing and failure messages.
-func _plan_text(plan: Array[GameState.Syllable]) -> String:
-	return ", ".join(plan.map(func(syllable: GameState.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
+func _plan_text(plan: Array[AudioManager.Syllable]) -> String:
+	return ", ".join(plan.map(func(syllable: AudioManager.Syllable) -> String: return "%s x%.3f @%.3f" % [syllable.sound, syllable.pitch, syllable.at]))
 
 
 ## The settings screen from the title's Settings button: its sliders, toggles and Back fit
@@ -5442,19 +5442,19 @@ func _test_settings_screen() -> void:
 		await _key(key)
 		vertical.append(str(root.gui_get_focus_owner().name) if root.gui_get_focus_owner() != null else "none")
 	_check(vertical == ["SfxSlider", "ReduceMotionToggle", "BackButton", "MusicSlider", "BackButton", "ReduceMotionToggle"], "Down and Up move between the rows (wrapping)", str(vertical))
-	await _check_slider(settings, music, "Music", GameState.MUSIC_BUS, "music", 70)
-	await _check_slider(settings, sfx, "SFX", GameState.SFX_BUS, "sfx", 80)
+	await _check_slider(settings, music, "Music", AudioManager.MUSIC_BUS, "music", 70)
+	await _check_slider(settings, sfx, "SFX", AudioManager.SFX_BUS, "sfx", 80)
 	# A change outside any hold (HSlider's own mouse wheel on a desktop) saves and taps at once.
 	var outside_from := _log.size()
-	var outside_sounds := _game.sfx_log.size()
+	var outside_sounds := _game.audio.sfx_log.size()
 	music.value = 40
 	var outside: Variant = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
-	_check(_game.save.music_volume == 40 and (outside as Dictionary)["settings"]["music"] == 40.0 and _game.sfx_log.slice(outside_sounds) == [&"ui_tap"], "a change outside any hold (the mouse wheel) saves at once and taps", "volume %d, sounds %s" % [_game.save.music_volume, _game.sfx_log.slice(outside_sounds)])
+	_check(_game.save.music_volume == 40 and (outside as Dictionary)["settings"]["music"] == 40.0 and _game.audio.sfx_log.slice(outside_sounds) == [&"ui_tap"], "a change outside any hold (the mouse wheel) saves at once and taps", "volume %d, sounds %s" % [_game.save.music_volume, _game.audio.sfx_log.slice(outside_sounds)])
 	_check_logged(outside_from, "^\\[Settings\\] Music slider moved to 40$", "a change outside a hold is logged without (held)")
 	var saved: Variant
 	var sounds := 0
 	var toggles: Array[Button] = [music_toggle, sfx_toggle]
-	var buses: Array[StringName] = [GameState.MUSIC_BUS, GameState.SFX_BUS]
+	var buses: Array[StringName] = [AudioManager.MUSIC_BUS, AudioManager.SFX_BUS]
 	for i in toggles.size():
 		from = _log.size()
 		await _tap(toggles[i])
@@ -5465,10 +5465,10 @@ func _test_settings_screen() -> void:
 		await _tap(toggles[i])
 		_check(not AudioServer.is_bus_mute(AudioServer.get_bus_index(buses[i])) and toggles[i].text.ends_with(": on"), "a second tap on %s unmutes it" % toggles[i].name, toggles[i].text)
 	from = _log.size()
-	sounds = _game.sfx_log.size()
+	sounds = _game.audio.sfx_log.size()
 	await _tap(reduce)
 	saved = JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path))
-	_check(_game.save.reduce_motion and reduce.button_pressed and reduce.text == "Reduce motion: on" and (saved as Dictionary)["settings"]["reduce_motion"] == true and _game.sfx_log.slice(sounds) == [&"ui_tap"], "Reduce motion turns on, shows it, is saved and taps", "%s, %s" % [reduce.text, _game.sfx_log.slice(sounds)])
+	_check(_game.save.reduce_motion and reduce.button_pressed and reduce.text == "Reduce motion: on" and (saved as Dictionary)["settings"]["reduce_motion"] == true and _game.audio.sfx_log.slice(sounds) == [&"ui_tap"], "Reduce motion turns on, shows it, is saved and taps", "%s, %s" % [reduce.text, _game.audio.sfx_log.slice(sounds)])
 	_check_logged(from, "^\\[Settings\\] Reduce motion toggle pressed: on$", "the reduce motion press is logged")
 	_check_logged(from, "^\\[Game\\] Reduce motion on: no screen shake, plain fades, steady pop-ups and title$", "Game logs reduce motion")
 	_game.save.set_reduce_motion(false)
@@ -5491,8 +5491,8 @@ func _test_settings_screen() -> void:
 		await process_frame
 	_check(current_scene is Title and (current_scene.get_node("Safe/SettingsButton") as Button).has_focus(), "Escape on the settings screen returns to the title too", str(current_scene))
 	_check_logged(from, "^\\[Settings\\] Back pressed; returning to the title$", "Back is logged")
-	_game.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
-	_game.set_sfx_volume(SaveStore.DEFAULT_SFX_VOLUME)
+	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
+	_game.audio.set_sfx_volume(SaveStore.DEFAULT_SFX_VOLUME)
 	_clear_tool_save()
 
 
@@ -5506,7 +5506,7 @@ func _test_settings_over_paused_run() -> void:
 	_game.save.load_game()
 	var play := await _start_run(55)
 	await _spawn_flying(play, 7)
-	_game.play_sfx(&"wave_start")
+	_game.audio.play_sfx(&"wave_start")
 	play.open_pause("test")
 	await process_frame
 	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
@@ -5514,7 +5514,7 @@ func _test_settings_over_paused_run() -> void:
 	var from := _log.size()
 	await _tap(settings_button)
 	var settings := play.settings_overlay()
-	_check(settings != null and settings.overlay and settings.is_inside_tree() and paused and play.is_paused() and _game.audio_paused, "Settings opens the settings over the paused run", "overlay %s, paused %s" % [settings, paused])
+	_check(settings != null and settings.overlay and settings.is_inside_tree() and paused and play.is_paused() and _game.audio.audio_paused, "Settings opens the settings over the paused run", "overlay %s, paused %s" % [settings, paused])
 	_check(not (panel as Control).visible and (play.get_node("PauseLayer/PauseMenu") as Control).visible, "the pause menu's panel hides under the settings, its dim stays", "panel %s" % (panel as Control).visible)
 	if settings == null:
 		play.resume()
@@ -5522,15 +5522,15 @@ func _test_settings_over_paused_run() -> void:
 	_check_logged(from, "^\\[Play\\] Settings opened over the paused run \\(wave 1 at t ", "opening it is logged")
 	_check_logged(from, "^\\[Settings\\] Opened over the paused run: ", "the settings log their arrival over the run")
 	var clock := play.run_clock
-	var held := _game.held_players().size()
+	var held := _game.audio.held_players().size()
 	for i in 30:
 		await process_frame
-	_check(play.run_clock == clock and paused and _game.held_players().size() == held and held >= 1, "the run stays frozen with its sounds held under the settings", "clock %.3f -> %.3f, held %d" % [clock, play.run_clock, _game.held_players().size()])
+	_check(play.run_clock == clock and paused and _game.audio.held_players().size() == held and held >= 1, "the run stays frozen with its sounds held under the settings", "clock %.3f -> %.3f, held %d" % [clock, play.run_clock, _game.audio.held_players().size()])
 	var music := settings.get_node("Safe/MusicSlider") as TouchSlider
 	_check(music.has_focus(), "the overlay focuses its music slider", str(root.gui_get_focus_owner()))
 	await _key(KEY_LEFT)
-	var bus := AudioServer.get_bus_index(GameState.MUSIC_BUS)
-	_check(_game.save.music_volume == 70 - int(TouchSlider.KEY_STEP) and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(70 - int(TouchSlider.KEY_STEP), GameState.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
+	var bus := AudioServer.get_bus_index(AudioManager.MUSIC_BUS)
+	_check(_game.save.music_volume == 70 - int(TouchSlider.KEY_STEP) and is_equal_approx(AudioServer.get_bus_volume_db(bus), AudioManager.bus_volume_db(70 - int(TouchSlider.KEY_STEP), AudioManager.PAUSE_DUCK_DB)), "a slider step applies at once and the music stays ducked", "%.2f dB" % AudioServer.get_bus_volume_db(bus))
 	var shots := play.scoring.shots()
 	await _tap(settings.get_node("Safe/ReduceMotionHint") as Control)
 	_check(play.scoring.shots() == shots and play.refused == 0, "a touch on the overlay is no shot", "%d shots" % play.scoring.shots())
@@ -5554,8 +5554,8 @@ func _test_settings_over_paused_run() -> void:
 	await _tap(settings_button)
 	play.resume()
 	await process_frame
-	_check(play.settings_overlay() == null and not paused and not _game.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
-	_game.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
+	_check(play.settings_overlay() == null and not paused and not _game.audio.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
+	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	_clear_tool_save()
@@ -5819,12 +5819,12 @@ func _test_title_goose_shot() -> void:
 	# Inside the goose's box but outside its polygon: a miss, as in play.
 	await _touch(scenery.to_global(goose.transform * LOCAL_BOX_CORNER))
 	_check(goose.is_flying() and title.geese_shot == 0, "a tap inside a title goose's box but outside its polygon misses", "shot %d" % title.geese_shot)
-	var sounds := _game.sfx_log.size()
+	var sounds := _game.audio.sfx_log.size()
 	var feathers_before := title.feathers().live_count()
 	await _touch(scenery.to_global(goose.transform * LOCAL_BODY))
 	goose.set_process(true)
 	_check(goose.state != Bird.State.FLYING and title.geese_shot == 1, "a tap on a title goose shoots it", "state %d" % goose.state)
-	_check(_game.sfx_log.slice(sounds) == [&"shot", &"hit"] + _heckle_sounds("combo"), "the shot, the hit and the rival's blurt play (silent while HECKLE_BLURTS is off)", str(_game.sfx_log.slice(sounds)))
+	_check(_game.audio.sfx_log.slice(sounds) == [&"shot", &"hit"] + _heckle_sounds("combo"), "the shot, the hit and the rival's blurt play (silent while HECKLE_BLURTS is off)", str(_game.audio.sfx_log.slice(sounds)))
 	_check(title.feathers().live_count() == feathers_before + Feathers.FEATHERS_PER_BURST and Array(title.feathers().live_colors()).all(func(color: Color) -> bool: return color in Feathers.COLORS[goose.spec.sprite]), "the goose bursts into feathers of its colours", "%d feathers" % title.feathers().live_count())
 	_check(title.rival_pose() == "sulk" and title.heckle_shown() in Content.rival_lines().lines[Title.HECKLE_CATEGORY], "the rival sulks and heckles", "%s, '%s'" % [title.rival_pose(), title.heckle_shown()])
 	_check_logged(from, "^\\[Title\\] Shot goose #%d at \\([\\d.]+, [\\d.]+\\): it falls; no score, nothing saved \\(1 shot on the title\\)$" % goose.number, "the title shot is logged")
@@ -5848,10 +5848,10 @@ func _test_title_goose_shot() -> void:
 			empty = point
 			break
 	from = _log.size()
-	sounds = _game.sfx_log.size()
+	sounds = _game.audio.sfx_log.size()
 	var feathers_now := title.feathers().live_count()
 	await _touch(scenery.to_global(empty))
-	_check(_game.sfx_log.slice(sounds) == [&"shot"] and title.geese_shot == 1 and title.feathers().live_count() <= feathers_now, "a tap on empty sky plays the shot only", str(_game.sfx_log.slice(sounds)))
+	_check(_game.audio.sfx_log.slice(sounds) == [&"shot"] and title.geese_shot == 1 and title.feathers().live_count() <= feathers_now, "a tap on empty sky plays the shot only", str(_game.audio.sfx_log.slice(sounds)))
 	_check_logged(from, "^\\[Title\\] Shot at \\([\\d.]+, [\\d.]+\\): missed$", "the empty shot is logged")
 	var second := await _title_goose_in_view(title)
 	if second != null:
@@ -5864,9 +5864,9 @@ func _test_title_goose_shot() -> void:
 	_check(FileAccess.get_file_as_string(_game.save.save_path) == save_before and _game.save.bests == bests_before, "nothing is saved and no best changes", "save changed")
 	_check(not Array(_log.since(shots_from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")), "title shots write no save", "a save line")
 	from = _log.size()
-	sounds = _game.sfx_log.size()
+	sounds = _game.audio.sfx_log.size()
 	await _tap(title.get_node("Safe/CreditsButton") as Control)
-	_check(title.credits_presses == 1 and not &"shot" in _game.sfx_log.slice(sounds) and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Title] Shot")), "a tap on a button only presses it", str(_game.sfx_log.slice(sounds)))
+	_check(title.credits_presses == 1 and not &"shot" in _game.audio.sfx_log.slice(sounds) and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Title] Shot")), "a tap on a button only presses it", str(_game.audio.sfx_log.slice(sounds)))
 	await _game.transition_finished
 	_clear_tool_save()
 
@@ -6307,19 +6307,19 @@ func _check_slider(settings: Settings, slider: TouchSlider, what: String, bus_na
 	var stored := func() -> float: return (JSON.parse_string(FileAccess.get_file_as_string(_game.save.save_path)) as Dictionary)["settings"][key]
 	slider.grab_focus()
 	var from := _log.size()
-	var sounds := _game.sfx_log.size()
+	var sounds := _game.audio.sfx_log.size()
 	await _key_event(KEY_RIGHT, true, false)
 	var step := int(TouchSlider.KEY_STEP)
-	_check(volume.call() == start + step and step >= 5 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(start + step)) and _text_of(settings, label) == "%s %d" % [what, start + step],
+	_check(volume.call() == start + step and step >= 5 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), AudioManager.bus_volume_db(start + step)) and _text_of(settings, label) == "%s %d" % [what, start + step],
 		"%s: a Right press steps the slider by %d (at least 5), the bus and label follow at once" % [what, step], "volume %d, held %s, label %s" % [volume.call(), slider.is_held(), _text_of(settings, label)])
 	for echo in 2:
 		await _key_event(KEY_RIGHT, true, true)
-	_check(volume.call() == start + 3 * step and stored.call() == float(start) and _game.sfx_log.size() == sounds and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")),
-		"%s: the held key's repeats keep stepping, with no save and no tap per repeat" % what, "volume %d, stored %s, sounds %s" % [volume.call(), stored.call(), _game.sfx_log.slice(sounds)])
+	_check(volume.call() == start + 3 * step and stored.call() == float(start) and _game.audio.sfx_log.size() == sounds and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Game] Saved to")),
+		"%s: the held key's repeats keep stepping, with no save and no tap per repeat" % what, "volume %d, stored %s, sounds %s" % [volume.call(), stored.call(), _game.audio.sfx_log.slice(sounds)])
 	_check_logged(from, "^\\[Settings\\] %s slider moved to %d \\(held\\)$" % [what, start + 3 * step], "%s: each step is logged as held" % what)
 	await _key_event(KEY_RIGHT, false, false)
 	var saves := Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size()
-	_check(not slider.is_held() and stored.call() == float(start + 3 * step) and saves == 1 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "%s: releasing the key saves the final value once and taps once" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.sfx_log.slice(sounds)])
+	_check(not slider.is_held() and stored.call() == float(start + 3 * step) and saves == 1 and _game.audio.sfx_log.slice(sounds) == [&"ui_tap"], "%s: releasing the key saves the final value once and taps once" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.audio.sfx_log.slice(sounds)])
 	_check_logged(from, "^\\[Settings\\] %s slider released at %d \\(keys released\\); saving$" % [what, start + 3 * step], "%s: the key release is logged" % what)
 	await _key(KEY_LEFT)
 	_check(volume.call() == start + 2 * step and stored.call() == float(start + 2 * step) and slider.has_focus(), "%s: a Left press and release steps back and saves, the focus stays" % what, "volume %d, stored %s" % [volume.call(), stored.call()])
@@ -6330,15 +6330,15 @@ func _check_slider(settings: Settings, slider: TouchSlider, what: String, bus_na
 	var at_three_quarters := Vector2(rect.position.x + grabber / 2.0 + (rect.size.x - grabber) * 0.75, rect.get_center().y)
 	var before := stored.call() as float
 	from = _log.size()
-	sounds = _game.sfx_log.size()
+	sounds = _game.audio.sfx_log.size()
 	await _finger(at_quarter, true)
 	await _drag(at_three_quarters)
-	_check(volume.call() == 75 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), GameState.bus_volume_db(75)) and stored.call() == before and _game.sfx_log.size() == sounds,
-		"%s: a touch and a drag set the volume live (bus and label), unsaved and silent while the finger is down" % what, "volume %d, held %s, stored %s, sounds %s" % [volume.call(), slider.is_held(), stored.call(), _game.sfx_log.slice(sounds)])
+	_check(volume.call() == 75 and slider.is_held() and is_equal_approx(AudioServer.get_bus_volume_db(bus), AudioManager.bus_volume_db(75)) and stored.call() == before and _game.audio.sfx_log.size() == sounds,
+		"%s: a touch and a drag set the volume live (bus and label), unsaved and silent while the finger is down" % what, "volume %d, held %s, stored %s, sounds %s" % [volume.call(), slider.is_held(), stored.call(), _game.audio.sfx_log.slice(sounds)])
 	_check_logged(from, "^\\[Settings\\] %s slider moved to 25 \\(held\\)$" % what, "%s: the touch is logged as held" % what)
 	await _finger(at_three_quarters, false)
 	saves = Array(_log.since(from)).filter(func(line: String) -> bool: return line.begins_with("[Game] Saved to")).size()
-	_check(not slider.is_held() and stored.call() == 75.0 and saves == 1 and _game.sfx_log.slice(sounds) == [&"ui_tap"], "%s: lifting the finger saves the volume once and plays the UI tap" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.sfx_log.slice(sounds)])
+	_check(not slider.is_held() and stored.call() == 75.0 and saves == 1 and _game.audio.sfx_log.slice(sounds) == [&"ui_tap"], "%s: lifting the finger saves the volume once and plays the UI tap" % what, "stored %s, %d saves, sounds %s" % [stored.call(), saves, _game.audio.sfx_log.slice(sounds)])
 	_check_logged(from, "^\\[Settings\\] %s slider released at 75 \\(finger lifted\\); saving$" % what, "%s: the lift is logged" % what)
 
 
@@ -6437,10 +6437,10 @@ func _test_slider_hold_cut_short() -> void:
 		_check(play.settings_overlay() == null and stored.call() == 75.0, "%s closes the settings with a finger down and the held volume is saved" % closer, "overlay %s, stored %s" % [play.settings_overlay(), stored.call()])
 		_check_logged(from, "^\\[Settings\\] Music slider released at 75 \\(left the screen\\); saving$", "%s: the closed hold is logged" % closer)
 		await _finger(overlay_points[1], false)
-		_game.set_music_volume(70)
+		_game.audio.set_music_volume(70)
 		if play.is_paused():
 			play.resume()
-	_game.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
+	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
 	_game.goto(GameState.Flow.TITLE)
 	await _game.transition_finished
 	_clear_tool_save()
@@ -6644,7 +6644,7 @@ func _test_rival_cues_always_finish() -> void:
 	await _open_title()
 
 
-## Finding 5 of the PR 10 review: the laugh queued by a steal (Game.play_sfx_later) holds
+## Finding 5 of the PR 10 review: the laugh queued by a steal (Game.audio.play_sfx_later) holds
 ## through a pause: paused a few frames after the steal, it does not play while paused
 ## (still waiting), and after Resume it plays once the rest of RIVAL_LAUGH_DELAY has run.
 func _test_rival_laugh_waits_out_a_pause() -> void:
@@ -6655,21 +6655,21 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 		if cued.stolen:
 			break
 		await process_frame
-	_game.sfx_log.clear()
+	_game.audio.sfx_log.clear()
 	var before := 6
 	for i in before:
 		await process_frame
 	play.open_pause("pause button")
 	for i in 60:
 		await process_frame
-	_check(cued.stolen and not &"rival_laugh" in _game.sfx_log and _game.sfx_waiting() == 1, "a laugh queued before a pause waits through it", "stolen %s, %s, %d waiting" % [cued.stolen, _game.sfx_log, _game.sfx_waiting()])
+	_check(cued.stolen and not &"rival_laugh" in _game.audio.sfx_log and _game.audio.sfx_waiting() == 1, "a laugh queued before a pause waits through it", "stolen %s, %s, %d waiting" % [cued.stolen, _game.audio.sfx_log, _game.audio.sfx_waiting()])
 	play.resume()
 	var after := 0
-	while not &"rival_laugh" in _game.sfx_log and after < 120:
+	while not &"rival_laugh" in _game.audio.sfx_log and after < 120:
 		await process_frame
 		after += 1
 	var rest := roundi(Play.RIVAL_LAUGH_DELAY / FRAME) - before
-	_check(absi(after - rest) <= 2 and _game.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
+	_check(absi(after - rest) <= 2 and _game.audio.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
 	await _open_title()
 
 
@@ -6681,7 +6681,7 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 func _test_rival_laugh_before_results_blurt() -> void:
 	var laugh_length := (load("res://audio/sfx/rival_laugh.wav") as AudioStream).get_length()
 	# The parting blurt's wait for the laugh, with the blurts switched on.
-	_game.heckle_blurts = true
+	_game.audio.heckle_blurts = true
 	for reduce_motion: bool in [false, true]:
 		var label := "reduce motion" if reduce_motion else "the wipe"
 		_game.save.set_reduce_motion(reduce_motion)
@@ -6690,7 +6690,7 @@ func _test_rival_laugh_before_results_blurt() -> void:
 		play._next_spawn = play.wave.spawns.size()
 		var cued := await _cued_bird(play, 307, "goose")
 		play.escaped = play.mode.escape_limit - 1
-		_game.sfx_log.clear()
+		_game.audio.sfx_log.clear()
 		var from := _log.size()
 		var stolen := false
 		var laugh_clock := -1.0
@@ -6701,17 +6701,17 @@ func _test_rival_laugh_before_results_blurt() -> void:
 			await process_frame
 			# The stolen goose frees itself once it has fallen off the screen.
 			stolen = stolen or (is_instance_valid(cued) and cued.stolen)
-			if laugh_clock < 0.0 and &"rival_laugh" in _game.sfx_log:
-				laugh_clock = _game._clock
+			if laugh_clock < 0.0 and &"rival_laugh" in _game.audio.sfx_log:
+				laugh_clock = _game.audio._clock
 				laugh_on_results = current_scene is Results
-			if waiting < 0 and &"heckle_results" in _game.sfx_log:
-				waiting = _game.blurt_syllables_waiting()
-			elif waiting > 0 and blurt_clock < 0.0 and _game.blurt_syllables_waiting() < waiting:
-				blurt_clock = _game._clock
+			if waiting < 0 and &"heckle_results" in _game.audio.sfx_log:
+				waiting = _game.audio.blurt_syllables_waiting()
+			elif waiting > 0 and blurt_clock < 0.0 and _game.audio.blurt_syllables_waiting() < waiting:
+				blurt_clock = _game.audio._clock
 			if laugh_clock >= 0.0 and blurt_clock >= 0.0:
 				break
-		var order := _game.sfx_log.slice(0, 4)
-		_check(stolen and laugh_clock >= 0.0 and order.find(&"rival_steal") < order.find(&"rival_laugh"), "%s: a run-ending steal laughs after its shot" % label, str(_game.sfx_log))
+		var order := _game.audio.sfx_log.slice(0, 4)
+		_check(stolen and laugh_clock >= 0.0 and order.find(&"rival_steal") < order.find(&"rival_laugh"), "%s: a run-ending steal laughs after its shot" % label, str(_game.audio.sfx_log))
 		if reduce_motion:
 			_check(laugh_on_results, "%s: the laugh plays after the change to the results screen" % label, "scene %s" % current_scene)
 		_check(blurt_clock >= laugh_clock + laugh_length - FRAME, "%s: the results' blurt starts once the laugh has finished" % label, "laugh at %.3f (%.2f s long), first syllable at %.3f" % [laugh_clock, laugh_length, blurt_clock])
@@ -6721,6 +6721,6 @@ func _test_rival_laugh_before_results_blurt() -> void:
 		var results := current_scene as Results
 		_check(results != null and (results.get_node("%RivalPanel") as Control).visible, "%s: the results show at once, the rival's panel with them" % label, "scene %s" % current_scene)
 	_game.save.set_reduce_motion(false)
-	_game.heckle_blurts = GameState.HECKLE_BLURTS
+	_game.audio.heckle_blurts = AudioManager.HECKLE_BLURTS
 	_clear_tool_save()
 	await _open_title()

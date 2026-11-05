@@ -20,7 +20,7 @@ extends Control
 ## GOOSE_GAP_MIN..MAX seconds, at most GEESE_MAX at once), in a band from below the top bar
 ## down to just above the first row of buttons, so a goose never covers a button. A tap on
 ## a goose (its hitbox polygon, as in play) shoots it: the shot and hit sounds, a feather
-## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while Game.HECKLE_BLURTS is off)
+## burst, the goose falls, and the rival sulks and grumbles a heckle line with its blurt (silent while AudioManager.HECKLE_BLURTS is off)
 ## (cooldown permitting, as in play); it scores nothing and saves nothing, and is logged
 ## ("[Title] Shot goose #n"). A tap on empty sky plays the shot only; a tap on a button only
 ## presses it (the buttons lie above the shot surface). The scenery drifts slowly from side
@@ -216,14 +216,14 @@ func _on_shot(at: Vector2) -> void:
 	if _game.is_transitioning():
 		return
 	var point := _scenery.to_local(at)
-	_game.play_sfx(&"shot")
+	_game.audio.play_sfx(&"shot")
 	var goose := goose_at(point)
 	if goose == null:
 		print("[Title] Shot at (%.1f, %.1f): missed" % [at.x, at.y])
 		return
 	goose.hit()
 	geese_shot += 1
-	_game.play_sfx(&"hit")
+	_game.audio.play_sfx(&"hit")
 	_feathers.burst(point, goose.spec.sprite)
 	print("[Title] Shot goose #%d at (%.1f, %.1f): it falls; no score, nothing saved (%d shot on the title)" % [goose.number, at.x, at.y, geese_shot])
 	_sulk_until = _clock + Play.RIVAL_REACTION_TIME
@@ -250,7 +250,7 @@ func _heckle() -> void:
 	_bubble_tween = create_tween()
 	_bubble_tween.tween_interval(Play.HECKLE_TIME)
 	_bubble_tween.tween_callback(_bubble.hide)
-	_game.play_heckle(HECKLE_CATEGORY, line)
+	_game.audio.play_heckle(HECKLE_CATEGORY, line)
 	print("[Title] Heckle (%s) #%d: \"%s\"" % [HECKLE_CATEGORY, heckles, line])
 
 

@@ -27,8 +27,8 @@ extends Control
 ## without Next).
 ## Laid out in the safe area: the stars and panels are centred between the heading and
 ## the save error's slot above the buttons.
-## Sound: the rival's parting line plays his blurt (silent while Game.HECKLE_BLURTS is off)
-## (Game.play_heckle, "results"; after a run ended by his steal it waits for his laugh to
+## Sound: the rival's parting line plays his blurt (silent while AudioManager.HECKLE_BLURTS is off)
+## (Game.audio.play_heckle, "results"; after a run ended by his steal it waits for his laugh to
 ## finish); a level's earned stars each play "star", STAR_SOUND_GAP seconds apart, and a
 ## new best then plays "new_best". Each earned star pops in with its sound (a scale bounce,
 ## STAR_POP_TIME; with Game.save.reduce_motion it just appears at the same moment), and the
@@ -242,17 +242,17 @@ func _show_stats(stats: Dictionary) -> void:
 ## The results' sounds: the rival's blurt for `rival_line` at once, then `stars` star sounds
 ## and the new best's fanfare (when `new_best`), STAR_SOUND_GAP seconds apart.
 func _play_sounds(rival_line: String, stars: int, new_best: bool) -> void:
-	_game.play_heckle("results", rival_line)
+	_game.audio.play_heckle("results", rival_line)
 	if stars == 0 and not new_best:
 		return
 	var tween := create_tween()
 	for i in stars:
 		tween.tween_interval(STAR_SOUND_GAP)
-		tween.tween_callback(_game.play_sfx.bind(&"star"))
+		tween.tween_callback(_game.audio.play_sfx.bind(&"star"))
 		tween.tween_callback(_pop_star.bind(i, stars))
 	if new_best:
 		tween.tween_interval(STAR_SOUND_GAP)
-		tween.tween_callback(_game.play_sfx.bind(&"new_best"))
+		tween.tween_callback(_game.audio.play_sfx.bind(&"new_best"))
 		tween.tween_callback(_bounce_badge)
 
 
