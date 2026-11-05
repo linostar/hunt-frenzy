@@ -3232,8 +3232,8 @@ func _test_missing_backdrop_is_reported() -> void:
 ## before anything is loaded: a theme whose font file is gone, no theme file, a theme
 ## without a default font; a scene's missing art is named too.
 func _test_ui_theme_and_fonts() -> void:
-	var path: String = ProjectSettings.get_setting(GameState.THEME_SETTING, "")
-	_check(path == "res://ui/theme.tres" and GameState.theme_problems(path).is_empty(), "project.godot sets the UI theme, which loads without problems", "%s: %s" % [path, GameState.theme_problems(path)])
+	var path: String = ProjectSettings.get_setting(ResourceCheck.THEME_SETTING, "")
+	_check(path == "res://ui/theme.tres" and ResourceCheck.theme_problems(path).is_empty(), "project.godot sets the UI theme, which loads without problems", "%s: %s" % [path, ResourceCheck.theme_problems(path)])
 	_check(_game.checked_theme == path, "Game checked the project's UI theme at start", _game.checked_theme)
 	_check(not _game.reported_errors.any(func(message: String) -> bool: return "UI theme" in message), "nothing about the theme was reported at start", str(_game.reported_errors))
 	var theme := load(path) as Theme
@@ -3265,15 +3265,15 @@ func _test_ui_theme_and_fonts() -> void:
 	var file := FileAccess.open(broken, FileAccess.WRITE)
 	file.store_string('[gd_resource type="Theme" load_steps=2 format=3]\n\n[ext_resource type="FontFile" path="res://ui/fonts/Missing.ttf" id="1_font"]\n\n[resource]\ndefault_font = ExtResource("1_font")\n')
 	file.close()
-	_check(GameState.theme_problems(broken) == ["UI theme 'user://broken_theme.tres' needs 'res://ui/fonts/Missing.ttf', which is missing"], "a theme whose font file is missing is reported with the file", str(GameState.theme_problems(broken)))
+	_check(ResourceCheck.theme_problems(broken) == ["UI theme 'user://broken_theme.tres' needs 'res://ui/fonts/Missing.ttf', which is missing"], "a theme whose font file is missing is reported with the file", str(ResourceCheck.theme_problems(broken)))
 	DirAccess.remove_absolute(broken)
-	_check(GameState.theme_problems("res://ui/no_theme.tres") == ["UI theme 'res://ui/no_theme.tres' does not exist"], "a missing theme file is reported", str(GameState.theme_problems("res://ui/no_theme.tres")))
-	_check(GameState.font_problems(Theme.new(), "test") == ["UI theme 'test': default_font has no font file"], "a theme without a default font is reported", str(GameState.font_problems(Theme.new(), "test")))
+	_check(ResourceCheck.theme_problems("res://ui/no_theme.tres") == ["UI theme 'res://ui/no_theme.tres' does not exist"], "a missing theme file is reported", str(ResourceCheck.theme_problems("res://ui/no_theme.tres")))
+	_check(ResourceCheck.font_problems(Theme.new(), "test") == ["UI theme 'test': default_font has no font file"], "a theme without a default font is reported", str(ResourceCheck.font_problems(Theme.new(), "test")))
 	var scene := "user://broken_scene.tscn"
 	file = FileAccess.open(scene, FileAccess.WRITE)
 	file.store_string('[gd_scene load_steps=2 format=3]\n\n[ext_resource type="Texture2D" path="res://art/no_such_bird.svg" id="1_art"]\n\n[node name="Broken" type="Sprite2D"]\ntexture = ExtResource("1_art")\n')
 	file.close()
-	_check(GameState.missing_dependencies(scene) == PackedStringArray(["res://art/no_such_bird.svg"]), "a scene's missing art is named", str(GameState.missing_dependencies(scene)))
+	_check(ResourceCheck.missing_dependencies(scene) == PackedStringArray(["res://art/no_such_bird.svg"]), "a scene's missing art is named", str(ResourceCheck.missing_dependencies(scene)))
 	DirAccess.remove_absolute(scene)
 
 
@@ -3359,7 +3359,7 @@ func _test_load_errors_reach_the_screen() -> void:
 		label.hide()
 	DirAccess.remove_absolute(broken)
 	var from := _log.size()
-	_check(_game.check_ui_theme(ProjectSettings.get_setting(GameState.THEME_SETTING, "")), "the project's theme passes the check Game runs at start", "")
+	_check(_game.check_ui_theme(ProjectSettings.get_setting(ResourceCheck.THEME_SETTING, "")), "the project's theme passes the check Game runs at start", "")
 	_check_logged(from, "^\\[Game\\] UI theme res://ui/theme\\.tres loaded with its fonts: Nunito-wght\\.ttf, LilitaOne-Regular\\.ttf$", "the theme's fonts are logged")
 	var scene := "user://broken_scene.tscn"
 	file = FileAccess.open(scene, FileAccess.WRITE)
