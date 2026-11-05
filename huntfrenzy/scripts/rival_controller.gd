@@ -12,14 +12,14 @@ extends Node
 ## fleeing drops it, and once it has run the rival fires and never misses: the bird falls as
 ## stolen, its points (no combo) go to his tally, it counts as an escape (stolen birds can end
 ## the run), the player's combo is untouched, a stolen splitter launches no goslings, and he
-## laughs ("rival_laugh", RIVAL_LAUGH_DELAY after his shot). He aims at one bird at a time (Rival.may_aim): when several have flown their
+## laughs ("rival_laugh", Play.TUNING.rival_laugh_delay after his shot). He aims at one bird at a time (Rival.may_aim): when several have flown their
 ## linger_time, the cue goes to the one that has flown longest (the lower number on a tie:
-## Rival.aim_target), and after a steal or a cancelled cue he waits RIVAL_AIM_GAP seconds of
+## Rival.aim_target), and after a steal or a cancelled cue he waits Play.TUNING.rival_aim_gap seconds of
 ## run_clock (a pause does not count) before the next cue. With steals off he only heckles. He
-## heckles (a Rival.pick_line line in the bubble for HECKLE_TIME) on a miss, a combo rising to
+## heckles (a Rival.pick_line line in the bubble for Play.TUNING.heckle_time) on a miss, a combo rising to
 ## COMBO_HECKLE_MIN or more and a wave's end, at most once per cooldown, and on every steal;
 ## the results screen shows one more line (results_line). His pose follows the run: he raises
-## his gun while any cue runs, else he sulks for RIVAL_REACTION_TIME after each scored kill and
+## his gun while any cue runs, else he sulks for Play.TUNING.rival_reaction_time after each scored kill and
 ## brags for as long after a miss heckle that showed, else he stands idle. Cues, poses and the
 ## cooldown run on Play.run_clock, so a pause freezes them.
 
@@ -29,14 +29,6 @@ const RIVAL_SULK := preload("res://art/rival_sulk.svg")
 const RIVAL_BRAG := preload("res://art/rival_brag.svg")
 ## A kill that raises the combo to this multiplier or more draws a heckle.
 const COMBO_HECKLE_MIN := 3
-## Seconds a heckle stays in the rival's bubble.
-const HECKLE_TIME := 2.5
-## Seconds (run_clock) the rival sulks after a scored hit, or brags after a miss heckle.
-const RIVAL_REACTION_TIME := 1.2
-## Seconds of run_clock after a steal or a cancelled cue before the rival aims again.
-const RIVAL_AIM_GAP := 1.5
-## Seconds after the rival's shot (rival_steal) that his laugh (rival_laugh) starts.
-const RIVAL_LAUGH_DELAY := 0.3
 
 ## Birds the rival stole, and the points they took to his tally.
 var stolen := 0
@@ -122,7 +114,7 @@ func update_steals() -> void:
 				_steal(bird)
 				if _play.is_over():
 					return
-	if eligible.is_empty() or not Rival.may_aim(cue_running, _play.run_clock, _last_cue_end, RIVAL_AIM_GAP):
+	if eligible.is_empty() or not Rival.may_aim(cue_running, _play.run_clock, _last_cue_end, Play.TUNING.rival_aim_gap):
 		return
 	_start_cue(eligible[Rival.aim_target(ages, numbers)], eligible.size())
 
@@ -134,16 +126,16 @@ func _start_cue(bird: Bird, eligible: int) -> void:
 	_game.audio.play_sfx(&"rival_aim")
 	var since := "no cue before" if _last_cue_end == -INF else "%.2f s since the last cue ended" % (_play.run_clock - _last_cue_end)
 	print("[Play] Aim cue on %s #%d: age %.2f (linger %.2f s), the rival fires in %.2f s (the longest flown of %d eligible; %s, aim gap %.2f s) (wave %d at t %.2f, rival score %d, %d stolen)" % [
-		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * _play.linger_scale, rival_lines.aim_time, eligible, since, RIVAL_AIM_GAP, _play.wave.index, _play.wave_clock, rival_score, stolen])
+		bird.spec.id, bird.number, bird.age, bird.spec.linger_time * _play.linger_scale, rival_lines.aim_time, eligible, since, Play.TUNING.rival_aim_gap, _play.wave.index, _play.wave_clock, rival_score, stolen])
 
 
-## Drops the aim cue on `bird` for `cause`; no new cue for RIVAL_AIM_GAP. Logged.
+## Drops the aim cue on `bird` for `cause`; no new cue for Play.TUNING.rival_aim_gap. Logged.
 func cancel_cue(bird: Bird, cause: String) -> void:
 	var held := bird.age - bird.cue_age
 	bird.set_cue(false)
 	_last_cue_end = _play.run_clock
 	update_pose()
-	print("[Play] Aim cue on %s #%d cancelled (%s) after %.2f s (wave %d at t %.2f, rival score %d, %d stolen); no new cue for the %.2f s aim gap" % [bird.spec.id, bird.number, cause, held, _play.wave.index, _play.wave_clock, rival_score, stolen, RIVAL_AIM_GAP])
+	print("[Play] Aim cue on %s #%d cancelled (%s) after %.2f s (wave %d at t %.2f, rival score %d, %d stolen); no new cue for the %.2f s aim gap" % [bird.spec.id, bird.number, cause, held, _play.wave.index, _play.wave_clock, rival_score, stolen, Play.TUNING.rival_aim_gap])
 
 
 ## The rival fires: the bird falls as stolen, its points go to his tally (no combo) and it
@@ -154,14 +146,14 @@ func _steal(bird: Bird) -> void:
 	_last_cue_end = _play.run_clock
 	update_pose()
 	_game.audio.play_sfx(&"rival_steal")
-	_game.audio.play_sfx_later(&"rival_laugh", RIVAL_LAUGH_DELAY)
+	_game.audio.play_sfx_later(&"rival_laugh", Play.TUNING.rival_laugh_delay)
 	_play.burst_feathers(bird.position, bird.spec.sprite)
 	_play.shaker.shake("steal")
 	stolen += 1
 	rival_score += bird.spec.points
 	_play.escaped += 1
 	print("[Play] Stolen %s #%d by the rival after a %.2f s cue: %d points to the rival, rival score %d, %d stolen, %s escaped, combo x%d kept (wave %d at t %.2f); he laughs in %.2f s, no new cue for the %.2f s aim gap" % [
-		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, _play.escapes(), _play.scoring.multiplier, _play.wave.index, _play.wave_clock, RIVAL_LAUGH_DELAY, RIVAL_AIM_GAP])
+		bird.spec.id, bird.number, held, bird.spec.points, rival_score, stolen, _play.escapes(), _play.scoring.multiplier, _play.wave.index, _play.wave_clock, Play.TUNING.rival_laugh_delay, Play.TUNING.rival_aim_gap])
 	heckle(Rival.STEAL)
 	_play.update_hud()
 	if _play.escape_limit_reached():
@@ -181,16 +173,16 @@ func update_pose() -> void:
 		_rival.texture = RIVAL_IDLE
 
 
-## The rival reacts with `pose` (RIVAL_SULK or RIVAL_BRAG) for RIVAL_REACTION_TIME of game
+## The rival reacts with `pose` (RIVAL_SULK or RIVAL_BRAG) for Play.TUNING.rival_reaction_time of game
 ## time (logged as "[Play] Rival <what>").
 func react(pose: Texture2D, what: String) -> void:
 	_reaction = pose
-	_reaction_until = _play.run_clock + RIVAL_REACTION_TIME
+	_reaction_until = _play.run_clock + Play.TUNING.rival_reaction_time
 	update_pose()
 	print("[Play] Rival %s (wave %d at t %.2f)" % [what, _play.wave.index, _play.wave_clock])
 
 
-## Shows a `category` line (Rival.pick_line) in the rival's bubble for HECKLE_TIME, unless
+## Shows a `category` line (Rival.pick_line) in the rival's bubble for Play.TUNING.heckle_time, unless
 ## the cooldown since the last heckle has not passed yet (Rival.may_heckle; steal lines
 ## always show). Both are logged. Returns whether the line showed.
 func heckle(category: String) -> bool:
@@ -206,7 +198,7 @@ func heckle(category: String) -> bool:
 	if _bubble_tween != null:
 		_bubble_tween.kill()
 	_bubble_tween = create_tween()
-	_bubble_tween.tween_interval(HECKLE_TIME)
+	_bubble_tween.tween_interval(Play.TUNING.heckle_time)
 	_bubble_tween.tween_callback(_bubble.hide)
 	print("[Play] Heckle (%s) #%d: \"%s\" (wave %d at t %.2f, rival score %d, %d stolen)" % [category, heckles, line, _play.wave.index, _play.wave_clock, rival_score, stolen])
 	return true

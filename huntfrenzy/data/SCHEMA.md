@@ -50,7 +50,7 @@ them so they match. Do not leave the code working around the difference.
   rival's tally, and it counts as an escape (toward `escape_limit`); a stolen splitter launches no children, and the
   player's combo is untouched. Killing it during the cue saves it (a damaging hit does not); a bird that starts fleeing
   drops its cue. He aims at one bird at a time: while a cue runs no other starts, and after a cue ends (a steal or a
-  cancel) the next waits `RivalController.RIVAL_AIM_GAP` (1.5 s of run time; a pause does not count). He only starts a cue on a
+  cancel) the next waits `Play.TUNING.rival_aim_gap` (1.5 s of run time; a pause does not count). He only starts a cue on a
   bird with at least `aim_time` left before it flees (`min(flee_time, the age its shells ran out)` minus its age), so
   a cue he starts always finishes unless the wave's shells run out. Among the birds he may aim at, the cue goes to the
   one that has flown longest (the lower bird number on a tie). With `rival_steals` false he only heckles. Heckles: a line of the category, picked from the run seed
@@ -160,7 +160,7 @@ leaves out does not apply to it (`ModeSpec` holds 0 for it; code reads either fi
 - **Escape limit** (Endless): the run ends once `escape_limit` birds are lost (counted escapes and stolen birds).
 - **Time limit** (Time Attack): there is no escape limit (an escape costs only the bird's lost points) and the run
   ends after `time_limit` seconds of play. The clock is the run's game time from its start: it stops while the
-  game is paused (the pause menu, the rotate overlay) and runs through each wave's 1 s lead-in (`Play.WAVE_LEAD`),
+  game is paused (the pause menu, the rotate overlay) and runs through each wave's 1 s lead-in (`Play.TUNING.wave_lead`),
   so the lead-ins are part of the time limit (the first lead-in also covers the 0.15 s fade into the run, while
   shots are ignored and no bird has spawned yet). A wave ends when every bird of it has spawned and none of them is
   flying (all hit or escaped), or, in a timed mode only, the moment its pool runs out: the wave is lost (logged), its
@@ -262,7 +262,7 @@ against a fallback value.
   `flee_time`: `linger_time x 1` in each mode with `rival_steals`, and `linger_time x rival_linger_scale` in each chapter
   (the campaign always steals); so a bird the rival is free to aim at once it lingers can be cued and stolen before it
   flees on its own. A cue he starts always finishes (he never starts one with less than `aim_time` left), but with one
-  cue at a time and `RivalController.RIVAL_AIM_GAP` after each, a bird waiting behind another cue or the gap may run out of time
+  cue at a time and `Play.TUNING.rival_aim_gap` after each, a bird waiting behind another cue or the gap may run out of time
   and escape un-cued. Reported once per bird at the largest failing scale, naming every mode and chapter that fails:
   `data/birds.json [<id>] linger_time: <linger> x <scale> (<modes and chapters>) + aim_time <aim> is not under flee_time
   <flee> (I13: ...)`.
