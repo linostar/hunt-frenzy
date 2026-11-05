@@ -142,6 +142,7 @@ func _process(_delta: float) -> bool:
 
 func _tests() -> Array[Callable]:
 	return [
+		_test_tuning_values,
 		_test_project_display_and_input,
 		_test_project_strict_warnings,
 		_test_web_export_preset,
@@ -292,6 +293,8 @@ func _tests() -> Array[Callable]:
 		_test_popup_motion,
 		_test_reduce_motion_everywhere,
 		_test_slider_hold_cut_short,
+		# Last again: no test left a tuning value changed.
+		_test_tuning_values,
 	]
 
 
@@ -313,9 +316,33 @@ func _run() -> void:
 		quit(1)
 
 
+## Every feel value Play.TUNING ships with (data/tuning.tres over scripts/tuning.gd's defaults),
+## so an editor save that drops a line, a changed default or an inspector slip fails here; run
+## first and last, so a test that changed a value and did not put it back fails too. A
+## deliberate tuning change updates this list.
+func _test_tuning_values() -> void:
+	var expected := {
+		"wave_lead": 1.0, "backdrop_fade_time": 0.8, "countdown_seconds": 10, "sound_pitch_spread": 0.04,
+		"hit_stop_time": 0.05, "hit_stop_heavy_time": 0.09,
+		"popup_bounce_scale": 1.35, "popup_bounce_time": 0.18, "popup_combo_growth": 0.12, "popup_combo_scale_max": 1.6,
+		"popup_shake": 6.0, "popup_shakes": 4, "popup_shake_time": 0.32, "popup_rise": 48.0, "popup_time": 0.8,
+		"shakes": {"armored kill": [6.0, 0.25], "golden kill": [8.0, 0.3], "decoy hit": [10.0, 0.3], "steal": [7.0, 0.3], "lost wave": [12.0, 0.4]},
+		"shake_hz": 18.0, "heckle_time": 2.5, "rival_reaction_time": 1.2, "rival_aim_gap": 1.5, "rival_laugh_delay": 0.3,
+	}
+	var names: Array[String] = []
+	for property in Play.TUNING.get_property_list():
+		if property["usage"] & PROPERTY_USAGE_SCRIPT_VARIABLE:
+			names.append(property["name"])
+	_check(names.size() == expected.size(), "the test lists every Tuning property", ", ".join(names))
+	for key: String in expected:
+		var value: Variant = Play.TUNING.get(key)
+		_check(value == expected[key], "Play.TUNING.%s is %s" % [key, expected[key]], str(value))
+
+
 ## project.godot: landscape 960x540 base, canvas_items + expand, linear filtering, the
 ## Compatibility renderer, the mouse arriving as touch, the title as the main scene.
 func _test_project_display_and_input() -> void:
+	_check(Layout.BASE_SIZE == Vector2(960, 540), "the base is 960x540", str(Layout.BASE_SIZE))
 	var settings := {
 		"display/window/size/viewport_width": int(Layout.BASE_SIZE.x),
 		"display/window/size/viewport_height": int(Layout.BASE_SIZE.y),
@@ -2912,7 +2939,7 @@ func _test_rival_steals_off() -> void:
 
 
 ## Heckles (AC 12): a wave's end shows a wave_end line; a miss inside the cooldown is
-## skipped (logged), the line hides after HECKLE_TIME; once the cooldown has passed a miss
+## skipped (logged), the line hides after Tuning.heckle_time; once the cooldown has passed a miss
 ## shows a miss line; a kill to x2 says nothing, one raising the combo to x3 a combo line.
 ## The rival's steals are off here so no steal line moves the cooldown.
 func _test_rival_heckle_cooldown() -> void:
@@ -2946,7 +2973,7 @@ func _test_rival_heckle_cooldown() -> void:
 			break
 		await process_frame
 	var lasted := play.run_clock - shown_at
-	_check(play.rival.heckle_shown() == "" and absf(lasted - Play.TUNING.heckle_time) <= 2.0 * FRAME, "a heckle shows for HECKLE_TIME", "%.3f s" % lasted)
+	_check(play.rival.heckle_shown() == "" and absf(lasted - Play.TUNING.heckle_time) <= 2.0 * FRAME, "a heckle shows for Tuning.heckle_time", "%.3f s" % lasted)
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
 		if play.run_clock - shown_at >= lines.cooldown:
@@ -2963,7 +2990,7 @@ func _test_rival_heckle_cooldown() -> void:
 	play.mode.rival_steals = true
 
 
-## The rival (at or below the fringe's top) and his bubble (at or below GRASS_Y) sit in the grass band inside the visible
+## The rival (at or below the fringe's top) and his bubble (at or below Layout.GRASS_Y) sit in the grass band inside the visible
 ## area at 16:9, 19.5:9 and 4:3, ignore touches, and every rival line fits the bubble's two
 ## lines; a shot on the rival or on the shown bubble is a shot like any other (AC 11).
 func _test_rival_layout_and_pass_through() -> void:
@@ -3008,7 +3035,7 @@ func _test_rival_layout_and_pass_through() -> void:
 
 
 ## The rival's footprint (art polish): his rect is Layout.RIVAL_RECT (80x120 at the
-## bottom-left of the bank), its top at or below the fringe's top (GRASS_Y - GRASS_TIP:
+## bottom-left of the bank), its top at or below the fringe's top (Layout.GRASS_Y - Layout.GRASS_TIP:
 ## no art over the field) and inside the visible area; each pose's art has the rect's
 ## aspect (it fills it, nothing letterboxed off its feet), stands on its bottom edge and
 ## keeps inside it. The aim pose's highest art is the gun's muzzle in the right third, so
@@ -3070,7 +3097,7 @@ func _test_rival_lit_per_backdrop() -> void:
 	_check((title.get_node("Scenery/Rival") as CanvasItem).modulate.is_equal_approx(Backdrop.rival_tint(Title.TITLE_BACKDROP)), "the title lights the rival for its sunset backdrop", str((title.get_node("Scenery/Rival") as CanvasItem).modulate))
 
 ## The rival's poses (step 7): idle at the start; a scored kill makes him sulk for
-## RIVAL_REACTION_TIME of game time (logged), then idle again; a miss whose heckle shows
+## Tuning.rival_reaction_time of game time (logged), then idle again; a miss whose heckle shows
 ## makes him brag (logged), a miss inside the heckle cooldown (no line) does not; an aim
 ## cue raises his gun over any reaction.
 func _test_rival_poses() -> void:
@@ -3088,7 +3115,7 @@ func _test_rival_poses() -> void:
 			break
 		await process_frame
 	var lasted := play.run_clock - since
-	_check(play.rival.rival_pose() == "idle" and absf(lasted - Play.TUNING.rival_reaction_time) <= 2.0 * FRAME, "the sulk lasts RIVAL_REACTION_TIME, then he stands idle", "%s after %.3f s" % [play.rival.rival_pose(), lasted])
+	_check(play.rival.rival_pose() == "idle" and absf(lasted - Play.TUNING.rival_reaction_time) <= 2.0 * FRAME, "the sulk lasts Tuning.rival_reaction_time, then he stands idle", "%s after %.3f s" % [play.rival.rival_pose(), lasted])
 	await _touch(_global(play, SKY_POINTS[0]))
 	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()) and play.rival.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.rival.heckle_shown(), play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival brags after the miss \\(wave 1 at t -?[\\d.]+\\)$", "the brag is logged")
@@ -3176,7 +3203,7 @@ func _test_backdrop_cycle_and_fade() -> void:
 	_check_logged(from, "^\\[Play\\] Backdrop dawn -> noon, weather wind, cross-fading over 0\\.80 s from wave 4$", "the cross-fade is logged")
 	var rival := play.get_node("World/Rival") as CanvasItem
 	# The loop stops on the frame wave 4 started in (_start_wave runs at the end of _process):
-	# its clock starts at -WAVE_LEAD and its first bird is due WAVE_LEAD of run time later.
+	# its clock starts at -Tuning.wave_lead and its first bird is due Tuning.wave_lead of run time later.
 	var started_at := play.run_clock
 	var lead_clock := play.wave_clock
 	var faded_at := INF
@@ -4753,7 +4780,7 @@ func _test_audio_every_event_sound() -> void:
 		await process_frame
 		waited += 1
 	_check(was_stolen and _game.audio.sfx_log.count(&"rival_steal") == 1 and _game.audio.sfx_log.count(&"rival_laugh") == 1 and _game.audio.sfx_log.find(&"rival_steal") < _game.audio.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.audio.sfx_log))
-	_check(absi(waited - roundi(Play.TUNING.rival_laugh_delay / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
+	_check(absi(waited - roundi(Play.TUNING.rival_laugh_delay / FRAME)) <= 2, "the laugh starts Tuning.rival_laugh_delay after the shot", "%d frames" % waited)
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
@@ -5066,7 +5093,7 @@ func _test_audio_unloadable_files_reported() -> void:
 		DirAccess.remove_absolute(path)
 
 
-## The shot, the plain hit and the escape each play at a pitch within SOUND_PITCH_SPREAD of
+## The shot, the plain hit and the escape each play at a pitch within Tuning.sound_pitch_spread of
 ## 1, not all the same, and the same run seed gives the same pitches.
 func _test_frequent_sounds_vary_in_pitch() -> void:
 	var low := 1.0 - Play.TUNING.sound_pitch_spread
@@ -5876,7 +5903,7 @@ func _test_transition_wipe_and_fade() -> void:
 	_game.save.reduce_motion = false
 
 
-## Hit stop: a kill freezes the world for HIT_STOP_TIME (HIT_STOP_HEAVY_TIME for an armored
+## Hit stop: a kill freezes the world for Tuning.hit_stop_time (Tuning.hit_stop_heavy_time for an armored
 ## or golden kill): the other birds, run_clock and wave_clock stand still, then each has
 ## lost exactly the stop's time (a bird's age keeps its offset from run_clock); a second
 ## kill during it (a salvo) scores and updates the HUD at once but starts no second stop;
@@ -6414,7 +6441,7 @@ func _test_rival_one_cue_at_a_time() -> void:
 	await _open_title()
 
 
-## AC 11: after a cue cancelled by the player's shot, an eligible goose waits RIVAL_AIM_GAP
+## AC 11: after a cue cancelled by the player's shot, an eligible goose waits Tuning.rival_aim_gap
 ## seconds of run time; a pause in between does not count (the frames paused add to the
 ## wait, the run clock does not move); the cue then starts within a frame of the gap's end
 ## and its log names the gap.
@@ -6574,7 +6601,7 @@ func _test_rival_cues_always_finish() -> void:
 
 ## Finding 5 of the PR 10 review: the laugh queued by a steal (Game.audio.play_sfx_later) holds
 ## through a pause: paused a few frames after the steal, it does not play while paused
-## (still waiting), and after Resume it plays once the rest of RIVAL_LAUGH_DELAY has run.
+## (still waiting), and after Resume it plays once the rest of Tuning.rival_laugh_delay has run.
 func _test_rival_laugh_waits_out_a_pause() -> void:
 	var play := await _start_run(78)
 	play._next_spawn = play.wave.spawns.size()

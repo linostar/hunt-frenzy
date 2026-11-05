@@ -92,7 +92,9 @@ extends Node2D
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
-## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning).
+## The run's feel tuning (timings, pop-ups, shake, the rival: Tuning). One shared object for
+## the whole process (every reader and both test scripts): a test that changes a value puts
+## it back, as _test_tuning_values (run first and last) checks.
 const TUNING: Tuning = preload("res://data/tuning.tres")
 ## The mouse pointer while the run is live (64x64 at most; its hotspot is its centre).
 const CROSSHAIR := preload("res://art/crosshair.svg")

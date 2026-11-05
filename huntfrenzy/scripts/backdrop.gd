@@ -3,7 +3,7 @@ extends Node2D
 ## One layered backdrop of the play scene (Content.BACKDROP_LAYERS, art in
 ## res://art/backdrops/): the sky covers the whole visible area (kept in aspect), the far
 ## marsh and the near reeds and water are seamless 960-wide tiles across its width at fixed
-## heights of the 960x540 base, and the grass, a tile solid from GRASS_TIP below its top,
+## heights of the 960x540 base, and the grass, a tile solid from Layout.GRASS_TIP below its top,
 ## runs from the grass line down to the visible bottom. The grass has z_index 1, so it is
 ## drawn over the birds (z 0) that rise from behind it; everything else lies behind them.
 ## show_backdrop() loads a backdrop's layers; a layer whose art is missing or is no texture
