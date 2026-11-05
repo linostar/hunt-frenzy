@@ -311,8 +311,8 @@ var _world_origin := Vector2.ZERO
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
-	_game.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
+	_game.screen.screen_fit_changed.connect(_fit)
+	_game.screen.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
 	_game.page_hidden.connect(open_pause.bind("page hidden"))
 	_shot_input.shot.connect(_on_shot)
 	_cancel_key.triggered.connect(_on_cancel)
@@ -329,7 +329,7 @@ func _ready() -> void:
 	_start_run()
 	# The overlay may have shown before this scene existed (during the fade into the run);
 	# _show_crosshair already kept the arrow then.
-	_rotated = not _over and _game.is_rotate_overlay_shown()
+	_rotated = not _over and _game.screen.is_rotate_overlay_shown()
 
 
 ## Window and app focus or visibility loss pauses the run (notifications arrive while
@@ -1034,7 +1034,7 @@ func _react(pose: Texture2D, what: String) -> void:
 ## rotate overlay is up it is always the arrow (the run is paused under it, whichever came
 ## first). A change is logged and kept in cursor_log, a repeat does nothing.
 func _show_crosshair(on: bool, why := "") -> void:
-	if on and _game.is_rotate_overlay_shown():
+	if on and _game.screen.is_rotate_overlay_shown():
 		on = false
 		why = "rotate overlay"
 	if on == crosshair_shown:
@@ -1261,7 +1261,7 @@ func _popup(point: Vector2, text: String, color: Color, kind: String, multiplier
 	var largest := rest * (POPUP_BOUNCE_SCALE if not still and kind != "penalty" else 1.0)
 	# Centred on the hit, moved in so its largest size (and the shake) stays on screen,
 	# the rise included.
-	var shown := Rect2(_game.visible_rect().position - _world.position, _game.visible_rect().size)
+	var shown := Rect2(_game.screen.visible_rect().position - _world.position, _game.screen.visible_rect().size)
 	var half := size * largest / 2.0 + Vector2(POPUP_SHAKE, 0.0)
 	var centre := Vector2(clampf(point.x, shown.position.x + half.x, shown.end.x - half.x), clampf(point.y, shown.position.y + half.y + POPUP_RISE, shown.end.y - half.y))
 	label.pivot_offset = size / 2.0
@@ -1306,8 +1306,8 @@ func _update_hud() -> void:
 ## backdrop (and one fading in) and the weather across the whole visible area, the grass
 ## down to the bottom, the HUD bar at the top of the safe area and the shot surface below it.
 func _fit() -> void:
-	var shown := _game.visible_rect()
-	var safe := _game.safe_rect()
+	var shown := _game.screen.visible_rect()
+	var safe := _game.screen.safe_rect()
 	_world_origin = Vector2(shown.position.x + (shown.size.x - BASE_SIZE.x) / 2.0, shown.position.y)
 	_world.position = _world_origin
 	var local := Rect2(shown.position - _world.position, shown.size).grow(SHAKE_MARGIN)

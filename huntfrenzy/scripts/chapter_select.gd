@@ -32,7 +32,7 @@ var _chapters: Array[ChapterSpec] = []
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_chapters = Content.chapters()
 	if _chapters.size() != _buttons.size():
 		_game.report_error("Chapter select has %d chapter buttons for %d chapters" % [_buttons.size(), _chapters.size()])
@@ -80,7 +80,7 @@ func detail_text(index: int) -> String:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# Anchors settle at the end of the frame; log the buttons' final rects then.

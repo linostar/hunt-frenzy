@@ -407,11 +407,11 @@ func _test_screen_fit_landscape() -> void:
 		root.size = window
 		await process_frame
 		var label := "%dx%d" % [window.x, window.y]
-		var visible := _game.visible_rect()
+		var visible := _game.screen.visible_rect()
 		_check(visible.size.is_equal_approx(expected[window]), label + " visible size", str(visible))
-		_check(visible.encloses(Rect2(Vector2.ZERO, GameState.BASE_SIZE)), label + " base playfield is never cropped", str(visible))
-		_check(_game.safe_rect() == visible, label + " safe rect is the visible rect", str(_game.safe_rect()))
-		_check(not _game.is_rotate_overlay_shown() and not paused, label + " no rotate overlay, not paused", "overlay %s, paused %s" % [_game.is_rotate_overlay_shown(), paused])
+		_check(visible.encloses(Rect2(Vector2.ZERO, ScreenFit.BASE_SIZE)), label + " base playfield is never cropped", str(visible))
+		_check(_game.screen.safe_rect() == visible, label + " safe rect is the visible rect", str(_game.screen.safe_rect()))
+		_check(not _game.screen.is_rotate_overlay_shown() and not paused, label + " no rotate overlay, not paused", "overlay %s, paused %s" % [_game.screen.is_rotate_overlay_shown(), paused])
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -419,11 +419,11 @@ func _test_screen_fit_landscape() -> void:
 func _test_safe_area_notch() -> void:
 	# A 2340x1080 phone at 2x (visible 1170x540) with a 132 px notch on the left.
 	var visible := Rect2(0, 0, 1170, 540)
-	var safe := GameState.safe_rect_in(visible, Rect2i(132, 0, 2208, 1080), Vector2i.ZERO, Transform2D.IDENTITY.scaled(Vector2(2, 2)))
+	var safe := ScreenFit.safe_rect_in(visible, Rect2i(132, 0, 2208, 1080), Vector2i.ZERO, Transform2D.IDENTITY.scaled(Vector2(2, 2)))
 	_check(safe.is_equal_approx(NOTCHED_SAFE_RECT), "safe area converts to base units", str(safe))
-	var empty := GameState.safe_rect_in(visible, Rect2i(), Vector2i.ZERO, Transform2D.IDENTITY)
+	var empty := ScreenFit.safe_rect_in(visible, Rect2i(), Vector2i.ZERO, Transform2D.IDENTITY)
 	_check(empty == visible, "empty safe area means the visible rect", str(empty))
-	var outside := GameState.safe_rect_in(visible, Rect2i(5000, 5000, 10, 10), Vector2i.ZERO, Transform2D.IDENTITY)
+	var outside := ScreenFit.safe_rect_in(visible, Rect2i(5000, 5000, 10, 10), Vector2i.ZERO, Transform2D.IDENTITY)
 	_check(outside == visible, "a safe area outside the window means the visible rect", str(outside))
 
 
@@ -432,13 +432,13 @@ func _test_safe_area_notch() -> void:
 func _test_fit_window_rect() -> void:
 	var base := Vector2i(960, 540)
 	# 2x Retina with room to spare (macOS: 64 px title bar, menu bar above y 78).
-	var roomy := GameState.fit_window_rect(base, 2.0, Rect2i(0, 78, 3600, 2070), Vector2i(0, 64), Vector2i(0, 64))
+	var roomy := ScreenFit.fit_window_rect(base, 2.0, Rect2i(0, 78, 3600, 2070), Vector2i(0, 64), Vector2i(0, 64))
 	# 2x 1440x900-point laptop: 2880x1800 pixels, too small for 1920x1080 plus frame.
 	var small_usable := Rect2i(0, 78, 2880, 1722)
-	var small := GameState.fit_window_rect(base, 2.0, small_usable, Vector2i(0, 64), Vector2i(0, 64))
+	var small := ScreenFit.fit_window_rect(base, 2.0, small_usable, Vector2i(0, 64), Vector2i(0, 64))
 	var small_framed := Rect2i(small.position - Vector2i(0, 64), small.size + Vector2i(0, 64))
 	# 1x full-HD screen: unchanged.
-	var full_hd := GameState.fit_window_rect(base, 1.0, Rect2i(0, 0, 1920, 1040), Vector2i(16, 39), Vector2i(8, 31))
+	var full_hd := ScreenFit.fit_window_rect(base, 1.0, Rect2i(0, 0, 1920, 1040), Vector2i(16, 39), Vector2i(8, 31))
 	_check(roomy == Rect2i(840, 605, 1920, 1080), "fit_window_rect doubles on a roomy 2x screen", str(roomy))
 	_check(small_usable.encloses(small_framed) and absf(float(small.size.x) / small.size.y - 16.0 / 9.0) < 0.01,
 		"fit_window_rect shrinks to a small 2x screen keeping 16:9", "%s (framed %s)" % [small, small_framed])
@@ -493,7 +493,7 @@ func _test_title_button_layout() -> void:
 			var label := "%dx%d %s" % [window.x, window.y, button.name]
 			var rect := button.get_global_rect()
 			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and button.get_combined_minimum_size().x <= rect.size.x + 0.5 and button.get_combined_minimum_size().y <= rect.size.y + 0.5, label + " size, its text inside", "%s, text needs %s" % [rect.size, button.get_combined_minimum_size()])
-			_check(_game.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.safe_rect()])
+			_check(_game.screen.safe_rect().encloses(rect), label + " inside safe area", "%s not in %s" % [rect, _game.screen.safe_rect()])
 		for row: Array[Button] in [buttons, second_row]:
 			var rects := row.map(func(button: Button) -> Rect2: return button.get_global_rect())
 			_check(is_equal_approx(rects[0].get_center().y, rects[1].get_center().y) and is_equal_approx(rects[1].get_center().y, rects[2].get_center().y) and rects[0].end.x < rects[1].position.x and rects[1].end.x < rects[2].position.x,
@@ -523,15 +523,15 @@ func _test_title_follows_notched_safe_area() -> void:
 	var title := current_scene as Title
 	var safe := title.get_node("Safe") as Control
 	var buttons := _title_buttons(title)
-	_game.safe_area_override = NOTCHED_SAFE_RECT
+	_game.screen.safe_area_override = NOTCHED_SAFE_RECT
 	root.size = LANDSCAPE_19_5_9
 	await process_frame
 	await process_frame
-	_check(_game.safe_rect() == NOTCHED_SAFE_RECT and _game.safe_rect() != _game.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.safe_rect(), _game.visible_rect()])
+	_check(_game.screen.safe_rect() == NOTCHED_SAFE_RECT and _game.screen.safe_rect() != _game.screen.visible_rect(), "the notch narrows the safe rect", "safe %s, visible %s" % [_game.screen.safe_rect(), _game.screen.visible_rect()])
 	_check(safe.get_global_rect().is_equal_approx(NOTCHED_SAFE_RECT), "the title lays out in the safe rect", str(safe.get_global_rect()))
 	buttons.append_array([title.get_node("Safe/TopScoresButton") as Button, title.get_node("Safe/SettingsButton") as Button, title.get_node("Safe/CreditsButton") as Button])
 	_check(buttons.all(func(button: Button) -> bool: return NOTCHED_SAFE_RECT.encloses(button.get_global_rect())), "Campaign, Endless, Time Attack, Top Scores, Settings and Credits are clear of the notch", str(buttons.map(func(button: Button) -> Rect2: return button.get_global_rect())))
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -578,22 +578,22 @@ func _test_rotate_overlay_shows_and_pauses() -> void:
 	await _open_title()
 	var shown: Array[bool] = []
 	var record := func(value: bool) -> void: shown.append(value)
-	_game.rotate_overlay_changed.connect(record)
+	_game.screen.rotate_overlay_changed.connect(record)
 	root.size = PORTRAIT_9_19_5
 	await process_frame
 	var overlay := _game.get_node("RotateLayer/RotateOverlay") as Control
 	var message := _game.get_node("RotateLayer/RotateOverlay/Message") as Label
-	_check(_game.is_rotate_overlay_shown() and overlay.visible, "portrait shows the rotate overlay", "shown %s" % _game.is_rotate_overlay_shown())
+	_check(_game.screen.is_rotate_overlay_shown() and overlay.visible, "portrait shows the rotate overlay", "shown %s" % _game.screen.is_rotate_overlay_shown())
 	_check(paused, "portrait pauses the tree", "paused %s" % paused)
 	_check(message.text == "Rotate your phone" and message.is_visible_in_tree(), "the overlay says to rotate", message.text)
-	_check(overlay.get_global_rect().encloses(_game.visible_rect()), "the overlay covers the visible area", "%s vs %s" % [overlay.get_global_rect(), _game.visible_rect()])
+	_check(overlay.get_global_rect().encloses(_game.screen.visible_rect()), "the overlay covers the visible area", "%s vs %s" % [overlay.get_global_rect(), _game.screen.visible_rect()])
 	_check(overlay.mouse_filter == Control.MOUSE_FILTER_STOP, "the overlay stops touches", str(overlay.mouse_filter))
 	root.size = LANDSCAPE_16_9
 	await process_frame
-	_check(not _game.is_rotate_overlay_shown() and not overlay.visible, "landscape hides the rotate overlay", "shown %s" % _game.is_rotate_overlay_shown())
+	_check(not _game.screen.is_rotate_overlay_shown() and not overlay.visible, "landscape hides the rotate overlay", "shown %s" % _game.screen.is_rotate_overlay_shown())
 	_check(not paused, "landscape unpauses the tree", "paused %s" % paused)
 	_check(shown == [true, false], "rotate_overlay_changed fires on show and hide", str(shown))
-	_game.rotate_overlay_changed.disconnect(record)
+	_game.screen.rotate_overlay_changed.disconnect(record)
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -622,10 +622,10 @@ func _test_rotate_overlay_keeps_existing_pause() -> void:
 	paused = true
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.is_rotate_overlay_shown() and paused, "overlay over an already paused tree", "shown %s, paused %s" % [_game.is_rotate_overlay_shown(), paused])
+	_check(_game.screen.is_rotate_overlay_shown() and paused, "overlay over an already paused tree", "shown %s, paused %s" % [_game.screen.is_rotate_overlay_shown(), paused])
 	root.size = BASE_WINDOW
 	await process_frame
-	_check(not _game.is_rotate_overlay_shown() and paused, "rotating back keeps the earlier pause", "shown %s, paused %s" % [_game.is_rotate_overlay_shown(), paused])
+	_check(not _game.screen.is_rotate_overlay_shown() and paused, "rotating back keeps the earlier pause", "shown %s, paused %s" % [_game.screen.is_rotate_overlay_shown(), paused])
 	paused = false
 
 
@@ -979,17 +979,17 @@ func _test_play_hud_layout() -> void:
 		await process_frame
 		var label := "%dx%d HUD" % [window.x, window.y]
 		var rect := pause_button.get_global_rect()
-		var safe := _game.safe_rect()
+		var safe := _game.screen.safe_rect()
 		_check(rect.size.is_equal_approx(PAUSE_BUTTON_SIZE) and safe.encloses(rect), label + " pause button 48x48 inside the safe area", str(rect))
 		_check(bar.get_global_rect().is_equal_approx(Rect2(safe.position, Vector2(safe.size.x, Play.HUD_BAR_HEIGHT))) and rect.end.y <= safe.position.y + Play.HUD_BAR_HEIGHT, label + " bar at the top of the safe area", str(bar.get_global_rect()))
 		var surface := shot_input.get_global_rect()
-		_check(is_equal_approx(surface.position.y, safe.position.y + Play.HUD_BAR_HEIGHT) and is_equal_approx(surface.end.y, _game.visible_rect().end.y) and is_equal_approx(surface.size.x, _game.visible_rect().size.x), label + " shot surface fills the screen below the bar", str(surface))
-	_game.safe_area_override = NOTCHED_SAFE_RECT
+		_check(is_equal_approx(surface.position.y, safe.position.y + Play.HUD_BAR_HEIGHT) and is_equal_approx(surface.end.y, _game.screen.visible_rect().end.y) and is_equal_approx(surface.size.x, _game.screen.visible_rect().size.x), label + " shot surface fills the screen below the bar", str(surface))
+	_game.screen.safe_area_override = NOTCHED_SAFE_RECT
 	root.size = LANDSCAPE_19_5_9
 	await process_frame
 	await process_frame
 	_check(NOTCHED_SAFE_RECT.encloses(bar.get_global_rect()), "the HUD bar is clear of the notch", str(bar.get_global_rect()))
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -1028,11 +1028,11 @@ func _test_play_hud_fits_any_pool() -> void:
 		play.escaped = play.mode.escape_limit
 		play.set_shell_pool(pool)
 		for i in cases.size():
-			_game.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
+			_game.screen.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
 			root.size = windows[i]
 			await process_frame
 			await process_frame
-			var safe := _game.safe_rect()
+			var safe := _game.screen.safe_rect()
 			var limit := pause_button.get_global_rect().position.x
 			var stray: Array[String] = []
 			for child in stats.get_children():
@@ -1042,7 +1042,7 @@ func _test_play_hud_fits_any_pool() -> void:
 					stray.append("%s %s" % [shown.name, rect])
 			stray.append_array(_overlapping_chips(stats))
 			_check(stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest HUD stays inside the safe bar, no chip overlapping another, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -1258,12 +1258,12 @@ func _test_pause_after_rotating() -> void:
 	await process_frame
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.is_rotate_overlay_shown() and paused, "portrait during a run shows the overlay and pauses", "overlay %s, paused %s" % [_game.is_rotate_overlay_shown(), paused])
+	_check(_game.screen.is_rotate_overlay_shown() and paused, "portrait during a run shows the overlay and pauses", "overlay %s, paused %s" % [_game.screen.is_rotate_overlay_shown(), paused])
 	var age := bird.age
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(not _game.is_rotate_overlay_shown() and play.is_paused() and paused and play.pause_log.back() == "rotate overlay", "rotating back leaves the pause menu open, tree paused", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(not _game.screen.is_rotate_overlay_shown() and play.is_paused() and paused and play.pause_log.back() == "rotate overlay", "rotating back leaves the pause menu open, tree paused", "menu %s, paused %s" % [play.is_paused(), paused])
 	_check(bird.age == age and bird.is_flying(), "the run is intact", "age %.3f -> %.3f" % [age, bird.age])
 	# Turned upright again with the menu open (Resume focused): keys reach nothing under the overlay.
 	root.size = PORTRAIT_9_19_5
@@ -1345,7 +1345,7 @@ func _test_run_ends_on_results() -> void:
 	await _check_results_fit(results)
 	_check(Results.accuracy_text(0, 0) == Results.NO_VALUE and Results.accuracy_text(3, 4) == "75%", "accuracy is hits / shots, a dash with no shots", Results.accuracy_text(3, 4))
 	var again := results.get_node("Safe/PlayAgainButton") as Button
-	_check(again.has_focus() and again.get_global_rect().size.y >= MIN_TARGET and _game.safe_rect().encloses(again.get_global_rect()), "Play again is focused, >= 44 high, in the safe area", str(root.gui_get_focus_owner()))
+	_check(again.has_focus() and again.get_global_rect().size.y >= MIN_TARGET and _game.screen.safe_rect().encloses(again.get_global_rect()), "Play again is focused, >= 44 high, in the safe area", str(root.gui_get_focus_owner()))
 	_game.bests[GameState.ENDLESS_MODE] = 0
 	_game.load_game()
 	_check(_game.best(GameState.ENDLESS_MODE) == 100, "the new best survives a save and reload", str(_game.bests))
@@ -1391,11 +1391,11 @@ func _check_results_fit(results: Results) -> void:
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
 	var safes: Array[Rect2] = [Rect2(), Rect2(), RESULTS_INSET_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
 	for i in cases.size():
-		_game.safe_area_override = safes[i]
+		_game.screen.safe_area_override = safes[i]
 		root.size = windows[i]
 		await process_frame
 		await process_frame
-		var safe := _game.safe_rect()
+		var safe := _game.screen.safe_rect()
 		var problems: Array[String] = []
 		var rects: Array[Rect2] = []
 		for n in names:
@@ -1427,7 +1427,7 @@ func _check_results_fit(results: Results) -> void:
 				if rects[a].intersection(rects[b]).get_area() > 0.25:
 					problems.append("%s %s overlaps %s %s" % [names[a], rects[a], names[b], rects[b]])
 		_check(problems.is_empty(), "%s: the results screen (every element shown) fits the safe area %s without overlap" % [cases[i], safe], "; ".join(problems))
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 	save_error.hide()
@@ -1561,7 +1561,7 @@ func _test_pause_after_overlay_during_transition_in() -> void:
 	await process_frame
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.is_rotate_overlay_shown() and paused and _game.is_transitioning() and not (current_scene is Play), "the overlay shows during the fade into a run", "overlay %s, scene %s" % [_game.is_rotate_overlay_shown(), current_scene])
+	_check(_game.screen.is_rotate_overlay_shown() and paused and _game.is_transitioning() and not (current_scene is Play), "the overlay shows during the fade into a run", "overlay %s, scene %s" % [_game.screen.is_rotate_overlay_shown(), current_scene])
 	await _game.transition_finished
 	await process_frame
 	var play := current_scene as Play
@@ -1571,7 +1571,7 @@ func _test_pause_after_overlay_during_transition_in() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(not _game.is_rotate_overlay_shown() and play.is_paused() and paused, "rotating back keeps the menu open over a paused tree", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(not _game.screen.is_rotate_overlay_shown() and play.is_paused() and paused, "rotating back keeps the menu open over a paused tree", "menu %s, paused %s" % [play.is_paused(), paused])
 	var clock := play.wave_clock
 	for i in 5:
 		await process_frame
@@ -1655,11 +1655,11 @@ func _test_time_attack_start_and_hud() -> void:
 		play.escaped = 999
 		play.set_shell_pool(pool)
 		for i in cases.size():
-			_game.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
+			_game.screen.safe_area_override = NOTCHED_SAFE_RECT if cases[i].ends_with("notched") else Rect2()
 			root.size = windows[i]
 			await process_frame
 			await process_frame
-			var safe := _game.safe_rect()
+			var safe := _game.screen.safe_rect()
 			var limit := pause_button.get_global_rect().position.x
 			var stray: Array[String] = []
 			for child in stats.get_children():
@@ -1669,7 +1669,7 @@ func _test_time_attack_start_and_hud() -> void:
 					stray.append("%s %s" % [shown.name, rect])
 			stray.append_array(_overlapping_chips(stats))
 			_check(time.visible and stray.is_empty() and stats.get_combined_minimum_size().x <= stats.size.x + 0.5, "%s, pool %d: the widest Time Attack HUD (with the time) stays inside the safe bar, clear of the pause button" % [cases[i], pool], "min width %.1f of %.1f; outside: %s" % [stats.get_combined_minimum_size().x, stats.size.x, stray])
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -2983,7 +2983,7 @@ func _test_rival_layout_and_pass_through() -> void:
 		root.size = window
 		await process_frame
 		await process_frame
-		var shown := _game.visible_rect()
+		var shown := _game.screen.visible_rect()
 		var stray: Array[String] = []
 		for part: Control in [rival, bubble]:
 			var rect := part.get_global_rect()
@@ -3328,7 +3328,7 @@ func _test_menu_texts_fit_largest_values() -> void:
 		var problems: Array[String] = []
 		for label: Label in current_scene.find_children("*", "Label", true, false):
 			var rect := label.get_global_rect()
-			if label.get_combined_minimum_size().x > rect.size.x + 0.5 or not _game.safe_rect().encloses(rect):
+			if label.get_combined_minimum_size().x > rect.size.x + 0.5 or not _game.screen.safe_rect().encloses(rect):
 				problems.append("%s '%s' %s" % [label.name, label.text, rect])
 		var values := [(current_scene.get_node("%EndlessBest") as Label).text, (current_scene.get_node("%TimeAttackBest") as Label).text]
 		_check(problems.is_empty() and values == [str(GameState.SAVE_SCORE_MAX), str(GameState.SAVE_SCORE_MAX)], "TOP_SCORES %dx%d: the largest bests and 18/18 stars fit their panels inside the safe area" % [window.x, window.y], "; ".join(problems))
@@ -4288,11 +4288,11 @@ func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
 	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
 	for i in windows.size():
-		_game.safe_area_override = safes[i]
+		_game.screen.safe_area_override = safes[i]
 		root.size = windows[i]
 		await process_frame
 		await process_frame
-		var safe := _game.safe_rect()
+		var safe := _game.screen.safe_rect()
 		var problems: Array[String] = []
 		for control in controls:
 			var rect := control.get_global_rect()
@@ -4305,7 +4305,7 @@ func _check_select_layout(screen: Control, controls: Array[Button]) -> void:
 			if control.focus_mode != Control.FOCUS_ALL or style == null or style is StyleBoxEmpty:
 				problems.append("%s has no visible keyboard focus" % control.name)
 		_check(problems.is_empty(), "%s %dx%d, safe %s: every button >= 44x44, focusable, inside the safe area, apart" % [screen.name, windows[i].x, windows[i].y, safe], "; ".join(problems))
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -4319,11 +4319,11 @@ func _check_screen_layout(screen: Control, controls: Array[Control], labels: Arr
 	var safes: Array[Rect2] = [Rect2(), Rect2(), Rect2(), NOTCHED_SAFE_RECT, Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9, LANDSCAPE_16_9]
 	for i in windows.size():
-		_game.safe_area_override = safes[i]
+		_game.screen.safe_area_override = safes[i]
 		root.size = windows[i]
 		await process_frame
 		await process_frame
-		var safe := _game.safe_rect()
+		var safe := _game.screen.safe_rect()
 		var problems: Array[String] = []
 		for control in controls:
 			var rect := control.get_global_rect()
@@ -4343,7 +4343,7 @@ func _check_screen_layout(screen: Control, controls: Array[Control], labels: Arr
 			if not safe.grow(0.5).encloses(rect) or needed > rect.size.y + 0.5 or (label.autowrap_mode == TextServer.AUTOWRAP_OFF and label.get_combined_minimum_size().x > rect.size.x + 0.5):
 				problems.append("%s %s needs %d high for %d lines" % [label.name, rect, needed, label.get_line_count()])
 		_check(problems.is_empty(), "%s %dx%d, safe %s: every control >= 44x44, focusable, inside the safe area, apart; every text inside its label" % [screen.name, windows[i].x, windows[i].y, safe], "; ".join(problems))
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 
@@ -4929,13 +4929,13 @@ func _test_pause_menu_mutes() -> void:
 		await process_frame
 		for toggle in toggles:
 			var rect := toggle.get_global_rect()
-			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and _game.safe_rect().encloses(rect), "%s is >= 44x44 inside the safe area at %s" % [toggle.name, window], "%s in %s" % [rect, _game.safe_rect()])
-	_game.safe_area_override = NOTCHED_SAFE_RECT
+			_check(rect.size.x >= MIN_TARGET and rect.size.y >= MIN_TARGET and _game.screen.safe_rect().encloses(rect), "%s is >= 44x44 inside the safe area at %s" % [toggle.name, window], "%s in %s" % [rect, _game.screen.safe_rect()])
+	_game.screen.safe_area_override = NOTCHED_SAFE_RECT
 	root.size = LANDSCAPE_19_5_9
 	await process_frame
 	for toggle in toggles:
-		_check(_game.safe_rect().encloses(toggle.get_global_rect()), "%s is inside a notched safe area" % toggle.name, "%s in %s" % [toggle.get_global_rect(), _game.safe_rect()])
-	_game.safe_area_override = Rect2()
+		_check(_game.screen.safe_rect().encloses(toggle.get_global_rect()), "%s is inside a notched safe area" % toggle.name, "%s in %s" % [toggle.get_global_rect(), _game.screen.safe_rect()])
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 	for toggle in toggles:
@@ -5059,7 +5059,7 @@ func _test_dropped_taps_are_silent() -> void:
 	play.resume()
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.is_rotate_overlay_shown(), "the rotate overlay shows", "")
+	_check(_game.screen.is_rotate_overlay_shown(), "the rotate overlay shows", "")
 	await _check_dropped_taps(play, "under the rotate overlay")
 	root.size = BASE_WINDOW
 	await process_frame
@@ -5598,7 +5598,7 @@ func _test_credits_screen() -> void:
 	var left_ok := credits.line_labels().all(func(label: Label) -> bool: return label.horizontal_alignment == HORIZONTAL_ALIGNMENT_LEFT)
 	if bullets_ok:
 		_check((bulleted[0] as Control).get_global_rect().position.x > (credits.get_node("Safe/Lines") as Control).get_global_rect().position.x, "the bullets are indented under the line that introduces them", str((bulleted[0] as Control).get_global_rect()))
-	_check(left_ok and (credits.get_node("Safe/Lines") as Control).get_global_rect().position.x >= _game.safe_rect().position.x + 16.0, "the credit lines are left-aligned with padding inside the safe area", str((credits.get_node("Safe/Lines") as Control).get_global_rect()))
+	_check(left_ok and (credits.get_node("Safe/Lines") as Control).get_global_rect().position.x >= _game.screen.safe_rect().position.x + 16.0, "the credit lines are left-aligned with padding inside the safe area", str((credits.get_node("Safe/Lines") as Control).get_global_rect()))
 	var hanging := bulleted[0] as HBoxContainer if bullets_ok else null
 	if hanging != null:
 		_check((hanging.get_child(1) as Control).get_global_rect().position.x > (hanging.get_child(0) as Control).get_global_rect().end.x, "a bullet's text starts after its bullet, so wrapped lines hang under the text", str((hanging.get_child(1) as Control).get_global_rect()))
@@ -5611,14 +5611,14 @@ func _test_credits_screen() -> void:
 	var labels: Array[Label] = [credits.get_node("Safe/Heading") as Label, credits.get_node("Safe/MadeBy") as Label]
 	labels.append_array(credits.line_labels())
 	await _check_screen_layout(credits, controls, labels)
-	_game.safe_area_override = Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)
+	_game.screen.safe_area_override = Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)
 	root.size = LANDSCAPE_16_9
 	await process_frame
 	await process_frame
 	var block := credits.get_node("Safe/Lines") as Control
 	var last := credits.line_labels().back() as Control
 	_check(block.get_combined_minimum_size().y <= block.size.y + 0.5 and last.get_global_rect().end.y <= back.get_global_rect().position.y, "at safe height %d the credit lines fit above Back, no scrolling" % RESULTS_MIN_SAFE_HEIGHT, "needs %.0f in %s, last line ends %.0f, Back at %.0f" % [block.get_combined_minimum_size().y, block.get_global_rect(), last.get_global_rect().end.y, back.get_global_rect().position.y])
-	_game.safe_area_override = Rect2()
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 	from = _log.size()
@@ -5682,13 +5682,13 @@ func _test_top_scores_screen() -> void:
 	_check(back.has_focus() and not back.has_focus(true), "Back is focused on arrival, the ring hidden", str(root.gui_get_focus_owner()))
 	var controls: Array[Control] = [back]
 	await _check_screen_layout(scores, controls, labels)
-	_game.safe_area_override = Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)
+	_game.screen.safe_area_override = Rect2(0, (540 - RESULTS_MIN_SAFE_HEIGHT) / 2.0, 960, RESULTS_MIN_SAFE_HEIGHT)
 	root.size = LANDSCAPE_4_3
 	await process_frame
 	await process_frame
 	var body := scores.get_node("Safe/Body") as Control
-	_check(body.get_combined_minimum_size().y <= body.size.y + 0.5 and body.get_global_rect().end.y <= back.get_global_rect().position.y and panels.all(func(panel: Control) -> bool: return _game.safe_rect().encloses(panel.get_global_rect())), "at safe height %d every panel fits above Back" % RESULTS_MIN_SAFE_HEIGHT, "needs %.0f in %s" % [body.get_combined_minimum_size().y, body.get_global_rect()])
-	_game.safe_area_override = Rect2()
+	_check(body.get_combined_minimum_size().y <= body.size.y + 0.5 and body.get_global_rect().end.y <= back.get_global_rect().position.y and panels.all(func(panel: Control) -> bool: return _game.screen.safe_rect().encloses(panel.get_global_rect())), "at safe height %d every panel fits above Back" % RESULTS_MIN_SAFE_HEIGHT, "needs %.0f in %s" % [body.get_combined_minimum_size().y, body.get_global_rect()])
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 	from = _log.size()
@@ -5726,7 +5726,7 @@ func _test_title_scenery_and_geese() -> void:
 	var weather := title.get_node("Scenery/Weather") as Weather
 	_check(backdrop.id == "sunset" and sunset.size() == 1 and weather.id == (sunset[0] as ChapterSpec).weather and weather.id != "", "the title shows the sunset backdrop with its chapter's weather", "%s, %s" % [backdrop.id, weather.id])
 	var rival := title.get_node("Scenery/Rival") as TextureRect
-	_check(rival.visible and title.rival_pose() == "idle" and _game.safe_rect().encloses(rival.get_global_rect()) and rival.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the rival idles in the grass inside the safe area and ignores touches", str(rival.get_global_rect()))
+	_check(rival.visible and title.rival_pose() == "idle" and _game.screen.safe_rect().encloses(rival.get_global_rect()) and rival.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the rival idles in the grass inside the safe area and ignores touches", str(rival.get_global_rect()))
 	var buttons: Array[Control] = []
 	for button_name: String in ["CampaignButton", "EndlessButton", "TimeAttackButton", "TopScoresButton", "SettingsButton", "CreditsButton"]:
 		buttons.append(title.get_node("Safe/" + button_name) as Control)
@@ -5734,15 +5734,15 @@ func _test_title_scenery_and_geese() -> void:
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
 	var scenery := title.get_node("Scenery") as Node2D
 	for i in windows.size():
-		_game.safe_area_override = safes[i]
+		_game.screen.safe_area_override = safes[i]
 		root.size = windows[i]
 		await process_frame
 		await process_frame
 		var band := scenery.get_global_transform() * title.goose_band()
 		var lowest_reach := band.end.y
 		var clear := buttons.all(func(button: Control) -> bool: return button.get_global_rect().position.y >= lowest_reach + Title.BAND_MARGIN - 0.5)
-		_check(clear and band.size.y >= Content.bird(Title.TITLE_BIRD).size.y and band.position.y >= _game.safe_rect().position.y + Play.HUD_BAR_HEIGHT - 0.5, "%dx%d: the geese's band lies below the top bar and above every button" % [windows[i].x, windows[i].y], "band %s" % band)
-	_game.safe_area_override = Rect2()
+		_check(clear and band.size.y >= Content.bird(Title.TITLE_BIRD).size.y and band.position.y >= _game.screen.safe_rect().position.y + Play.HUD_BAR_HEIGHT - 0.5, "%dx%d: the geese's band lies below the top bar and above every button" % [windows[i].x, windows[i].y], "band %s" % band)
+	_game.screen.safe_area_override = Rect2()
 	root.size = BASE_WINDOW
 	await process_frame
 	await _open_title()
@@ -5762,7 +5762,7 @@ func _test_title_scenery_and_geese() -> void:
 		await process_frame
 		frames += 1
 		drift_seen = maxf(drift_seen, absf(scenery.position.x))
-		var visible := _game.visible_rect()
+		var visible := _game.screen.visible_rect()
 		var any := false
 		for goose in title.flying_geese():
 			var box := scenery.get_global_transform() * Rect2(goose.position - goose.spec.size / 2.0, goose.spec.size)
@@ -5831,7 +5831,7 @@ func _test_title_goose_shot() -> void:
 	_check_logged(from, "^\\[Title\\] Heckle \\(combo\\) #1: ", "the title heckle is logged")
 	var bubble := (title.get_node("Scenery/Bubble") as Label).get_global_rect()
 	var clear_of_buttons := ["CampaignButton", "EndlessButton", "TimeAttackButton", "TopScoresButton", "SettingsButton", "CreditsButton"].all(func(button_name: String) -> bool: return not bubble.intersects((title.get_node("Safe/" + button_name) as Control).get_global_rect()))
-	_check(_game.safe_rect().grow(0.5).encloses(bubble) and clear_of_buttons and (title.get_node("Scenery/Bubble") as Label).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the title's heckle bubble is inside the safe area, clear of the buttons, ignoring touches", str(bubble))
+	_check(_game.screen.safe_rect().grow(0.5).encloses(bubble) and clear_of_buttons and (title.get_node("Scenery/Bubble") as Label).mouse_filter == Control.MOUSE_FILTER_IGNORE, "the title's heckle bubble is inside the safe area, clear of the buttons, ignoring touches", str(bubble))
 	var fell := [false]
 	goose.gone.connect(func(_b: Bird) -> void: fell[0] = true)
 	for i in 240:
@@ -5878,7 +5878,7 @@ func _title_goose_in_view(title: Title) -> Bird:
 	for i in 360:
 		for goose in title.flying_geese():
 			var box := scenery.get_global_transform() * Rect2(goose.position - goose.spec.size / 2.0, goose.spec.size)
-			if _game.visible_rect().grow(-20.0).encloses(box):
+			if _game.screen.visible_rect().grow(-20.0).encloses(box):
 				return goose
 		await process_frame
 	return null
@@ -5937,7 +5937,7 @@ func _test_transition_wipe_and_fade() -> void:
 			_check_logged(from, "^\\[Game\\] Transition: plain fade, 0\\.15 s in and 0\\.15 s out \\(reduce motion\\)$", "the fade is logged")
 		else:
 			_check_logged(from, "^\\[Game\\] Transition: marsh-grass wipe, 0\\.35 s in and 0\\.35 s out$", "the wipe is logged")
-			_check(mid_edge > 0.0 and mid_edge < _game.visible_rect().size.y and first_edge > _game.visible_rect().size.y * 0.5, "half way in, the grass's edge is inside the screen (it rises from the bottom)", "first edge %.1f, mid edge %.1f" % [first_edge, mid_edge])
+			_check(mid_edge > 0.0 and mid_edge < _game.screen.visible_rect().size.y and first_edge > _game.screen.visible_rect().size.y * 0.5, "half way in, the grass's edge is inside the screen (it rises from the bottom)", "first edge %.1f, mid edge %.1f" % [first_edge, mid_edge])
 			_check(is_zero_approx(cover.self_modulate.a), "under the wipe the cover's own colour stays invisible", str(cover.self_modulate))
 		_check_logged(from, "^\\[Game\\] goto TITLE -> TITLE ", "goto still logs its start")
 		_check_logged(from, "^\\[Game\\] Arrived at TITLE$", "goto still logs its arrival")
@@ -6193,7 +6193,7 @@ func _test_popup_motion() -> void:
 		for i in roundi(Play.POPUP_BOUNCE_TIME / FRAME) + 6:
 			largest = maxf(largest, label.scale.x)
 			var box := label.get_global_transform() * Rect2(Vector2.ZERO, label.size)
-			outside = outside or not _game.visible_rect().grow(0.5).encloses(box)
+			outside = outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
 			await process_frame
 		var rest: float = label.get_meta(&"rest_scale")
 		scales.append(rest)
@@ -6226,7 +6226,7 @@ func _test_popup_motion() -> void:
 	var top_outside := false
 	for i in roundi(Play.POPUP_TIME / FRAME) - 2:
 		var box := top.get_global_transform() * Rect2(Vector2.ZERO, top.size)
-		top_outside = top_outside or not _game.visible_rect().grow(0.5).encloses(box)
+		top_outside = top_outside or not _game.screen.visible_rect().grow(0.5).encloses(box)
 		await process_frame
 	_check(not top_outside, "a pop-up for a hit at the top edge stays inside the visible area as it bounces and rises", "outside")
 	_game.goto(GameState.Flow.TITLE)
@@ -6394,7 +6394,7 @@ func _test_slider_hold_cut_short() -> void:
 	_check(slider.is_held() and _game.music_volume == 25 and stored.call() == 70.0, "a finger down on the music slider holds it at 25, unsaved", "held %s, volume %d" % [slider.is_held(), _game.music_volume])
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.is_rotate_overlay_shown() and not slider.is_held() and stored.call() == 25.0, "the rotate overlay showing mid-press ends the hold and saves the held volume", "held %s, stored %s" % [slider.is_held(), stored.call()])
+	_check(_game.screen.is_rotate_overlay_shown() and not slider.is_held() and stored.call() == 25.0, "the rotate overlay showing mid-press ends the hold and saves the held volume", "held %s, stored %s" % [slider.is_held(), stored.call()])
 	_check_logged(from, "^\\[Settings\\] Music slider released at 25 \\(rotate overlay\\); saving$", "the cut-short hold is logged with its cause")
 	await _finger(points[0], false)
 	root.size = BASE_WINDOW
@@ -6580,7 +6580,7 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	await _game.transition_finished
 	await process_frame
 	var play := current_scene as Play
-	_check(_game.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: the run starts under it with the arrow, never the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
@@ -6589,7 +6589,7 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "overlay first: Resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	root.size = PORTRAIT_9_19_5
 	await process_frame
-	_check(_game.is_rotate_overlay_shown() and not play.crosshair_shown and play.cursor_log.back() == "arrow (rotate overlay)" and play.cursor_calls.back() == arrow_call, "mid-run: turning upright resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	_check(_game.screen.is_rotate_overlay_shown() and not play.crosshair_shown and play.cursor_log.back() == "arrow (rotate overlay)" and play.cursor_calls.back() == arrow_call, "mid-run: turning upright resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame

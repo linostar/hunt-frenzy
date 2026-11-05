@@ -52,7 +52,7 @@ var _game: GameState
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_game.audio_settings_changed.connect(_show)
 	_game.reduce_motion_changed.connect(_show.unbind(1))
 	_music_slider.max_value = GameState.VOLUME_MAX
@@ -62,7 +62,7 @@ func _ready() -> void:
 	_music_slider.released.connect(_on_volume_released.bind(_music_slider))
 	_sfx_slider.released.connect(_on_volume_released.bind(_sfx_slider))
 	# The rotate overlay disables GUI input: a finger or key down then never reports its end.
-	_game.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
+	_game.screen.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
 	_music_toggle.toggled.connect(_on_music_toggled)
 	_sfx_toggle.toggled.connect(_on_sfx_toggled)
 	_reduce_motion_toggle.toggled.connect(_on_reduce_motion_toggled)
@@ -167,7 +167,7 @@ func _on_back_pressed() -> void:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# Anchors settle at the end of the frame; log the final rects (base units) for the

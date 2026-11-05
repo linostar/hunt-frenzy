@@ -100,7 +100,7 @@ var _bubble_tween: Tween
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_shot_input.shot.connect(_on_shot)
 	_set_scenery()
 	_fit()
@@ -255,8 +255,8 @@ func _heckle() -> void:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
-	var shown := _game.visible_rect()
+	var safe := _game.screen.safe_rect()
+	var shown := _game.screen.visible_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# The scenery covers the visible area plus the drift on each side.

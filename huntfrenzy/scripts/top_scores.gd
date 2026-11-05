@@ -29,7 +29,7 @@ var _game: GameState
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_endless.text = str(_game.best(GameState.ENDLESS_MODE))
 	_time_attack.text = str(_game.best(GameState.TIME_ATTACK_MODE))
 	var shown := PackedStringArray()
@@ -86,7 +86,7 @@ func _chapter_panel(spec: ChapterSpec, stars: String) -> PanelContainer:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# Anchors settle at the end of the frame; log Back's final rect for the smoke test.

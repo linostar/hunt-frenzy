@@ -43,7 +43,7 @@ var _game: GameState
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
-	_game.screen_fit_changed.connect(_fit)
+	_game.screen.screen_fit_changed.connect(_fit)
 	_made_by.text = MADE_BY
 	for line in LINES:
 		_lines.add_child(_line_node(line))
@@ -103,7 +103,7 @@ func _line_label(text: String) -> Label:
 
 
 func _fit() -> void:
-	var safe := _game.safe_rect()
+	var safe := _game.screen.safe_rect()
 	_safe.position = safe.position
 	_safe.size = safe.size
 	# Anchors settle at the end of the frame; log Back's final rect for the smoke test.
