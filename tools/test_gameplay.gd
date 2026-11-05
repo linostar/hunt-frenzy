@@ -994,7 +994,7 @@ func _test_play_hud_layout() -> void:
 	await process_frame
 
 
-## The HUD bar never overflows. A pool of up to Play.SHELL_ICONS_MAX shells shows one icon
+## The HUD bar never overflows. A pool of up to HudController.SHELL_ICONS_MAX shells shows one icon
 ## per shell; a bigger one shows one icon and the shells left ("x11"). The largest pool
 ## modes.json can produce is max_birds x the most hits a bird the mode can spawn needs x
 ## shells_per_hit (Endless: 8 x 3 (a splitter and its 2 goslings) x 3 = 72). At that pool
@@ -1011,18 +1011,18 @@ func _test_play_hud_fits_any_pool() -> void:
 		max_pool = maxi(max_pool, Ammo.pool_size(each.max_birds * most, each.shells_per_hit))
 	_check(max_pool == 72, "the largest pool modes.json can produce is 72 shells", str(max_pool))
 	var count := play.get_node("Hud/Bar/Stats/Shells/Icons/Count") as Label
-	play.set_shell_pool(Play.SHELL_ICONS_MAX)
-	_check(_shell_icons(play) == Play.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % Play.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
-	play.set_shell_pool(Play.SHELL_ICONS_MAX + 1)
-	_check(_shell_icons(play) == 1 and count.visible and count.text == "x%d" % (Play.SHELL_ICONS_MAX + 1), "a bigger pool shows one icon and its count", "%d icons, %s" % [_shell_icons(play), count.text])
+	play.set_shell_pool(HudController.SHELL_ICONS_MAX)
+	_check(_shell_icons(play) == HudController.SHELL_ICONS_MAX and not count.visible, "a pool of %d shows one icon per shell" % HudController.SHELL_ICONS_MAX, "%d icons, count %s" % [_shell_icons(play), count.visible])
+	play.set_shell_pool(HudController.SHELL_ICONS_MAX + 1)
+	_check(_shell_icons(play) == 1 and count.visible and count.text == "x%d" % (HudController.SHELL_ICONS_MAX + 1), "a bigger pool shows one icon and its count", "%d icons, %s" % [_shell_icons(play), count.text])
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(count.text == "x%d" % Play.SHELL_ICONS_MAX and _shell_icons(play) == 1, "the count goes down as shells are used", count.text)
+	_check(count.text == "x%d" % HudController.SHELL_ICONS_MAX and _shell_icons(play) == 1, "the count goes down as shells are used", count.text)
 	var stats := play.get_node("Hud/Bar/Stats") as Control
 	var pause_button := play.get_node("Hud/Bar/PauseButton") as Control
 	(play.get_node("Hud/Bar/Stats/Empty") as Control).show()
 	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
-	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
+	for pool: int in [HudController.SHELL_ICONS_MAX, max_pool]:
 		play.scoring.score = SaveStore.SAVE_SCORE_MAX
 		play.wave.index = 999
 		play.escaped = play.mode.escape_limit
@@ -1128,15 +1128,15 @@ func _test_play_empty_pool_refuses() -> void:
 	_check(play.refused == 1 and play.scoring.shots() == shells and play.scoring.misses == shells, "a shot with no shells is refused (no shot, no miss)", "refused %d, shots %d" % [play.refused, play.scoring.shots()])
 	_check_logged(from, "^\\[Play\\] Out of shells: \\d+ flying birds flee, \\d+ still to spawn will flee \\(wave 1\\)$", "running out of shells is logged")
 	_check_logged(from, "^\\[Play\\] Shot refused at \\([\\d.]+, [\\d.]+\\): no shells left \\(wave 1 at t -?[\\d.]+, 1 refused\\)$", "the refused shot is logged")
-	_check(play.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells/Icons") as Control).modulate == Play.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.is_empty_cue_shown())
+	_check(play.hud.is_empty_cue_shown() and (play.get_node("Hud/Bar/Stats/Shells/Icons") as Control).modulate == HudController.EMPTY_TINT, "a refused shot shows the empty cue on the HUD shells", "cue %s" % play.hud.is_empty_cue_shown())
 	var late := play.spawn_bird("goose", 4)
 	_check(late.flee_at == 0.0, "a goose spawned with no shells flees from the start", "flee_at %.2f" % late.flee_at)
 	var multiplier := play.scoring.multiplier
 	await _touch(_global(play, SKY_POINTS[1]))
 	_check(play.refused == 2 and play.scoring.multiplier == multiplier, "a refused shot leaves the combo alone", "x%d" % play.scoring.multiplier)
-	for i in roundi(Play.EMPTY_CUE_TIME * 60.0) + 2:
+	for i in roundi(HudController.EMPTY_CUE_TIME * 60.0) + 2:
 		await process_frame
-	_check(not play.is_empty_cue_shown(), "the empty cue fades", "still shown")
+	_check(not play.hud.is_empty_cue_shown(), "the empty cue fades", "still shown")
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 3000:
 		if play.wave.index == 2:
@@ -1171,7 +1171,7 @@ func _test_pause_causes_and_resume() -> void:
 		await causes[cause].call()
 		await process_frame
 		_check_logged(from, "^\\[Play\\] Paused \\(%s\\): wave 1 at t -?[\\d.]+, score 0$" % cause, "%s: the pause is logged with its cause" % cause)
-		_check(play.is_paused() and paused and play.pause_log.back() == cause, "%s opens the pause menu with the tree paused" % cause, "menu %s, paused %s, log %s" % [play.is_paused(), paused, play.pause_log])
+		_check(play.pause.is_paused() and paused and play.pause.pause_log.back() == cause, "%s opens the pause menu with the tree paused" % cause, "menu %s, paused %s, log %s" % [play.pause.is_paused(), paused, play.pause.pause_log])
 		_check(resume_button.has_focus(), "%s: Resume is focused" % cause, str(root.gui_get_focus_owner()))
 		var age := bird.age
 		var clock := play.wave_clock
@@ -1179,7 +1179,7 @@ func _test_pause_causes_and_resume() -> void:
 			await process_frame
 		_check(bird.age == age and play.wave_clock == clock, "%s: the run is frozen while paused" % cause, "age %.3f -> %.3f" % [age, bird.age])
 		await _key(KEY_ENTER)
-		_check(not play.is_paused() and not paused, "%s: Resume (Enter) closes the menu and unpauses" % cause, "menu %s, paused %s" % [play.is_paused(), paused])
+		_check(not play.pause.is_paused() and not paused, "%s: Resume (Enter) closes the menu and unpauses" % cause, "menu %s, paused %s" % [play.pause.is_paused(), paused])
 		_check_logged(from, "^\\[Play\\] Resumed \\(Resume\\): wave 1 at t -?[\\d.]+, score 0$", "%s: the resume is logged with its cause" % cause)
 		await process_frame
 		_check(bird.age > age and bird.is_flying(), "%s: the run continues unchanged" % cause, "age %.3f -> %.3f" % [age, bird.age])
@@ -1189,7 +1189,7 @@ func _test_pause_causes_and_resume() -> void:
 ## after Tab, Up/Down cycling Resume, Restart, Quit, Settings and the Music toggle.
 func _test_pause_menu_keyboard() -> void:
 	var play := await _start_run(32)
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	await process_frame
 	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
 	var buttons: Array[Button] = [panel.get_node("ResumeButton"), panel.get_node("RestartButton"), panel.get_node("QuitButton"), panel.get_node("SettingsButton")]
@@ -1220,18 +1220,18 @@ func _test_pause_menu_keyboard() -> void:
 	await _key(KEY_RIGHT)
 	await _key(KEY_TAB)
 	_check(root.gui_get_focus_owner() == buttons[0], "Tab from the SFX toggle wraps to Resume", str(root.gui_get_focus_owner()))
-	play.resume()
+	play.pause.resume()
 
 
 ## Touches on the pause button, the menu and while paused are never shots.
 func _test_pause_touches_are_not_shots() -> void:
 	var play := await _start_run(33)
 	await _tap(play.get_node("Hud/Bar/PauseButton") as Control)
-	_check(play.is_paused() and play.scoring.shots() == 0, "a touch on the pause button is not a shot", "%d shots" % play.scoring.shots())
+	_check(play.pause.is_paused() and play.scoring.shots() == 0, "a touch on the pause button is not a shot", "%d shots" % play.scoring.shots())
 	await _touch(_global(play, SKY_POINTS[0]))
 	_check(play.scoring.shots() == 0 and play.ammo.shells == play.wave.shells, "touches while paused are not shots", "%d shots" % play.scoring.shots())
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Control)
-	_check(not play.is_paused() and play.scoring.shots() == 0, "a touch on Resume resumes and is not a shot", "%d shots" % play.scoring.shots())
+	_check(not play.pause.is_paused() and play.scoring.shots() == 0, "a touch on Resume resumes and is not a shot", "%d shots" % play.scoring.shots())
 	await _touch(_global(play, SKY_POINTS[0]))
 	_check(play.scoring.shots() == 1, "after resuming a touch is a shot again", "%d shots" % play.scoring.shots())
 	_game.flow.goto(SceneFlow.Flow.TITLE)
@@ -1244,10 +1244,10 @@ func _test_pause_touches_are_not_shots() -> void:
 	var arriving := current_scene as Play
 	_check(arriving != null and _game.flow.is_transitioning(), "the run is on screen while the fade still runs", str(current_scene))
 	arriving.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
-	_check(not arriving.is_paused() and not paused, "a pause during the transition waits for it", "paused early")
+	_check(not arriving.pause.is_paused() and not paused, "a pause during the transition waits for it", "paused early")
 	await _game.flow.transition_finished
-	_check(arriving.is_paused() and paused and arriving.pause_log.back() == "window lost focus", "the pause opens once the transition is done", str(arriving.pause_log))
-	arriving.resume()
+	_check(arriving.pause.is_paused() and paused and arriving.pause.pause_log.back() == "window lost focus", "the pause opens once the transition is done", str(arriving.pause.pause_log))
+	arriving.pause.resume()
 
 
 ## Rotating to portrait during a run shows the overlay; rotating back leaves the pause
@@ -1263,18 +1263,18 @@ func _test_pause_after_rotating() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(not _game.screen.is_rotate_overlay_shown() and play.is_paused() and paused and play.pause_log.back() == "rotate overlay", "rotating back leaves the pause menu open, tree paused", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(not _game.screen.is_rotate_overlay_shown() and play.pause.is_paused() and paused and play.pause.pause_log.back() == "rotate overlay", "rotating back leaves the pause menu open, tree paused", "menu %s, paused %s" % [play.pause.is_paused(), paused])
 	_check(bird.age == age and bird.is_flying(), "the run is intact", "age %.3f -> %.3f" % [age, bird.age])
 	# Turned upright again with the menu open (Resume focused): keys reach nothing under the overlay.
 	root.size = PORTRAIT_9_19_5
 	await process_frame
 	await _key(KEY_ENTER)
 	await _key(KEY_ESCAPE)
-	_check(play.is_paused() and paused and bird.age == age, "under the rotate overlay keys press nothing on the pause menu", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(play.pause.is_paused() and paused and bird.age == age, "under the rotate overlay keys press nothing on the pause menu", "menu %s, paused %s" % [play.pause.is_paused(), paused])
 	root.size = BASE_WINDOW
 	await process_frame
-	_check(play.is_paused() and paused, "rotating back again keeps the menu open", "menu %s, paused %s" % [play.is_paused(), paused])
-	play.resume()
+	_check(play.pause.is_paused() and paused, "rotating back again keeps the menu open", "menu %s, paused %s" % [play.pause.is_paused(), paused])
+	play.pause.resume()
 	await process_frame
 	_check(bird.age > age, "Resume continues the run", "age %.3f" % bird.age)
 
@@ -1283,14 +1283,14 @@ func _test_pause_after_rotating() -> void:
 ## neither leaves the tree paused.
 func _test_pause_restart_and_quit() -> void:
 	var play := await _start_run(35)
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
 	await _game.flow.transition_finished
 	await process_frame
 	var restarted := current_scene as Play
 	_check(restarted != null and restarted != play and _game.flow.state == SceneFlow.Flow.PLAY and not paused, "Restart starts a new run", "%s paused %s" % [current_scene, paused])
 	_check(restarted != null and restarted.run_seed == _game.flow.flow_args["seed"] and restarted.run_seed != 35 and _game.flow.flow_args["mode"] == GameState.ENDLESS_MODE, "the new run is Endless with a fresh seed", str(_game.flow.flow_args))
-	restarted.open_pause("test")
+	restarted.pause.open_pause("test")
 	await process_frame
 	(restarted.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Button).grab_focus()
 	await _key(KEY_ENTER)
@@ -1544,11 +1544,11 @@ func _test_pause_escape_toggles() -> void:
 	var play := await _start_run(38)
 	var from := _log.size()
 	await _key(KEY_ESCAPE)
-	_check(play.is_paused() and paused and play.pause_log.back() == "Escape", "Escape opens the pause menu", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(play.pause.is_paused() and paused and play.pause.pause_log.back() == "Escape", "Escape opens the pause menu", "menu %s, paused %s" % [play.pause.is_paused(), paused])
 	var clock := play.wave_clock
 	await _key(KEY_ESCAPE)
 	await process_frame
-	_check(not play.is_paused() and not paused and play.wave_clock > clock, "Escape on the open pause menu resumes the run", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(not play.pause.is_paused() and not paused and play.wave_clock > clock, "Escape on the open pause menu resumes the run", "menu %s, paused %s" % [play.pause.is_paused(), paused])
 	_check_logged(from, "^\\[Play\\] Resumed \\(Escape\\): wave 1 at t -?[\\d.]+, score 0$", "the resume by Escape is logged with its cause")
 
 
@@ -1567,16 +1567,16 @@ func _test_pause_after_overlay_during_transition_in() -> void:
 	var play := current_scene as Play
 	play.notification(Node.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
 	await process_frame
-	_check(play.is_paused() and paused, "a pause opens while the phone is upright", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(play.pause.is_paused() and paused, "a pause opens while the phone is upright", "menu %s, paused %s" % [play.pause.is_paused(), paused])
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(not _game.screen.is_rotate_overlay_shown() and play.is_paused() and paused, "rotating back keeps the menu open over a paused tree", "menu %s, paused %s" % [play.is_paused(), paused])
+	_check(not _game.screen.is_rotate_overlay_shown() and play.pause.is_paused() and paused, "rotating back keeps the menu open over a paused tree", "menu %s, paused %s" % [play.pause.is_paused(), paused])
 	var clock := play.wave_clock
 	for i in 5:
 		await process_frame
 	_check(play.wave_clock == clock, "the run clock does not advance behind the menu", "%.3f -> %.3f" % [clock, play.wave_clock])
-	play.resume()
+	play.pause.resume()
 
 
 ## A new best that cannot be saved (the save path is unwritable) reaches the player on the
@@ -1648,7 +1648,7 @@ func _test_time_attack_start_and_hud() -> void:
 	(play.get_node("Hud/Bar/Stats/Empty") as Control).show()
 	var cases: Array[String] = ["16:9", "19.5:9", "4:3", "19.5:9 notched"]
 	var windows: Array[Vector2i] = [LANDSCAPE_16_9, LANDSCAPE_19_5_9, LANDSCAPE_4_3, LANDSCAPE_19_5_9]
-	for pool: int in [Play.SHELL_ICONS_MAX, max_pool]:
+	for pool: int in [HudController.SHELL_ICONS_MAX, max_pool]:
 		play.set_shell_pool(pool)
 		play.scoring.score = SaveStore.SAVE_SCORE_MAX
 		play.wave.index = 999
@@ -1737,9 +1737,9 @@ func _test_time_attack_pause_freezes_clock() -> void:
 			root.size = BASE_WINDOW
 			await process_frame
 			await process_frame
-			_check(play.is_paused() and paused and play.time_left() == left, "rotate overlay: back in landscape the menu is open and the clock still frozen", "menu %s, %.4f -> %.4f" % [play.is_paused(), left, play.time_left()])
+			_check(play.pause.is_paused() and paused and play.time_left() == left, "rotate overlay: back in landscape the menu is open and the clock still frozen", "menu %s, %.4f -> %.4f" % [play.pause.is_paused(), left, play.time_left()])
 		_check_logged(from, "^\\[Play\\] Paused \\(%s\\): wave \\d+ at t -?[\\d.]+, score 0, [\\d.]+ s left$" % cause, "%s: the pause is logged with the time left" % cause)
-		play.resume()
+		play.pause.resume()
 		await process_frame
 		_check(not paused and play.time_left() < left and is_equal_approx(play.time_left(), left - FRAME), "%s: resuming continues from the same time left" % cause, "%.4f -> %.4f" % [left, play.time_left()])
 
@@ -1815,7 +1815,7 @@ func _test_time_attack_lost_wave_starts_next_at_once() -> void:
 			if found != null and times[k] == "":
 				times[k] = found.get_string(1)
 	_check(times[0] != "" and times[0] == times[1] and times[1] == times[2], "the wave is lost and the next starts at the same moment the pool runs out (no dead time)", "out %s, lost %s, next %s" % times)
-	_check(_text(play, "Wave") == "2" and _shell_icons(play) == mini(play.wave.shells, Play.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
+	_check(_text(play, "Wave") == "2" and _shell_icons(play) == mini(play.wave.shells, HudController.SHELL_ICONS_MAX), "the HUD shows the new wave's number and full pool at once", "%s, %d icons" % [_text(play, "Wave"), _shell_icons(play)])
 	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) (#\\d+: |skipped: cooldown)", "the lost wave draws a wave_end heckle (cooldown permitting)")
 	# Past every spawn time of wave 1 (0.9 and 1.8 s), only its first goose was ever up.
 	var most_wave_1 := 0
@@ -1964,11 +1964,11 @@ func _test_time_attack_no_steals_no_cue() -> void:
 	var goose := await _spawn_flying(play, 160, Content.bird("goose").linger_time - 0.02)
 	var ever_cued := false
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 30:
-		ever_cued = ever_cued or goose.is_cued() or play.is_rival_aiming() or (goose.get_node("Reticle") as CanvasItem).visible
+		ever_cued = ever_cued or goose.is_cued() or play.rival.is_rival_aiming() or (goose.get_node("Reticle") as CanvasItem).visible
 		await process_frame
-	_check(not ever_cued and goose.is_flying() and play.stolen == 0 and play.rival_score == 0, "no aim cue and no steal in Time Attack", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	_check(not ever_cued and goose.is_flying() and play.rival.stolen == 0 and play.rival.rival_score == 0, "no aim cue and no steal in Time Attack", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
 	await _touch(_global(play, Vector2(480, Play.GRASS_Y + 40.0)))
-	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()), "the Time Attack rival still heckles", "'%s'" % play.heckle_shown())
+	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()), "the Time Attack rival still heckles", "'%s'" % play.rival.heckle_shown())
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
 
 
@@ -2031,7 +2031,7 @@ func _test_time_attack_results() -> void:
 func _test_time_attack_quit_saves_nothing() -> void:
 	_clear_tool_save()
 	var play := await _start_run(57, GameState.TIME_ATTACK_MODE)
-	play.open_pause("pause button")
+	play.pause.open_pause("pause button")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
 	await _game.flow.transition_finished
 	await process_frame
@@ -2041,7 +2041,7 @@ func _test_time_attack_quit_saves_nothing() -> void:
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	_check(play.scoring.score == 100, "the run has a score to lose", str(play.scoring.score))
 	var from := _log.size()
-	play.open_pause("pause button")
+	play.pause.open_pause("pause button")
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Control)
 	await _game.flow.transition_finished
 	_check(_game.flow.state == SceneFlow.Flow.TITLE and _game.save.best(GameState.TIME_ATTACK_MODE) == 0 and not FileAccess.file_exists(_game.save.save_path), "quitting to the title records and saves nothing", "%s, bests %s, save %s" % [_game.flow.state, _game.save.bests, FileAccess.file_exists(_game.save.save_path)])
@@ -2717,13 +2717,13 @@ func _test_rival_cue_and_steal() -> void:
 	for i in 2:
 		var goose := await _spawn_flying(play, 110 + i)
 		await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.multiplier == 3 and play.heckles == 1, "two kills build x3, which heckles", "x%d, %d heckles" % [play.scoring.multiplier, play.heckles])
+	_check(play.scoring.multiplier == 3 and play.rival.heckles == 1, "two kills build x3, which heckles", "x%d, %d heckles" % [play.scoring.multiplier, play.rival.heckles])
 	var from := _log.size()
 	var bird := await _cued_bird(play, 112, "goose")
 	var linger := bird.spec.linger_time
 	var reticle := bird.get_node("Reticle") as Sprite2D
 	_check(bird.is_cued() and bird.cue_age >= linger and bird.cue_age <= linger + FRAME + 0.001, "the cue starts when the goose reaches its linger_time", "cue_age %.3f, linger %.2f" % [bird.cue_age, linger])
-	_check(reticle.visible and play.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.is_rival_aiming()])
+	_check(reticle.visible and play.rival.is_rival_aiming(), "the cue shows a reticle on the goose and the rival raising his gun", "reticle %s, aiming %s" % [reticle.visible, play.rival.is_rival_aiming()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; (no cue before|[\\d.]+ s since the last cue ended), aim gap 1\\.50 s\\) \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\)$" % bird.number, "the cue start is logged with the bird, the choice, the aim gap, wave, time and tallies")
 	var escaped := play.escaped
 	var cued_until := 0.0
@@ -2735,11 +2735,11 @@ func _test_rival_cue_and_steal() -> void:
 	_check(bird.stolen and not bird.is_flying() and not bird.is_cued() and not reticle.visible, "once the cue has run the rival shoots the goose", "stolen %s, state %d" % [bird.stolen, bird.state])
 	_check(cued_until >= aim - FRAME - 0.001 and cued_until <= aim + FRAME + 0.001, "the cue lasts aim_time (to the frame)", "cued %.3f s of %.2f" % [cued_until, aim])
 	_check((bird.get_node("Sprite") as Sprite2D).texture.resource_path == bird.spec.texture_path("hit"), "the stolen goose falls on its hit frame", (bird.get_node("Sprite") as Sprite2D).texture.resource_path)
-	_check(play.stolen == 1 and play.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.stolen, play.rival_score, escaped, play.escaped])
+	_check(play.rival.stolen == 1 and play.rival.rival_score == 100 and play.escaped == escaped + 1 and play.scoring.score == 300, "its points go to the rival and it counts as an escape", "stolen %d, rival %d, escaped %d -> %d" % [play.rival.stolen, play.rival.rival_score, escaped, play.escaped])
 	_check(play.scoring.multiplier == 3, "a steal leaves the player's combo alone", "x%d" % play.scoring.multiplier)
-	_check(play.rival_score == 100 and _text(play, "Escaped") == "%d/10" % play.escaped and not play.is_rival_aiming(), "the rival scores 100, the HUD shows the escape; he lowers his gun", "rival %d, %s" % [play.rival_score, _text(play, "Escaped")])
+	_check(play.rival.rival_score == 100 and _text(play, "Escaped") == "%d/10" % play.escaped and not play.rival.is_rival_aiming(), "the rival scores 100, the HUD shows the escape; he lowers his gun", "rival %d, %s" % [play.rival.rival_score, _text(play, "Escaped")])
 	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: 100 points to the rival, rival score 100, 1 stolen, %d/10 escaped, combo x3 kept \\(wave 1 at t -?[\\d.]+\\); he laughs in 0\\.30 s, no new cue for the 1\\.50 s aim gap$" % [bird.number, play.escaped], "the steal is logged with the cue time, the tallies, the escapes and the combo")
-	_check(Content.rival_lines().lines["steal"].has(play.heckle_shown()) and play.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.heckle_shown(), play.heckles])
+	_check(Content.rival_lines().lines["steal"].has(play.rival.heckle_shown()) and play.rival.heckles == 2, "a steal line shows inside the cooldown", "'%s', %d heckles" % [play.rival.heckle_shown(), play.rival.heckles])
 	_check_logged(from, "^\\[Play\\] Heckle \\(steal\\) #2: \".+\" \\(wave 1 at t -?[\\d.]+, rival score 100, 1 stolen\\), no blurt$", "the steal heckle is logged with its category and line")
 	var number := bird.number
 	for i in 120:
@@ -2758,11 +2758,11 @@ func _test_rival_kill_during_cue() -> void:
 	_check(bird.is_cued(), "the goose is cued", "no cue")
 	await _touch(_global(play, bird.transform * LOCAL_BODY))
 	_check(not bird.is_flying() and not bird.stolen and play.scoring.score == 100 and play.scoring.kills == 1, "a kill during the cue scores as usual", "score %d, stolen %s" % [play.scoring.score, bird.stolen])
-	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.is_rival_aiming()])
+	_check(not bird.is_cued() and not (bird.get_node("Reticle") as Sprite2D).visible and not play.rival.is_rival_aiming(), "the kill takes the cue away", "cued %s, aiming %s" % [bird.is_cued(), play.rival.is_rival_aiming()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(shot by the player\\) after [\\d.]+ s \\(wave 1 at t -?[\\d.]+, rival score 0, 0 stolen\\); no new cue for the 1\\.50 s aim gap$" % bird.number, "the cancelled cue is logged with its cause and the aim gap")
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		await process_frame
-	_check(play.stolen == 0 and play.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.stolen)
+	_check(play.rival.stolen == 0 and play.rival.rival_score == 0 and not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Stolen")), "a bird saved during its cue is never stolen", "%d stolen" % play.rival.stolen)
 
 
 ## A damaging hit (the armored goose's first) keeps the cue running from its start; once
@@ -2779,7 +2779,7 @@ func _test_rival_damage_keeps_cue() -> void:
 		if not armored.is_flying():
 			break
 		await process_frame
-	_check(armored.stolen and play.stolen == 1 and play.rival_score == 150, "the rival steals the damaged armored goose once the cue has run", "stolen %s, rival %d" % [armored.stolen, play.rival_score])
+	_check(armored.stolen and play.rival.stolen == 1 and play.rival.rival_score == 150, "the rival steals the damaged armored goose once the cue has run", "stolen %s, rival %d" % [armored.stolen, play.rival.rival_score])
 	_check_logged(from, "^\\[Play\\] Stolen armored #%d by the rival after a 1\\.0[0-2] s cue: 150 points to the rival" % armored.number, "the armored steal is logged")
 
 
@@ -2824,7 +2824,7 @@ func _test_rival_decoy_and_fleeing() -> void:
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		ever_cued = ever_cued or pigeon.is_cued()
 		await process_frame
-	_check(not ever_cued and pigeon.is_flying() and play.stolen == 0, "the decoy is never aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	_check(not ever_cued and pigeon.is_flying() and play.rival.stolen == 0, "the decoy is never aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
 	var goose := await _cued_bird(play, 141, "goose")
 	_check(goose.is_cued(), "the goose is cued", "no cue")
 	play.ammo.shells = 1
@@ -2832,7 +2832,7 @@ func _test_rival_decoy_and_fleeing() -> void:
 	var shot_from := _log.size()
 	await _touch(_global(play, SKY_POINTS[0]))
 	await process_frame
-	_check(goose.is_fleeing() and not goose.is_cued() and not (goose.get_node("Reticle") as Sprite2D).visible and not play.is_rival_aiming(), "a cued goose that starts fleeing drops the cue", "fleeing %s, cued %s" % [goose.is_fleeing(), goose.is_cued()])
+	_check(goose.is_fleeing() and not goose.is_cued() and not (goose.get_node("Reticle") as Sprite2D).visible and not play.rival.is_rival_aiming(), "a cued goose that starts fleeing drops the cue", "fleeing %s, cued %s" % [goose.is_fleeing(), goose.is_cued()])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d cancelled \\(fled\\) after [\\d.]+ s " % goose.number, "the dropped cue is logged with its cause")
 	var number := goose.number
 	Engine.time_scale = FAST_TIME_SCALE
@@ -2841,7 +2841,7 @@ func _test_rival_decoy_and_fleeing() -> void:
 			break
 		await process_frame
 	Engine.time_scale = 1.0
-	_check(not is_instance_valid(goose) and play.stolen == 0, "the fleeing goose escapes as before, never stolen", "stolen %d" % play.stolen)
+	_check(not is_instance_valid(goose) and play.rival.stolen == 0, "the fleeing goose escapes as before, never stolen", "stolen %d" % play.rival.stolen)
 	# Counted once: from the count at the shot, every escape or steal line since (wave birds
 	# and the fleeing decoy log theirs too) logs a total one up for a counted bird and the
 	# same for an uncounted one, the goose's included, so nothing else (the cancelled cue)
@@ -2869,24 +2869,24 @@ func _test_rival_decoy_and_fleeing() -> void:
 func _test_rival_pause_freezes_cue() -> void:
 	var play := await _start_run(66)
 	await _touch(_global(play, SKY_POINTS[0]))
-	var heckle := play.heckle_shown()
+	var heckle := play.rival.heckle_shown()
 	var goose := await _cued_bird(play, 150, "goose")
 	for i in 20:
 		await process_frame
 	var age := goose.age
 	var clock := play.run_clock
-	play.open_pause("test")
-	for i in roundi(Play.HECKLE_TIME * 60.0) + 30:
+	play.pause.open_pause("test")
+	for i in roundi(RivalController.HECKLE_TIME * 60.0) + 30:
 		await process_frame
-	_check(goose.is_cued() and goose.is_flying() and goose.age == age and play.run_clock == clock and play.stolen == 0, "a pause freezes the cue and the heckle cooldown clock", "age %.3f -> %.3f, clock %.3f -> %.3f, stolen %d" % [age, goose.age, clock, play.run_clock, play.stolen])
-	_check(heckle != "" and play.heckle_shown() == heckle, "a pause keeps the heckle on screen", "'%s'" % play.heckle_shown())
+	_check(goose.is_cued() and goose.is_flying() and goose.age == age and play.run_clock == clock and play.rival.stolen == 0, "a pause freezes the cue and the heckle cooldown clock", "age %.3f -> %.3f, clock %.3f -> %.3f, stolen %d" % [age, goose.age, clock, play.run_clock, play.rival.stolen])
+	_check(heckle != "" and play.rival.heckle_shown() == heckle, "a pause keeps the heckle on screen", "'%s'" % play.rival.heckle_shown())
 	var from := _log.size()
-	play.resume()
+	play.pause.resume()
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 10:
 		if not goose.is_flying():
 			break
 		await process_frame
-	_check(goose.stolen and play.stolen == 1, "after resuming the cue runs on and the rival fires", "stolen %s" % goose.stolen)
+	_check(goose.stolen and play.rival.stolen == 1, "after resuming the cue runs on and the rival fires", "stolen %s" % goose.stolen)
 	_check_logged(from, "^\\[Play\\] Stolen goose #%d by the rival after a 1\\.0[0-2] s cue: " % goose.number, "the paused cue still lasted aim_time of game time")
 
 
@@ -2899,11 +2899,11 @@ func _test_rival_steals_off() -> void:
 	var goose := await _spawn_flying(play, 160, Content.bird("goose").linger_time - 0.02)
 	var ever_cued := false
 	for i in roundi(Content.rival_lines().aim_time * 60.0) + 30:
-		ever_cued = ever_cued or goose.is_cued() or play.is_rival_aiming()
+		ever_cued = ever_cued or goose.is_cued() or play.rival.is_rival_aiming()
 		await process_frame
-	_check(not ever_cued and goose.is_flying() and play.stolen == 0 and play.rival_score == 0, "with steals off no bird is aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.stolen])
+	_check(not ever_cued and goose.is_flying() and play.rival.stolen == 0 and play.rival.rival_score == 0, "with steals off no bird is aimed at or stolen", "cued %s, stolen %d" % [ever_cued, play.rival.stolen])
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()), "with steals off the rival still heckles", "'%s'" % play.heckle_shown())
+	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()), "with steals off the rival still heckles", "'%s'" % play.rival.heckle_shown())
 	_check(not Array(_log.since(from)).any(func(line: String) -> bool: return line.begins_with("[Play] Aim cue") or line.begins_with("[Play] Stolen")), "nothing about a cue or a steal is logged", "a cue line")
 	play.mode.rival_steals = true
 
@@ -2923,11 +2923,11 @@ func _test_rival_heckle_cooldown() -> void:
 			break
 		await process_frame
 	Engine.time_scale = 1.0
-	_check(play.wave.index == 2 and lines.lines["wave_end"].has(play.heckle_shown()) and play.heckles == 1, "a wave's end shows a wave_end line", "wave %d, '%s'" % [play.wave.index, play.heckle_shown()])
+	_check(play.wave.index == 2 and lines.lines["wave_end"].has(play.rival.heckle_shown()) and play.rival.heckles == 1, "a wave's end shows a wave_end line", "wave %d, '%s'" % [play.wave.index, play.rival.heckle_shown()])
 	_check_logged(from, "^\\[Play\\] Heckle \\(wave_end\\) #1: \".+\" \\(wave 1 at t [\\d.]+, rival score 0, 0 stolen\\)$", "the wave-end heckle is logged")
 	var skipped_at := play.run_clock
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(play.heckles == 1, "a miss inside the cooldown shows nothing", "%d heckles" % play.heckles)
+	_check(play.rival.heckles == 1, "a miss inside the cooldown shows nothing", "%d heckles" % play.rival.heckles)
 	_check_logged(from, "^\\[Play\\] Heckle \\(miss\\) skipped: cooldown, [\\d.]+ of 4\\.00 s since the last \\(wave 2 at t -?[\\d.]+, rival score 0, 0 stolen\\)$", "the skipped heckle is logged")
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
@@ -2936,14 +2936,14 @@ func _test_rival_heckle_cooldown() -> void:
 		await process_frame
 	Engine.time_scale = 1.0
 	await _touch(_global(play, SKY_POINTS[1]))
-	_check(lines.lines["miss"].has(play.heckle_shown()) and play.heckles == 2, "after the cooldown a miss shows a miss line", "'%s'" % play.heckle_shown())
+	_check(lines.lines["miss"].has(play.rival.heckle_shown()) and play.rival.heckles == 2, "after the cooldown a miss shows a miss line", "'%s'" % play.rival.heckle_shown())
 	var shown_at := play.run_clock
 	for i in 600:
-		if play.heckle_shown() == "":
+		if play.rival.heckle_shown() == "":
 			break
 		await process_frame
 	var lasted := play.run_clock - shown_at
-	_check(play.heckle_shown() == "" and absf(lasted - Play.HECKLE_TIME) <= 2.0 * FRAME, "a heckle shows for HECKLE_TIME", "%.3f s" % lasted)
+	_check(play.rival.heckle_shown() == "" and absf(lasted - RivalController.HECKLE_TIME) <= 2.0 * FRAME, "a heckle shows for HECKLE_TIME", "%.3f s" % lasted)
 	Engine.time_scale = FAST_TIME_SCALE
 	for i in 600:
 		if play.run_clock - shown_at >= lines.cooldown:
@@ -2952,10 +2952,10 @@ func _test_rival_heckle_cooldown() -> void:
 	Engine.time_scale = 1.0
 	var goose := await _spawn_flying(play, 170)
 	await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.multiplier == 2 and play.heckles == 2, "a kill raising the combo to x2 says nothing", "x%d, %d heckles" % [play.scoring.multiplier, play.heckles])
+	_check(play.scoring.multiplier == 2 and play.rival.heckles == 2, "a kill raising the combo to x2 says nothing", "x%d, %d heckles" % [play.scoring.multiplier, play.rival.heckles])
 	goose = await _spawn_flying(play, 171)
 	await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.multiplier == 3 and lines.lines["combo"].has(play.heckle_shown()) and play.heckles == 3, "a kill raising the combo to x3 shows a combo line", "x%d, '%s'" % [play.scoring.multiplier, play.heckle_shown()])
+	_check(play.scoring.multiplier == 3 and lines.lines["combo"].has(play.rival.heckle_shown()) and play.rival.heckles == 3, "a kill raising the combo to x3 shows a combo line", "x%d, '%s'" % [play.scoring.multiplier, play.rival.heckle_shown()])
 	_check_logged(from, "^\\[Play\\] Heckle \\(combo\\) #3: \".+\" ", "the combo heckle is logged")
 	play.mode.rival_steals = true
 
@@ -3004,7 +3004,7 @@ func _test_rival_layout_and_pass_through() -> void:
 
 
 
-## The rival's footprint (art polish): his rect is Play.RIVAL_RECT (80x120 at the
+## The rival's footprint (art polish): his rect is RivalController.RIVAL_RECT (80x120 at the
 ## bottom-left of the bank), its top at or below the fringe's top (GRASS_Y - GRASS_TIP:
 ## no art over the field) and inside the visible area; each pose's art has the rect's
 ## aspect (it fills it, nothing letterboxed off its feet), stands on its bottom edge and
@@ -3016,10 +3016,10 @@ func _test_rival_footprint_and_poses() -> void:
 	var rival := play.get_node("World/Rival") as TextureRect
 	var world := play.get_node("World") as Node2D
 	var rect := Rect2(world.to_local(rival.get_global_rect().position), rival.size)
-	_check(rect.is_equal_approx(Play.RIVAL_RECT) and Play.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
+	_check(rect.is_equal_approx(RivalController.RIVAL_RECT) and RivalController.RIVAL_RECT.size == Vector2(80, 120), "the rival stands in an 80x120 rect at the bottom-left of the bank", str(rect))
 	_check(rect.position.y >= Play.GRASS_Y - Play.GRASS_TIP and rect.position.x >= 0.0 and rect.end.y <= 540.0, "none of the rival's rect is above the fringe's top (y 416) or off the screen", str(rect))
 	var tops: Dictionary[String, Vector2i] = {}
-	for pose: Texture2D in [Play.RIVAL_IDLE, Play.RIVAL_AIM, Play.RIVAL_SULK, Play.RIVAL_BRAG]:
+	for pose: Texture2D in [RivalController.RIVAL_IDLE, RivalController.RIVAL_AIM, RivalController.RIVAL_SULK, RivalController.RIVAL_BRAG]:
 		var image := pose.get_image()
 		var size := image.get_size()
 		var file := pose.resource_path.get_file()
@@ -3036,7 +3036,7 @@ func _test_rival_footprint_and_poses() -> void:
 				break
 		tops[file] = top
 	var aim := tops["rival_aim.svg"]
-	var width := Play.RIVAL_AIM.get_width()
+	var width := RivalController.RIVAL_AIM.get_width()
 	_check(aim.x * 3 >= width * 2, "the aim pose's highest art is the gun's muzzle, in the right third", "%s of %d" % [aim, width])
 	for file: String in ["rival_idle.svg", "rival_sulk.svg", "rival_brag.svg"]:
 		_check(tops[file].x * 3 < width * 2, "%s's highest art is his hat, not a raised gun" % file, str(tops[file]))
@@ -3071,34 +3071,34 @@ func _test_rival_lit_per_backdrop() -> void:
 func _test_rival_poses() -> void:
 	var play := await _start_run(70)
 	play.mode.rival_steals = false
-	_check(play.rival_pose() == "idle", "the rival stands idle at the start", play.rival_pose())
+	_check(play.rival.rival_pose() == "idle", "the rival stands idle at the start", play.rival.rival_pose())
 	var from := _log.size()
 	var goose := await _spawn_flying(play, 180)
 	await _touch(_global(play, goose.transform * LOCAL_BODY))
-	_check(play.scoring.kills == 1 and play.rival_pose() == "sulk", "a scored kill makes the rival sulk", "%d kills, %s" % [play.scoring.kills, play.rival_pose()])
+	_check(play.scoring.kills == 1 and play.rival.rival_pose() == "sulk", "a scored kill makes the rival sulk", "%d kills, %s" % [play.scoring.kills, play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival sulks at the 100 points on goose #%d \\(wave 1 at t -?[\\d.]+\\)$" % goose.number, "the sulk is logged with the points and the bird")
 	var since := play.run_clock
-	for i in roundi(Play.RIVAL_REACTION_TIME * 60.0) + 10:
-		if play.rival_pose() != "sulk":
+	for i in roundi(RivalController.RIVAL_REACTION_TIME * 60.0) + 10:
+		if play.rival.rival_pose() != "sulk":
 			break
 		await process_frame
 	var lasted := play.run_clock - since
-	_check(play.rival_pose() == "idle" and absf(lasted - Play.RIVAL_REACTION_TIME) <= 2.0 * FRAME, "the sulk lasts RIVAL_REACTION_TIME, then he stands idle", "%s after %.3f s" % [play.rival_pose(), lasted])
+	_check(play.rival.rival_pose() == "idle" and absf(lasted - RivalController.RIVAL_REACTION_TIME) <= 2.0 * FRAME, "the sulk lasts RIVAL_REACTION_TIME, then he stands idle", "%s after %.3f s" % [play.rival.rival_pose(), lasted])
 	await _touch(_global(play, SKY_POINTS[0]))
-	_check(Content.rival_lines().lines["miss"].has(play.heckle_shown()) and play.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.heckle_shown(), play.rival_pose()])
+	_check(Content.rival_lines().lines["miss"].has(play.rival.heckle_shown()) and play.rival.rival_pose() == "brag", "a miss heckle makes the rival brag", "'%s', %s" % [play.rival.heckle_shown(), play.rival.rival_pose()])
 	_check_logged(from, "^\\[Play\\] Rival brags after the miss \\(wave 1 at t -?[\\d.]+\\)$", "the brag is logged")
-	for i in roundi(Play.RIVAL_REACTION_TIME * 60.0) + 10:
-		if play.rival_pose() == "idle":
+	for i in roundi(RivalController.RIVAL_REACTION_TIME * 60.0) + 10:
+		if play.rival.rival_pose() == "idle":
 			break
 		await process_frame
-	var heckles := play.heckles
+	var heckles := play.rival.heckles
 	await _touch(_global(play, SKY_POINTS[1]))
-	_check(play.heckles == heckles and play.rival_pose() == "idle", "a miss inside the heckle cooldown (no line) draws no brag", "%d heckles, %s" % [play.heckles, play.rival_pose()])
+	_check(play.rival.heckles == heckles and play.rival.rival_pose() == "idle", "a miss inside the heckle cooldown (no line) draws no brag", "%d heckles, %s" % [play.rival.heckles, play.rival.rival_pose()])
 	play.mode.rival_steals = true
 	var cued := await _cued_bird(play, 181, "goose")
 	var other := await _spawn_flying(play, 182)
 	await _touch(_global(play, other.transform * LOCAL_BODY))
-	_check(cued.is_cued() and not other.is_flying() and play.rival_pose() == "aim", "an aim cue raises his gun over the sulk", "cued %s, %s" % [cued.is_cued(), play.rival_pose()])
+	_check(cued.is_cued() and not other.is_flying() and play.rival.rival_pose() == "aim", "an aim cue raises his gun over the sulk", "cued %s, %s" % [cued.is_cued(), play.rival.rival_pose()])
 
 
 ## The weather is visual only (AC 6): the same seeded run gives the same bird positions,
@@ -3871,7 +3871,7 @@ func _test_campaign_pass_next_retry_levels() -> void:
 	await process_frame
 	var again := current_scene as Play
 	_check(again != null and again.level == Content.level("dawn_1"), "Retry plays the level again", str(_game.flow.flow_args))
-	again.open_pause("test")
+	again.pause.open_pause("test")
 	await _tap(again.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Control)
 	await _game.flow.transition_finished
 	await process_frame
@@ -3938,7 +3938,7 @@ func _test_campaign_unknown_level() -> void:
 	var play := current_scene as Play
 	var reported: String = _game.reported_errors.back() if _game.reported_errors.size() > errors else ""
 	_check(reported == "Cannot start level 'dusk_9': no such level in levels.json" and (_game.get_node("Fade/ErrorLabel") as Label).visible, "an unknown level is reported", reported)
-	_check(play != null and play.wave == null and play.is_paused() and (play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Button).has_focus(), "nothing runs; only Quit to title is offered", str(root.gui_get_focus_owner()))
+	_check(play != null and play.wave == null and play.pause.is_paused() and (play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).disabled and (play.get_node("PauseLayer/PauseMenu/Panel/QuitButton") as Button).has_focus(), "nothing runs; only Quit to title is offered", str(root.gui_get_focus_owner()))
 	await _key(KEY_ENTER)
 	await _game.flow.transition_finished
 	_check(_game.flow.state == SceneFlow.Flow.TITLE and not paused, "Quit leaves the level that could not start", str(_game.flow.state))
@@ -4685,7 +4685,7 @@ func _test_audio_music_per_screen() -> void:
 	await _start_run(83)
 	_check(_game.audio.music_track == "endless", "Endless plays its loop", _game.audio.music_track)
 	changes = _game.audio.music_changes
-	(current_scene as Play).open_pause("test")
+	(current_scene as Play).pause.open_pause("test")
 	(current_scene.get_node("PauseLayer/PauseMenu/Panel/RestartButton") as Button).pressed.emit()
 	await _game.flow.transition_finished
 	_check(_game.audio.music_track == "endless" and _game.audio.music_changes == changes, "restarting Endless keeps its loop playing", "%s, %d changes" % [_game.audio.music_track, _game.audio.music_changes - changes])
@@ -4700,9 +4700,9 @@ func _test_audio_music_per_screen() -> void:
 ## buttons, the results.
 func _test_audio_every_event_sound() -> void:
 	var play := await _start_run(85)
-	var cooldown := play.rival_lines.cooldown
+	var cooldown := play.rival.rival_lines.cooldown
 	# Only the first heckle shows, so each shot's sounds are exact.
-	play.rival_lines.cooldown = 1000.0
+	play.rival.rival_lines.cooldown = 1000.0
 	var heard: Array[StringName] = []
 	for i in 120:
 		_game.audio.sfx_log.clear()
@@ -4746,7 +4746,7 @@ func _test_audio_every_event_sound() -> void:
 		if cued.stolen:
 			break
 		await process_frame
-	var line := play.heckle_shown()
+	var line := play.rival.heckle_shown()
 	# The stolen bird falls off the screen and frees itself while the laugh is awaited.
 	var was_stolen := cued.stolen
 	var waited := 0
@@ -4754,7 +4754,7 @@ func _test_audio_every_event_sound() -> void:
 		await process_frame
 		waited += 1
 	_check(was_stolen and _game.audio.sfx_log.count(&"rival_steal") == 1 and _game.audio.sfx_log.count(&"rival_laugh") == 1 and _game.audio.sfx_log.find(&"rival_steal") < _game.audio.sfx_log.find(&"rival_laugh"), "the rival's steal plays rival_steal, then rival_laugh", str(_game.audio.sfx_log))
-	_check(absi(waited - roundi(Play.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
+	_check(absi(waited - roundi(RivalController.RIVAL_LAUGH_DELAY / FRAME)) <= 2, "the laugh starts RIVAL_LAUGH_DELAY after the shot", "%d frames" % waited)
 	_check(line != "" and not &"heckle_steal" in _game.audio.sfx_log and not Array(_log.since(steal_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_steal")), "the steal line shows in the bubble with no gibberish blurt", "line \"%s\", %s" % [line, _game.audio.sfx_log])
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_steal$", "the steal shot is logged as an [Audio] SFX line")
 	_check_logged(steal_from, "^\\[Audio\\] SFX rival_laugh$", "the laugh is logged as an [Audio] SFX line")
@@ -4766,7 +4766,7 @@ func _test_audio_every_event_sound() -> void:
 	_game.audio.sfx_log.clear()
 	await _tap(play.get_node("PauseLayer/PauseMenu/Panel/ResumeButton") as Control)
 	_check(_game.audio.sfx_log.count(&"resume") == 1 and not &"ui_tap" in _game.audio.sfx_log, "Resume plays resume (no tap)", str(_game.audio.sfx_log))
-	play.rival_lines.cooldown = cooldown
+	play.rival.rival_lines.cooldown = cooldown
 	# A wave cleared: wave 1 of a new run, both geese shot as soon as they rise.
 	play = await _start_run(86)
 	var cleared := false
@@ -4847,7 +4847,7 @@ func _test_audio_heckle_blurts() -> void:
 	var muted_from := _log.size()
 	_game.audio.sfx_log.clear()
 	(muted.get_node("ShotInput") as ShotInput).shot.emit(_global(muted, SKY_POINTS[0]))
-	var muted_line := muted.heckle_shown()
+	var muted_line := muted.rival.heckle_shown()
 	_check(muted_line != "" and _game.audio.sfx_log == [&"shot"] and _game.audio.blurt_syllables_waiting() == 0, "with blurts off a miss heckle shows its line and plays no blurt", "%s, %d waiting for \"%s\"" % [_game.audio.sfx_log, _game.audio.blurt_syllables_waiting(), muted_line])
 	_check_logged(muted_from, "^\\[Audio\\] Heckle blurt muted \\(HECKLE_BLURTS off\\) for heckle_miss: \".+\"$", "the muted blurt is logged")
 	_check(not Array(_log.since(muted_from)).any(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_")), "no heckle sound is logged with blurts off", "")
@@ -4857,16 +4857,16 @@ func _test_audio_heckle_blurts() -> void:
 	var from := _log.size()
 	_game.audio.sfx_log.clear()
 	(play.get_node("ShotInput") as ShotInput).shot.emit(_global(play, SKY_POINTS[0]))
-	var shown := play.heckle_shown()
+	var shown := play.rival.heckle_shown()
 	var words := mini(shown.split(" ", false).size(), AudioManager.BLURT_SYLLABLES_MAX)
 	_check(shown != "" and &"heckle_miss" in _game.audio.sfx_log and _game.audio.blurt_syllables_waiting() == words, "a miss heckle plays its blurt, one syllable per word", "%s, %d waiting for \"%s\"" % [_game.audio.sfx_log, _game.audio.blurt_syllables_waiting(), shown])
 	var blurt_lines := Array(_log.since(from)).filter(func(entry: String) -> bool: return entry.begins_with("[Audio] SFX heckle_miss: %d syllables (nasal_" % words) and entry.ends_with(" for \"%s\"" % shown))
 	_check(blurt_lines.size() == 1, "the blurt is logged with its syllables and line", str(blurt_lines))
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	for i in 30:
 		await process_frame
 	_check(_game.audio.blurt_syllables_waiting() == words, "the blurt waits while the game is paused", "%d waiting" % _game.audio.blurt_syllables_waiting())
-	play.resume()
+	play.pause.resume()
 	for i in ceili(AudioManager.BLURT_SYLLABLES_MAX * AudioManager.BLURT_GAP * 1.2 / FRAME) + 2:
 		await process_frame
 	_check(_game.audio.blurt_syllables_waiting() == 0, "the blurt's syllables all start once resumed", "%d waiting" % _game.audio.blurt_syllables_waiting())
@@ -4896,13 +4896,13 @@ func _test_time_attack_countdown() -> void:
 		if play.countdown_ticks > count:
 			ticks.append(play.run_clock)
 		if play.countdown_ticks == 4 and paused_ticks < 0:
-			play.open_pause("test")
+			play.pause.open_pause("test")
 			paused_clock = play.run_clock
 			for j in 60:
 				await process_frame
 			paused_ticks = play.countdown_ticks
 			_check(paused_ticks == 4 and play.run_clock == paused_clock, "a pause stops the countdown", "%d ticks, clock %.2f -> %.2f" % [paused_ticks, paused_clock, play.run_clock])
-			play.resume()
+			play.pause.resume()
 	Engine.time_scale = 1.0
 	Content.mode(GameState.TIME_ATTACK_MODE).time_limit = limit
 	_check(ticks.size() == Play.COUNTDOWN_SECONDS and _game.audio.sfx_log.count(&"countdown_tick") == Play.COUNTDOWN_SECONDS, "the last 10 s tick 10 times", "%d ticks at %s, %d sounds" % [ticks.size(), ticks, _game.audio.sfx_log.count(&"countdown_tick")])
@@ -4920,7 +4920,7 @@ func _test_time_attack_countdown() -> void:
 ## once, saves, logs and survives a reload (plan AC 11).
 func _test_pause_menu_mutes() -> void:
 	var play := await _start_run(90)
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	await process_frame
 	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
 	var toggles: Array[Button] = [panel.get_node("MusicToggle"), panel.get_node("SfxToggle")]
@@ -4958,7 +4958,7 @@ func _test_pause_menu_mutes() -> void:
 		_check((_game.save.music_muted if i == 0 else _game.save.sfx_muted) and AudioServer.is_bus_mute(bus) and toggle.text.ends_with(": off"), "%s's mute survives a reload" % toggle.name, toggle.text)
 		await _tap(toggle)
 		_check(not (_game.save.music_muted if i == 0 else _game.save.sfx_muted) and not AudioServer.is_bus_mute(bus) and toggle.button_pressed and toggle.text.ends_with(": on"), "a second press on %s unmutes it" % toggle.name, toggle.text)
-	play.resume()
+	play.pause.resume()
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
 
@@ -4972,7 +4972,7 @@ func _test_pause_holds_sounds_and_ducks_music() -> void:
 	_game.audio.play_sfx(&"time_up")
 	_check(_game.audio.sounds_in_flight() >= 1 and not _game.audio.audio_paused, "a sound is in flight while the run plays", str(_game.audio.sounds_in_flight()))
 	var from := _log.size()
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	var held := _game.audio.held_players()
 	var pause_sound := _game.audio.sfx_players().filter(func(player: AudioStreamPlayer) -> bool: return player.stream != null and player.stream.resource_path.ends_with("/pause.wav"))
 	_check(_game.audio.audio_paused and _game.audio.held_sounds >= 1 and held.size() == _game.audio.held_sounds and held.any(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
@@ -4985,7 +4985,7 @@ func _test_pause_holds_sounds_and_ducks_music() -> void:
 	for i in 60:
 		await process_frame
 	_check(_game.audio.held_players() == held and _game.audio.sounds_in_flight() >= held.size(), "the held sound stays held while paused", str(_game.audio.sounds_in_flight()))
-	play.resume()
+	play.pause.resume()
 	_check(not _game.audio.audio_paused and _game.audio.held_players().is_empty() and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming continues the sound and the music",
 		"%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
 	_check_logged(from, "^\\[Audio\\] Resumed after [\\d.]+ s: \\d+ sounds continue, the music is back to full$", "the audio resume is logged")
@@ -4996,8 +4996,8 @@ func _test_pause_holds_sounds_and_ducks_music() -> void:
 		"held %d, %.2f dB" % [_game.audio.held_sounds, AudioServer.get_bus_volume_db(music_bus)])
 	root.size = BASE_WINDOW
 	await process_frame
-	_check(play.is_paused() and _game.audio.audio_paused and absf(AudioServer.get_bus_volume_db(music_bus) - (full + AudioManager.PAUSE_DUCK_DB)) < 0.01, "back in landscape the menu keeps the audio paused", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
-	play.resume()
+	_check(play.pause.is_paused() and _game.audio.audio_paused and absf(AudioServer.get_bus_volume_db(music_bus) - (full + AudioManager.PAUSE_DUCK_DB)) < 0.01, "back in landscape the menu keeps the audio paused", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
+	play.pause.resume()
 	_check(not _game.audio.audio_paused and _game.audio.held_sounds == 0 and absf(AudioServer.get_bus_volume_db(music_bus) - full) < 0.01, "resuming after the overlay restores the audio", "%.2f dB" % AudioServer.get_bus_volume_db(music_bus))
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
@@ -5053,17 +5053,17 @@ func _test_dropped_taps_are_silent() -> void:
 	_check(_game.flow.is_transitioning(), "the taps were all made during the transition", "it finished first")
 	await _game.flow.transition_finished
 	play = await _start_run(95)
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	await process_frame
 	await _check_dropped_taps(play, "under the pause menu")
-	play.resume()
+	play.pause.resume()
 	root.size = PORTRAIT_9_19_5
 	await process_frame
 	_check(_game.screen.is_rotate_overlay_shown(), "the rotate overlay shows", "")
 	await _check_dropped_taps(play, "under the rotate overlay")
 	root.size = BASE_WINDOW
 	await process_frame
-	play.resume()
+	play.pause.resume()
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
 
@@ -5078,7 +5078,7 @@ func _test_pause_keeps_every_held_sound() -> void:
 	var pool := _game.audio.sfx_players().slice(0, AudioManager.SFX_VOICES)
 	_check(_game.audio.sounds_in_flight() == AudioManager.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
 		"every pool voice is sounding", str(_game.audio.sounds_in_flight()))
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	_game.audio.play_sfx(&"ui_tap")
 	var menu := _game.audio.sfx_players().back() as AudioStreamPlayer
 	_check(_game.audio.held_players() == pool and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
@@ -5087,7 +5087,7 @@ func _test_pause_keeps_every_held_sound() -> void:
 		"the pause and the tap play on the menu voice", "%s, %s" % [menu.stream, _game.audio.sfx_log.slice(-2)])
 	for i in 30:
 		await process_frame
-	play.resume()
+	play.pause.resume()
 	_check(_game.audio.held_players().is_empty() and _game.audio.sounds_in_flight() == AudioManager.SFX_VOICES and pool.all(func(player: AudioStreamPlayer) -> bool: return player.stream.resource_path.ends_with("/time_up.wav")),
 		"on resuming every held sound continues", "%d in flight" % _game.audio.sounds_in_flight())
 	_game.flow.goto(SceneFlow.Flow.TITLE)
@@ -5507,17 +5507,17 @@ func _test_settings_over_paused_run() -> void:
 	var play := await _start_run(55)
 	await _spawn_flying(play, 7)
 	_game.audio.play_sfx(&"wave_start")
-	play.open_pause("test")
+	play.pause.open_pause("test")
 	await process_frame
 	var panel := play.get_node("PauseLayer/PauseMenu/Panel")
 	var settings_button := panel.get_node("SettingsButton") as Button
 	var from := _log.size()
 	await _tap(settings_button)
-	var settings := play.settings_overlay()
-	_check(settings != null and settings.overlay and settings.is_inside_tree() and paused and play.is_paused() and _game.audio.audio_paused, "Settings opens the settings over the paused run", "overlay %s, paused %s" % [settings, paused])
+	var settings := play.pause.settings_overlay()
+	_check(settings != null and settings.overlay and settings.is_inside_tree() and paused and play.pause.is_paused() and _game.audio.audio_paused, "Settings opens the settings over the paused run", "overlay %s, paused %s" % [settings, paused])
 	_check(not (panel as Control).visible and (play.get_node("PauseLayer/PauseMenu") as Control).visible, "the pause menu's panel hides under the settings, its dim stays", "panel %s" % (panel as Control).visible)
 	if settings == null:
-		play.resume()
+		play.pause.resume()
 		return
 	_check_logged(from, "^\\[Play\\] Settings opened over the paused run \\(wave 1 at t ", "opening it is logged")
 	_check_logged(from, "^\\[Settings\\] Opened over the paused run: ", "the settings log their arrival over the run")
@@ -5539,22 +5539,22 @@ func _test_settings_over_paused_run() -> void:
 	_check(_game.save.music_muted and menu_toggle.text == "Music: off" and not menu_toggle.button_pressed, "a mute set in the settings shows on the pause menu's toggle", menu_toggle.text)
 	from = _log.size()
 	await _key(KEY_ESCAPE)
-	_check(play.settings_overlay() == null and play.is_paused() and paused and settings_button.has_focus(), "Escape closes the settings, the run stays paused, Settings is focused", "overlay %s, paused %s, focus %s" % [play.settings_overlay(), paused, root.gui_get_focus_owner()])
+	_check(play.pause.settings_overlay() == null and play.pause.is_paused() and paused and settings_button.has_focus(), "Escape closes the settings, the run stays paused, Settings is focused", "overlay %s, paused %s, focus %s" % [play.pause.settings_overlay(), paused, root.gui_get_focus_owner()])
 	_check((panel as Control).visible, "the pause menu's panel shows again", "hidden")
 	_check_logged(from, "^\\[Play\\] Settings closed; back to the pause menu$", "closing is logged")
 	await _tap(menu_toggle)
 	_check(not _game.save.music_muted and menu_toggle.text == "Music: on", "the pause menu's toggle still works", menu_toggle.text)
 	await _tap(settings_button)
-	settings = play.settings_overlay()
+	settings = play.pause.settings_overlay()
 	_check(settings != null and (settings.get_node("Safe/MusicToggle") as Button).text == "Music: on", "the settings show the mute the pause menu set", str(settings))
 	if settings != null:
 		await _tap(settings.get_node("Safe/BackButton") as Control)
 		await process_frame
-	_check(play.settings_overlay() == null and play.is_paused() and settings_button.has_focus(), "Back closes the settings and focuses Settings", str(root.gui_get_focus_owner()))
+	_check(play.pause.settings_overlay() == null and play.pause.is_paused() and settings_button.has_focus(), "Back closes the settings and focuses Settings", str(root.gui_get_focus_owner()))
 	await _tap(settings_button)
-	play.resume()
+	play.pause.resume()
 	await process_frame
-	_check(play.settings_overlay() == null and not paused and not _game.audio.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.settings_overlay(), paused])
+	_check(play.pause.settings_overlay() == null and not paused and not _game.audio.audio_paused, "resuming closes settings left open and runs again", "overlay %s, paused %s" % [play.pause.settings_overlay(), paused])
 	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
@@ -6118,25 +6118,25 @@ func _test_screen_shake() -> void:
 	var bar := play.get_node("Hud/Bar") as Control
 	var bar_at := bar.global_position
 	var origin := world.position
-	for cause: String in Play.SHAKES:
-		var amplitude: float = Play.SHAKES[cause][0]
-		var time: float = Play.SHAKES[cause][1]
-		play.shake(cause)
+	for cause: String in ScreenShake.SHAKES:
+		var amplitude: float = ScreenShake.SHAKES[cause][0]
+		var time: float = ScreenShake.SHAKES[cause][1]
+		play.shaker.shake(cause)
 		var largest := 0.0
 		var moved_bar := false
 		var frames := 0
 		while frames < roundi(time / FRAME) + 2:
 			await process_frame
 			frames += 1
-			largest = maxf(largest, play.shake_offset().length())
+			largest = maxf(largest, play.shaker.shake_offset().length())
 			moved_bar = moved_bar or bar.global_position != bar_at
 		_check(largest > amplitude * 0.3 and largest <= amplitude + 0.001, "%s shakes the world by up to %.0f units" % [cause, amplitude], "largest %.2f" % largest)
-		_check(world.position == origin and play.shake_offset() == Vector2.ZERO and play.shake_strength() == 0.0, "%s's shake ends with the world exactly where it was" % cause, str(world.position - origin))
+		_check(world.position == origin and play.shaker.shake_offset() == Vector2.ZERO and play.shaker.shake_strength() == 0.0, "%s's shake ends with the world exactly where it was" % cause, str(world.position - origin))
 		_check(not moved_bar, "%s's shake leaves the HUD where it is" % cause, str(bar.global_position))
-	play.shake("lost wave")
+	play.shaker.shake("lost wave")
 	await process_frame
 	var from := _log.size()
-	play.shake("armored kill")
+	play.shaker.shake("armored kill")
 	_check_logged(from, "^\\[Play\\] Shake \\(armored kill\\) skipped: a stronger one \\(lost wave\\) is running$", "a weaker shake does not cut a stronger one short")
 	for i in 30:
 		await process_frame
@@ -6279,15 +6279,15 @@ func _test_reduce_motion_everywhere() -> void:
 		await process_frame
 	_check(not wiggled and still, "a decoy hit neither shakes the world nor its pop-up", "wiggled %s" % wiggled)
 	var from := _log.size()
-	play.shake("lost wave")
+	play.shaker.shake("lost wave")
 	await process_frame
 	_check(world.position == origin, "no shake at all, whatever the cause", str(world.position - origin))
 	_check_logged(from, "^\\[Play\\] Shake \\(lost wave\\) skipped: reduce motion$", "a skipped shake is logged")
 	var cued := await _cued_bird(play, 26, "goose")
-	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
+	_check(cued.is_cued() and (cued.get_node("Reticle") as CanvasItem).visible and play.rival.is_rival_aiming(), "the aim cue still shows", "cued %s" % cued.is_cued())
 	play.set_shell_pool(0)
 	await _touch(_global(play, Vector2(480, 200)))
-	_check(play.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
+	_check(play.hud.is_empty_cue_shown(), "the empty-pool cue still shows", "hidden")
 	_game.save.set_reduce_motion(false)
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
@@ -6419,11 +6419,11 @@ func _test_slider_hold_cut_short() -> void:
 	# Over the paused run: Escape (and resuming) close the settings with a finger down.
 	var play := await _start_run(68)
 	for closer: String in ["Escape", "resume"]:
-		play.open_pause("test")
+		play.pause.open_pause("test")
 		await process_frame
-		play.open_settings()
+		play.pause.open_settings()
 		await process_frame
-		var overlay_slider := play.settings_overlay().music_slider()
+		var overlay_slider := play.pause.settings_overlay().music_slider()
 		var overlay_points := _slider_points(overlay_slider)
 		from = _log.size()
 		await _finger(overlay_points[0], true)
@@ -6432,14 +6432,14 @@ func _test_slider_hold_cut_short() -> void:
 		if closer == "Escape":
 			await _key(KEY_ESCAPE)
 		else:
-			play.resume()
+			play.pause.resume()
 			await process_frame
-		_check(play.settings_overlay() == null and stored.call() == 75.0, "%s closes the settings with a finger down and the held volume is saved" % closer, "overlay %s, stored %s" % [play.settings_overlay(), stored.call()])
+		_check(play.pause.settings_overlay() == null and stored.call() == 75.0, "%s closes the settings with a finger down and the held volume is saved" % closer, "overlay %s, stored %s" % [play.pause.settings_overlay(), stored.call()])
 		_check_logged(from, "^\\[Settings\\] Music slider released at 75 \\(left the screen\\); saving$", "%s: the closed hold is logged" % closer)
 		await _finger(overlay_points[1], false)
 		_game.audio.set_music_volume(70)
-		if play.is_paused():
-			play.resume()
+		if play.pause.is_paused():
+			play.pause.resume()
 	_game.audio.set_music_volume(SaveStore.DEFAULT_MUSIC_VOLUME)
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 	await _game.flow.transition_finished
@@ -6479,7 +6479,7 @@ func _test_rival_one_cue_at_a_time() -> void:
 			break
 	_check(older.stolen and most_cues == 1 and not younger_cued, "with two geese eligible the rival aims only at the one flown longest, and steals it", "stolen %s, at most %d cues at once, the younger cued %s" % [older.stolen, most_cues, younger_cued])
 	var steal_clock := play.run_clock
-	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < Play.RIVAL_AIM_GAP - 2.0 * FRAME:
+	while is_instance_valid(younger) and younger.is_flying() and play.run_clock - steal_clock < RivalController.RIVAL_AIM_GAP - 2.0 * FRAME:
 		younger_cued = younger_cued or younger.is_cued()
 		await process_frame
 	_check(not younger_cued, "after a steal no new cue starts during the aim gap", "the younger goose was cued %.2f s after the steal" % (play.run_clock - steal_clock))
@@ -6509,20 +6509,20 @@ func _test_rival_aim_gap() -> void:
 	var early := false
 	while not waiting.is_cued() and frames < 400:
 		if frames == 30:
-			play.open_pause("pause button")
+			play.pause.open_pause("pause button")
 			var clock := play.run_clock
 			for i in 60:
 				await process_frame
 				paused_frames += 1
 			_check(play.run_clock == clock and not waiting.is_cued(), "the aim gap stands still while paused", "clock %.3f -> %.3f" % [clock, play.run_clock])
-			play.resume()
+			play.pause.resume()
 		await process_frame
 		frames += 1
-		if waiting.is_cued() and play.run_clock - cancel_clock < Play.RIVAL_AIM_GAP:
+		if waiting.is_cued() and play.run_clock - cancel_clock < RivalController.RIVAL_AIM_GAP:
 			early = true
 	var waited := play.run_clock - cancel_clock
-	_check(waiting.is_cued() and not early and waited < Play.RIVAL_AIM_GAP + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % Play.RIVAL_AIM_GAP, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
-	_check(frames + paused_frames > roundi(Play.RIVAL_AIM_GAP / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
+	_check(waiting.is_cued() and not early and waited < RivalController.RIVAL_AIM_GAP + 2.0 * FRAME, "the next cue starts once %.1f s of run time have passed since the cancel" % RivalController.RIVAL_AIM_GAP, "cued %s after %.3f s of run time" % [waiting.is_cued(), waited])
+	_check(frames + paused_frames > roundi(RivalController.RIVAL_AIM_GAP / FRAME) + 50, "paused time does not count toward the gap", "%d frames running, %d paused" % [frames, paused_frames])
 	_check_logged(from, "^\\[Play\\] Aim cue on goose #%d: age [\\d.]+ \\(linger 3\\.50 s\\), the rival fires in 1\\.00 s \\(the longest flown of 1 eligible; 1\\.5\\d s since the last cue ended, aim gap 1\\.50 s\\) " % waiting.number, "the cue after the gap logs the time since the last cue and the gap")
 	await _open_title()
 
@@ -6542,15 +6542,15 @@ func _test_crosshair_cursor() -> void:
 	var play := await _start_run(73)
 	_check(play.crosshair_shown and play.cursor_log == ["crosshair"] and play.cursor_calls == [crosshair_call], "a live run sets the crosshair, its hotspot at its centre", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	_check_logged(from, "^\\[Play\\] Cursor: crosshair$", "the crosshair is logged")
-	play.open_pause("pause button")
+	play.pause.open_pause("pause button")
 	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (paused)" and play.cursor_calls.back() == arrow_call, "the pause menu resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
-	play.resume()
+	play.pause.resume()
 	_check(play.crosshair_shown and play.cursor_log.back() == "crosshair" and play.cursor_calls.back() == crosshair_call, "resuming sets the crosshair again", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	await _key(KEY_ESCAPE)
 	_check(not play.crosshair_shown and play.cursor_calls.back() == arrow_call, "Escape's pause resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	await _key(KEY_ESCAPE)
 	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "Escape's resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
-	play._end_run()
+	play.end_run()
 	_check(not play.crosshair_shown and play.cursor_log.back() == "arrow (the run is over)" and play.cursor_calls.back() == arrow_call, "the run's end (to the results) resets the pointer to the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	_check(play.cursor_calls.size() == 6, "every change made exactly one Input call", str(play.cursor_calls))
 	await _game.flow.transition_finished
@@ -6584,8 +6584,8 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(play.is_paused() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: rotating back opens the pause menu, still the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
-	play.resume()
+	_check(play.pause.is_paused() and not play.crosshair_shown and not crosshair_call in play.cursor_calls, "overlay first: rotating back opens the pause menu, still the arrow", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
+	play.pause.resume()
 	_check(play.crosshair_shown and play.cursor_calls.back() == crosshair_call, "overlay first: Resume sets the crosshair", "%s, calls %s" % [play.cursor_log, play.cursor_calls])
 	root.size = PORTRAIT_9_19_5
 	await process_frame
@@ -6593,8 +6593,8 @@ func _test_crosshair_under_rotate_overlay() -> void:
 	root.size = BASE_WINDOW
 	await process_frame
 	await process_frame
-	_check(play.is_paused() and not play.crosshair_shown, "mid-run: rotating back leaves the arrow over the pause menu", str(play.cursor_log))
-	play.resume()
+	_check(play.pause.is_paused() and not play.crosshair_shown, "mid-run: rotating back leaves the arrow over the pause menu", str(play.cursor_log))
+	play.pause.resume()
 	_check(play.crosshair_shown, "mid-run: Resume sets the crosshair", str(play.cursor_log))
 	await _open_title()
 
@@ -6659,16 +6659,16 @@ func _test_rival_laugh_waits_out_a_pause() -> void:
 	var before := 6
 	for i in before:
 		await process_frame
-	play.open_pause("pause button")
+	play.pause.open_pause("pause button")
 	for i in 60:
 		await process_frame
 	_check(cued.stolen and not &"rival_laugh" in _game.audio.sfx_log and _game.audio.sfx_waiting() == 1, "a laugh queued before a pause waits through it", "stolen %s, %s, %d waiting" % [cued.stolen, _game.audio.sfx_log, _game.audio.sfx_waiting()])
-	play.resume()
+	play.pause.resume()
 	var after := 0
 	while not &"rival_laugh" in _game.audio.sfx_log and after < 120:
 		await process_frame
 		after += 1
-	var rest := roundi(Play.RIVAL_LAUGH_DELAY / FRAME) - before
+	var rest := roundi(RivalController.RIVAL_LAUGH_DELAY / FRAME) - before
 	_check(absi(after - rest) <= 2 and _game.audio.sfx_waiting() == 0, "after Resume the laugh keeps the rest of its delay", "%d frames after Resume, expected %d" % [after, rest])
 	await _open_title()
 
