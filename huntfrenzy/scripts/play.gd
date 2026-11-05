@@ -123,7 +123,6 @@ extends Node2D
 
 const BIRD_SCENE := preload("res://scenes/bird.tscn")
 const BACKDROP_SCENE := preload("res://scenes/backdrop.tscn")
-const SETTINGS_SCENE := preload("res://scenes/settings.tscn")
 ## Seconds a kill stops the world (hit stop), and for an armored or golden kill.
 const HIT_STOP_TIME := 0.05
 const HIT_STOP_HEAVY_TIME := 0.09
@@ -183,9 +182,6 @@ const SOUND_PITCH_SPREAD := 0.04
 const VARIED_SOUNDS: Array[StringName] = [&"shot", &"hit", &"escape"]
 ## A timed run ticks at each of its last this many whole seconds.
 const COUNTDOWN_SECONDS := 10
-## The pause menu's mute toggles: the bus and whether it is on.
-const MUSIC_TOGGLE_TEXT := "Music: %s"
-const SFX_TOGGLE_TEXT := "SFX: %s"
 
 ## The mode (Endless, Time Attack), or null in a campaign level.
 var mode: ModeSpec
@@ -213,8 +209,6 @@ var run_clock := 0.0
 var refused := 0
 ## Seconds since the current wave started, from -WAVE_LEAD (its first spawn is at 0).
 var wave_clock := 0.0
-## Every cause the pause menu opened for, oldest first (tests read it).
-var pause_log: Array[String] = []
 ## Countdown ticks played this run (a timed run's last COUNTDOWN_SECONDS).
 var countdown_ticks := 0
 ## True while the mouse pointer is the crosshair; every change, oldest first, as
@@ -230,9 +224,6 @@ var _next_spawn := 0
 var _spawned := 0
 ## True once the run has ended or is being left: no more shots, pauses or waves.
 var _over := false
-## True while the rotate overlay that showed during the run (or before it, during the
-## transition in) has not hidden yet.
-var _rotated := false
 ## Draws the pitch of each VARIED_SOUNDS sound (seeded in _start_run).
 var _pitch_rng := RandomNumberGenerator.new()
 var _bubble_tween: Tween
@@ -247,8 +238,6 @@ var _last_cue_end := -INF
 ## lasts until; aiming takes precedence over it.
 var _reaction: Texture2D
 var _reaction_until := -INF
-## The settings opened over the pause menu (null when closed).
-var _settings: Settings
 ## Seconds of hit stop still to run (0: none), and the stops so far (tests read them).
 var hit_stops := 0
 var _hit_stop_left := 0.0
@@ -262,42 +251,18 @@ var _hit_stop_left := 0.0
 @onready var _rival: TextureRect = $World/Rival
 @onready var _bubble: Label = $World/Bubble
 @onready var _shot_input: ShotInput = $ShotInput
-@onready var _cancel_key: CancelKey = $CancelKey
-@onready var _pause_button: Button = $Hud/Bar/PauseButton
-@onready var _pause_menu: Control = $PauseLayer/PauseMenu
-@onready var _resume_button: Button = $PauseLayer/PauseMenu/Panel/ResumeButton
-@onready var _restart_button: Button = $PauseLayer/PauseMenu/Panel/RestartButton
-@onready var _quit_button: Button = $PauseLayer/PauseMenu/Panel/QuitButton
-@onready var _music_toggle: Button = $PauseLayer/PauseMenu/Panel/MusicToggle
-@onready var _sfx_toggle: Button = $PauseLayer/PauseMenu/Panel/SfxToggle
-@onready var _settings_button: Button = $PauseLayer/PauseMenu/Panel/SettingsButton
-@onready var _pause_layer: CanvasLayer = $PauseLayer
-@onready var _pause_panel: Control = $PauseLayer/PauseMenu/Panel
 @onready var shaker: ScreenShake = $Shaker
 @onready var hud: HudController = $HudController
+@onready var pause: PauseMenu = $Pause
 
 
 func _ready() -> void:
 	_game = get_node(GameState.AUTOLOAD_PATH) as GameState
 	_game.screen.screen_fit_changed.connect(_fit)
-	_game.screen.rotate_overlay_changed.connect(_on_rotate_overlay_changed)
-	_game.web.page_hidden.connect(open_pause.bind("page hidden"))
 	_shot_input.shot.connect(_on_shot)
-	_cancel_key.triggered.connect(_on_cancel)
-	_pause_button.pressed.connect(open_pause.bind("pause button"))
-	_resume_button.pressed.connect(resume)
-	_restart_button.pressed.connect(_restart)
-	_quit_button.pressed.connect(_quit)
-	_settings_button.pressed.connect(open_settings)
-	_music_toggle.toggled.connect(_on_music_toggled)
-	_sfx_toggle.toggled.connect(_on_sfx_toggled)
-	_game.audio.audio_settings_changed.connect(_show_audio_settings)
-	_show_audio_settings()
 	_fit()
 	_start_run()
-	# The overlay may have shown before this scene existed (during the fade into the run);
-	# _show_crosshair already kept the arrow then.
-	_rotated = not _over and _game.screen.is_rotate_overlay_shown()
+	pause.note_rotation_at_start()
 
 
 ## Window and app focus or visibility loss pauses the run (notifications arrive while
@@ -305,14 +270,14 @@ func _ready() -> void:
 func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_WINDOW_FOCUS_OUT:
-			open_pause("window lost focus")
+			pause.open_pause("window lost focus")
 		NOTIFICATION_APPLICATION_FOCUS_OUT:
-			open_pause("app lost focus")
+			pause.open_pause("app lost focus")
 		NOTIFICATION_APPLICATION_PAUSED:
-			open_pause("app paused or hidden")
+			pause.open_pause("app paused or hidden")
 		NOTIFICATION_EXIT_TREE:
 			# Whatever ends the scene, the arrow comes back.
-			_show_crosshair(false, "left the play scene")
+			show_crosshair(false, "left the play scene")
 
 
 func _process(frame_delta: float) -> void:
@@ -415,6 +380,11 @@ func bird_at(point: Vector2) -> Bird:
 	return null
 
 
+## True once the run has ended or is being left (no more shots, pauses or waves).
+func is_over() -> bool:
+	return _over
+
+
 ## True in a run of a timed mode (Time Attack), which ends after time_limit seconds.
 func is_timed() -> bool:
 	return mode != null and mode.is_timed()
@@ -423,80 +393,6 @@ func is_timed() -> bool:
 ## The seconds a timed run has left (0 once its time is up); 0 in any other run.
 func time_left() -> float:
 	return maxf(mode.time_limit - run_clock, 0.0) if is_timed() else 0.0
-
-
-## Opens the pause menu (focused on Resume) with the tree paused, for `cause`. While it
-## is open the tree is kept paused (the rotate overlay may have unpaused it). Ignored
-## once the run is over; during the transition into the run it opens once that is done.
-func open_pause(cause: String) -> void:
-	if _over:
-		return
-	if _game.flow.is_transitioning():
-		print("[Play] Pause (%s) waits for the transition to finish" % cause)
-		_game.flow.transition_finished.connect(open_pause.bind(cause).unbind(1), CONNECT_ONE_SHOT)
-		return
-	get_tree().paused = true
-	# The run's sounds are held before the menu's own sound starts.
-	_game.audio.sync_audio_pause()
-	if _pause_menu.visible:
-		return
-	_pause_menu.show()
-	_show_crosshair(false, "paused")
-	_game.audio.play_sfx(&"pause")
-	_resume_button.grab_focus(true)
-	pause_log.append(cause)
-	print("[Play] Paused (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
-
-
-## Closes the pause menu and continues the run where it stopped (`cause`: "Resume" for
-## the button, "Escape"). Ignored once the run is over (the menu of a run that could not
-## start stays up).
-func resume(cause := "Resume") -> void:
-	if not _pause_menu.visible or _over:
-		return
-	close_settings()
-	_pause_menu.hide()
-	# On the menu voice, while the audio is still paused, so it never takes a held sound's voice.
-	_game.audio.play_sfx(&"resume")
-	get_tree().paused = false
-	_game.audio.sync_audio_pause()
-	_show_crosshair(true)
-	print("[Play] Resumed (%s): wave %d at t %.2f, score %d%s" % [cause, wave.index, wave_clock, scoring.score, _clock_note()])
-
-
-func is_paused() -> bool:
-	return _pause_menu.visible
-
-
-## Opens the settings over the open pause menu (the run stays paused); ignored when the
-## menu is closed or the settings already show. Logged.
-func open_settings() -> void:
-	if not _pause_menu.visible or _settings != null or _over:
-		return
-	_settings = SETTINGS_SCENE.instantiate() as Settings
-	_settings.overlay = true
-	_settings.closed.connect(close_settings)
-	# The menu's dim stays (it is the pause itself); its panel hides under the settings.
-	_pause_panel.hide()
-	_pause_layer.add_child(_settings)
-	print("[Play] Settings opened over the paused run (wave %d at t %.2f%s)" % [wave.index, wave_clock, _clock_note()])
-
-
-## Closes the settings opened over the pause menu and focuses its Settings button again;
-## nothing when they are not open. Logged.
-func close_settings() -> void:
-	if _settings == null:
-		return
-	_settings.queue_free()
-	_settings = null
-	_pause_panel.show()
-	_settings_button.grab_focus(true)
-	print("[Play] Settings closed; back to the pause menu")
-
-
-## The settings open over the pause menu, or null.
-func settings_overlay() -> Settings:
-	return _settings
 
 
 ## True while the rival raises his gun (an aim cue is on a flying bird).
@@ -572,7 +468,7 @@ func _start_run() -> void:
 			mode.id, run_seed, ends, mode.combo_cap, mode.shells_per_hit, "on" if mode.rival_steals else "off", rival_lines.aim_time, rival_lines.cooldown])
 		hud.show_timer(mode.is_timed())
 	_start_wave(1)
-	_show_crosshair(true)
+	show_crosshair(true)
 
 
 ## A run that cannot start: `message` is reported, nothing runs, and the menu offers only
@@ -580,10 +476,7 @@ func _start_run() -> void:
 func _cannot_start(message: String) -> void:
 	_game.report_error(message)
 	_over = true
-	_resume_button.disabled = true
-	_restart_button.disabled = true
-	_pause_menu.show()
-	_quit_button.grab_focus(true)
+	pause.show_cannot_start()
 
 
 func _start_wave(index: int) -> void:
@@ -593,7 +486,7 @@ func _start_wave(index: int) -> void:
 	var ids := PackedStringArray()
 	for spawn in wave.spawns:
 		ids.append(spawn.bird_id)
-	var of_level := " (wave %d of %d%s, level %s)" % [index, level.waves, ", boss flock" if wave.boss else "", level.id] if level != null else _clock_note()
+	var of_level := " (wave %d of %d%s, level %s)" % [index, level.waves, ", boss flock" if wave.boss else "", level.id] if level != null else clock_note()
 	print("[Play] Wave %d start: %d birds (%s), %d shells, speed x%.2f%s" % [index, wave.spawns.size(), ", ".join(ids), wave.shells, wave.speed_scale, of_level])
 	set_shell_pool(wave.shells)
 	if mode != null:
@@ -690,7 +583,7 @@ func _on_shot(at: Vector2) -> void:
 		for bird in fleeing:
 			bird.flee()
 		var waiting := wave.spawns.size() - _next_spawn
-		print("[Play] Out of shells: %d flying birds flee, %d still to spawn %s (wave %d%s)" % [fleeing.size(), waiting, "are skipped" if is_timed() else "will flee", wave.index, _clock_note()])
+		print("[Play] Out of shells: %d flying birds flee, %d still to spawn %s (wave %d%s)" % [fleeing.size(), waiting, "are skipped" if is_timed() else "will flee", wave.index, clock_note()])
 		if is_timed() and not (waiting == 0 and _wave_birds_flying().is_empty()):
 			_lose_wave(waiting)
 	_update_hud()
@@ -708,7 +601,7 @@ func _lose_wave(waiting: int) -> void:
 	_game.audio.play_sfx(&"wave_lost")
 	shaker.shake("lost wave")
 	print("[Play] Wave %d lost (no shells): %d birds still to spawn skipped, %d of them counted as escaped (%s escaped), %d flying flee%s" % [
-		wave.index, waiting, counted, _escapes(), _wave_birds_flying().size(), _clock_note()])
+		wave.index, waiting, counted, _escapes(), _wave_birds_flying().size(), clock_note()])
 	_heckle("wave_end")
 	_start_wave(wave.index + 1)
 
@@ -780,7 +673,7 @@ func _start_hit_stop(target: Bird) -> void:
 	hit_stops += 1
 	for child in _birds.get_children():
 		(child as Bird).hold(time)
-	print("[Play] Hit stop %.2f s on the kill of %s #%d (wave %d at t %.2f%s)" % [time, target.spec.id, target.number, wave.index, wave_clock, _clock_note()])
+	print("[Play] Hit stop %.2f s on the kill of %s #%d (wave %d at t %.2f%s)" % [time, target.spec.id, target.number, wave.index, wave_clock, clock_note()])
 
 
 ## Seconds of hit stop still to run (0 when none runs).
@@ -905,7 +798,7 @@ func _escape_limit_reached() -> bool:
 
 
 ## ", 42.10 s left" in a timed run's log lines, "" in any other.
-func _clock_note() -> String:
+func clock_note() -> String:
 	return ", %.2f s left" % time_left() if is_timed() else ""
 
 
@@ -935,7 +828,7 @@ func _react(pose: Texture2D, what: String) -> void:
 ## again (`why`: paused, the run is over, the rotate overlay, left the scene); while the
 ## rotate overlay is up it is always the arrow (the run is paused under it, whichever came
 ## first). A change is logged and kept in cursor_log, a repeat does nothing.
-func _show_crosshair(on: bool, why := "") -> void:
+func show_crosshair(on: bool, why := "") -> void:
 	if on and _game.screen.is_rotate_overlay_shown():
 		on = false
 		why = "rotate overlay"
@@ -989,7 +882,7 @@ func _on_bird_appeared(bird: Bird) -> void:
 	if _over:
 		return
 	_game.audio.play_sfx(StringName(bird.spec.call_sound), bird.spec.call_pitch)
-	print("[Play] Call of %s #%d as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, wave %d at t %.2f%s)" % [bird.spec.id, bird.number, bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave.index, wave_clock, _clock_note()])
+	print("[Play] Call of %s #%d as it appears above the grass: %s x%.2f (art top %.1f, age %.2f, wave %d at t %.2f%s)" % [bird.spec.id, bird.number, bird.spec.call_sound, bird.spec.call_pitch, bird.art_top(), bird.age, wave.index, wave_clock, clock_note()])
 
 
 func _on_bird_escaped(bird: Bird) -> void:
@@ -1044,15 +937,16 @@ func _end_run() -> void:
 ## next scene must not start paused).
 func _stop() -> void:
 	_over = true
-	_show_crosshair(false, "the run is over")
+	show_crosshair(false, "the run is over")
 	shaker.stop()
 	_world.process_mode = Node.PROCESS_MODE_DISABLED
-	_pause_menu.hide()
+	pause.hide_menu()
 	get_tree().paused = false
 	_game.audio.sync_audio_pause()
 
 
-func _restart() -> void:
+## Pause menu Restart: a new run of the mode, or the same level.
+func restart() -> void:
 	_leave("Restart")
 	if level != null:
 		_game.flow.start_level(level.id)
@@ -1060,7 +954,8 @@ func _restart() -> void:
 		_game.flow.start_mode(mode.id)
 
 
-func _quit() -> void:
+## Pause menu Quit: back to the title.
+func quit() -> void:
 	_leave("Quit to title")
 	_game.flow.goto(SceneFlow.Flow.TITLE)
 
@@ -1070,29 +965,7 @@ func _leave(cause: String) -> void:
 	if wave == null:
 		print("[Play] Left (%s): the run never started" % cause)
 		return
-	print("[Play] Left the run (%s): %s, seed %d, wave %d, score %d, %d escaped%s; nothing recorded" % [cause, "level " + level.id if level != null else "mode " + mode.id, run_seed, wave.index, scoring.score, escaped, _clock_note()])
-
-
-## Escape (CancelKey, which runs while paused too) opens the pause menu, resumes the run
-## when the menu is open, or closes the settings opened over it.
-func _on_cancel() -> void:
-	if _settings != null:
-		close_settings()
-	elif is_paused():
-		resume("Escape")
-	else:
-		open_pause("Escape")
-
-
-## The overlay hiding unpauses the tree when it paused it; a run it covered (or one whose
-## pause menu is open) is paused again, so the menu never shows over a running tree.
-func _on_rotate_overlay_changed(shown: bool) -> void:
-	if shown:
-		_rotated = not _over
-		_show_crosshair(false, "rotate overlay")
-	elif _rotated or is_paused():
-		_rotated = false
-		open_pause("rotate overlay")
+	print("[Play] Left the run (%s): %s, seed %d, wave %d, score %d, %d escaped%s; nothing recorded" % [cause, "level " + level.id if level != null else "mode " + mode.id, run_seed, wave.index, scoring.score, escaped, clock_note()])
 
 
 ## Plays one countdown tick for each of the last COUNTDOWN_SECONDS whole seconds the clock
@@ -1103,30 +976,6 @@ func _tick_countdown(before: float, now: float) -> void:
 			countdown_ticks += 1
 			_game.audio.play_sfx(&"countdown_tick")
 			print("[Play] Countdown tick %d: %d s left (%.2f s, wave %d)" % [countdown_ticks, second, now, wave.index])
-
-
-## The pause menu's Music toggle: on plays the music, off mutes the Music bus (saved).
-func _on_music_toggled(on: bool) -> void:
-	if on == not _game.save.music_muted:
-		return
-	print("[Play] Music toggle pressed: music %s" % ("on" if on else "off"))
-	_game.audio.set_music_muted(not on)
-
-
-## The pause menu's SFX toggle: on plays the sound effects, off mutes the SFX bus (saved).
-func _on_sfx_toggled(on: bool) -> void:
-	if on == not _game.save.sfx_muted:
-		return
-	print("[Play] SFX toggle pressed: sound effects %s" % ("on" if on else "off"))
-	_game.audio.set_sfx_muted(not on)
-
-
-## Shows the mutes on the pause menu's toggles (pressed = on), whoever changed them.
-func _show_audio_settings() -> void:
-	_music_toggle.set_pressed_no_signal(not _game.save.music_muted)
-	_music_toggle.text = MUSIC_TOGGLE_TEXT % ("on" if not _game.save.music_muted else "off")
-	_sfx_toggle.set_pressed_no_signal(not _game.save.sfx_muted)
-	_sfx_toggle.text = SFX_TOGGLE_TEXT % ("on" if not _game.save.sfx_muted else "off")
 
 
 ## A pop-up of `text` in `color` centred on `point` (World coordinates), kept inside the
