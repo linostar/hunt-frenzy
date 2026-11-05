@@ -461,8 +461,9 @@ func _finish_backdrop_fade() -> void:
 	_next_backdrop = null
 
 
-## Gives the wave a fresh pool of `count` shells and shows it on the HUD: one icon per
-## shell up to SHELL_ICONS_MAX, else one icon and the count (public for tests).
+## Gives the wave a fresh pool of `count` shells and shows it on the HUD (hud.show_pool: one
+## icon per shell up to HudController.SHELL_ICONS_MAX, else one icon and the count; public
+## for tests).
 func set_shell_pool(count: int) -> void:
 	ammo = Ammo.new(count)
 	hud.show_pool(count)
