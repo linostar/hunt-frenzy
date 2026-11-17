@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Saves two session frames as screenshots 03 and 04, then cuts the itch.io trailer (itch/trailer.mp4, 1920x1080, 30 fps, under 30 s) from a session
+# Saves two session frames as screenshots 03 and 04, makes the cover (itch/cover.png), then cuts the itch.io trailer (itch/trailer.mp4, 1920x1080, 30 fps, under 30 s) from a session
 # recorded by tools/itch_capture.gd under Movie Maker: three live clips (the title's goose shot,
 # dawn in the mist, sunset in the rain) with the game's own sound, then the results screenshot
 # and an end card over the Endless music loop, joined by 0.3 s cross-fades.
@@ -33,6 +33,11 @@ FADE=0.3
 for shot in "03_golden_combo:$GOLDEN_FRAME" "04_sunset_feathers:$FEATHERS_FRAME"; do
   ffmpeg -v error -y -i "$SESSION" -vf "select=eq(n\,${shot#*:})" -frames:v 1 "$SHOTS/${shot%%:*}.png"
 done
+
+# The page cover (630x500): the golden combo frame below the HUD bar, under the logo.
+magick "$SHOTS/03_golden_combo.png" -crop 1220x968+0+112 +repage -resize 630x500 \
+  -gravity north -font "$HEADING_FONT" -pointsize 84 -stroke '#1f1a2e' -strokewidth 10 -fill '#fbedcd' \
+  -annotate +0+22 'Hunt Frenzy' -stroke none -annotate +0+22 'Hunt Frenzy' -strip itch/cover.png
 
 # The end card: the title screen blurred and darkened under the name and the call to play
 # (palette cream and gold, ink outline).
