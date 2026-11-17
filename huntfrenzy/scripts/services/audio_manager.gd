@@ -218,8 +218,10 @@ func check_audio() -> bool:
 
 ## True without an audio device (the Dummy driver of headless runs): sounds and loops are
 ## then only recorded, never started (that driver never mixes, so they would never finish).
+## Movie Maker (--write-movie) also runs on the Dummy driver but mixes every frame into the
+## movie, so sounds play there.
 static func audio_silent() -> bool:
-	return AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER
+	return AudioServer.get_driver_name() == SILENT_AUDIO_DRIVER and Engine.get_write_movie_path().is_empty()
 
 
 ## Plays sound effect `id` (one of SFX_IDS) on the SFX bus at `pitch` and logs it ("[Audio]
