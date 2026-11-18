@@ -90,6 +90,7 @@ var _bubble_tween: Tween
 @onready var _rival: TextureRect = $Scenery/Rival
 @onready var _bubble: Label = $Scenery/Bubble
 @onready var _shot_input: ShotInput = $ShotInput
+@onready var _cancel_key: CancelKey = $CancelKey
 
 
 func _ready() -> void:
@@ -97,6 +98,7 @@ func _ready() -> void:
 	_next_goose_at = _game.tuning.title_first_goose_at
 	_game.screen.screen_fit_changed.connect(_fit)
 	_shot_input.shot.connect(_on_shot)
+	_cancel_key.triggered.connect(_on_cancel)
 	_set_scenery()
 	_fit()
 	_campaign_button.pressed.connect(_on_campaign_pressed)
@@ -203,6 +205,17 @@ func _spawn_goose() -> void:
 	var goose := BIRD_SCENE.instantiate() as Bird
 	goose.setup_crossing(_goose_spec, _geese, _schedule.randi(), _band)
 	_birds.add_child(goose)
+
+
+## Escape, or Android's Back button: the title is the first screen, so on Android Back leaves
+## the app (application/config/quit_on_go_back is off, so this is the one place it quits);
+## on the web and desktop there is nothing to go back to.
+func _on_cancel() -> void:
+	if not OS.has_feature("android"):
+		print("[Title] Back or Escape pressed: nothing to go back to")
+		return
+	print("[Title] Back pressed: leaving the app")
+	get_tree().quit()
 
 
 ## A tap below the top bar that no button took: a shot. A goose under it falls with a

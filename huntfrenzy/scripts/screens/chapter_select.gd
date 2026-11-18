@@ -28,6 +28,8 @@ var _chapters: Array[ChapterSpec] = []
 @onready var _safe: Control = $Safe
 @onready var _buttons: Array[Button] = [$Safe/Chapter1, $Safe/Chapter2, $Safe/Chapter3, $Safe/Chapter4]
 @onready var _back_button: Button = $Safe/BackButton
+## Escape, and Android's Back button, do what the Back button does.
+@onready var _cancel_key: CancelKey = $CancelKey
 
 
 func _ready() -> void:
@@ -64,6 +66,7 @@ func _ready() -> void:
 			if spec.id == left:
 				returned = button
 	_back_button.pressed.connect(_on_back_pressed)
+	_cancel_key.triggered.connect(_on_back_pressed)
 	_fit()
 	(returned if returned != null else focus).grab_focus(true)
 

@@ -38,6 +38,8 @@ var _levels: Array[LevelSpec] = []
 @onready var _heading_count: Label = $Safe/Heading/Count
 @onready var _buttons: Array[Button] = [$Safe/Level1, $Safe/Level2, $Safe/Level3, $Safe/Level4, $Safe/Level5, $Safe/Level6]
 @onready var _back_button: Button = $Safe/BackButton
+## Escape, and Android's Back button, do what the Back button does.
+@onready var _cancel_key: CancelKey = $CancelKey
 
 
 func _ready() -> void:
@@ -92,6 +94,7 @@ func _ready() -> void:
 			if level.id == left:
 				returned = button
 	_back_button.pressed.connect(_on_back_pressed)
+	_cancel_key.triggered.connect(_on_back_pressed)
 	_fit()
 	(returned if returned != null else focus).grab_focus(true)
 

@@ -1,6 +1,7 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://scripts/screens/chapter_select.gd" id="1_chapters"]
+[ext_resource type="Script" path="res://scripts/ui/cancel_key.gd" id="2_cancel"]
 
 [node name="ChapterSelect" type="Control"]
 layout_mode = 3
@@ -120,3 +121,6 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 30
 text = "Back"
+
+[node name="CancelKey" type="Node" parent="."]
+script = ExtResource("2_cancel")
