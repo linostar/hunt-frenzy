@@ -293,6 +293,7 @@ func _tests() -> Array[Callable]:
 		_test_popup_motion,
 		_test_reduce_motion_everywhere,
 		_test_slider_hold_cut_short,
+		_test_android_back_button,
 		# Last again: no test left a tuning value changed.
 		_test_tuning_values,
 	]
@@ -4451,6 +4452,41 @@ func _start_run(run_seed: int, mode_id := GameState.ENDLESS_MODE) -> Play:
 	await _game.flow.transition_finished
 	await process_frame
 	return current_scene as Play
+
+
+## Android's Back button arrives as NOTIFICATION_WM_GO_BACK_REQUEST (quit_on_go_back is off,
+## so it never quits by itself) and acts as Escape: the level select goes back to the chapter
+## select, that to the title, a run pauses and a second Back resumes it; on the title it does
+## nothing outside Android (there it leaves the app).
+func _test_android_back_button() -> void:
+	_check(ProjectSettings.get_setting("application/config/quit_on_go_back") == false, "Back never quits the app by itself (quit_on_go_back is off)", str(ProjectSettings.get_setting("application/config/quit_on_go_back")))
+	_game.flow.goto(SceneFlow.Flow.LEVEL_SELECT, {"chapter": "dawn"})
+	await _game.flow.transition_finished
+	await process_frame
+	current_scene.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _game.flow.transition_finished
+	await process_frame
+	_check(_game.flow.state == SceneFlow.Flow.CHAPTER_SELECT and _game.flow.flow_args == {"chapter": "dawn"}, "Back on the level select opens the chapter select", "%s %s" % [_game.flow.state, _game.flow.flow_args])
+	current_scene.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _game.flow.transition_finished
+	await process_frame
+	_check(_game.flow.state == SceneFlow.Flow.TITLE and current_scene is Title, "Back on the chapter select opens the title", str(_game.flow.state))
+	var from := _log.size()
+	var gotos := _game.flow.transition_log.size()
+	current_scene.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	_check(current_scene is Title and _game.flow.transition_log.size() == gotos, "Back on the title goes nowhere outside Android", str(_game.flow.transition_log.slice(gotos)))
+	_check_logged(from, "^\\[Title\\] Back or Escape pressed: nothing to go back to$", "Back on the title is logged")
+	var play := await _start_level("dawn_1")
+	play.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	_check(play.pause.is_paused() and paused, "Back during a run opens the pause menu", "paused %s" % paused)
+	play.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	_check(not play.pause.is_paused() and not paused, "Back on the pause menu resumes the run", "paused %s" % paused)
+	play.quit()
+	await _game.flow.transition_finished
+	await process_frame
 
 
 ## Counts `play`'s hit stops from now (HitStop.started): the count is element 0.

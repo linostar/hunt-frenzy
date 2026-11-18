@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3]
+[gd_scene load_steps=10 format=3]
 
 [ext_resource type="Script" path="res://scripts/screens/title.gd" id="1_title"]
 [ext_resource type="PackedScene" path="res://scenes/backdrop.tscn" id="2_backdrop"]
@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/fx/feathers.gd" id="4_feathers"]
 [ext_resource type="Texture2D" path="res://art/rival_idle.svg" id="5_rival"]
 [ext_resource type="Script" path="res://scripts/ui/shot_input.gd" id="6_shot"]
+[ext_resource type="Script" path="res://scripts/ui/cancel_key.gd" id="9_cancel"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_banner"]
 content_margin_left = 8.0
@@ -269,3 +270,6 @@ text = "Content error"
 horizontal_alignment = 1
 vertical_alignment = 1
 autowrap_mode = 3
+
+[node name="CancelKey" type="Node" parent="."]
+script = ExtResource("9_cancel")

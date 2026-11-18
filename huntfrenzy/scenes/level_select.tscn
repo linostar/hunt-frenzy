@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=4 format=3]
 
 [ext_resource type="Script" path="res://scripts/screens/level_select.gd" id="1_levels"]
 [ext_resource type="Texture2D" path="res://art/star_full.svg" id="2_star"]
+[ext_resource type="Script" path="res://scripts/ui/cancel_key.gd" id="3_cancel"]
 
 [node name="LevelSelect" type="Control"]
 layout_mode = 3
@@ -174,3 +175,6 @@ grow_horizontal = 2
 grow_vertical = 2
 theme_override_font_sizes/font_size = 30
 text = "Back"
+
+[node name="CancelKey" type="Node" parent="."]
+script = ExtResource("3_cancel")
