@@ -66,7 +66,7 @@ Settings: music and sound volume, mute, and Reduce motion (no screen shake, calm
 
 | Section | Answer |
 |---|---|
-| Privacy policy | `https://github.com/linostar/hunt-frenzy/blob/main/store/privacy-policy.md` |
+| Privacy policy | `https://uniquity.win/huntfrenzy-privacy-policy.html` (source: `store/huntfrenzy-privacy-policy.html`; upload it to uniquity.win first) |
 | Ads | No, my app does not contain ads |
 | App access | All functionality is available without special access |
 | Content rating (IARC questionnaire) | Category: Game. Violence: yes, cartoon or fantasy violence against animals (birds are shot and fall; no blood, no gore, no humans hurt). Fear, sexuality, language, controlled substances, gambling, user interaction, sharing location, digital purchases: no. Expected result: about PEGI 7 / ESRB Everyone 10+. |
